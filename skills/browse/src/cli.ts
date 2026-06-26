@@ -172,37 +172,107 @@ async function startServer(): Promise<ServerState> {
   throw new Error(`Server failed to start within ${MAX_START_WAIT / 1000}s`);
 }
 
+// Health check: an HTTP /health 200 is definitive proof the daemon is alive and
+// responsive — more reliable than process.kill(pid,0), which a recycled PID passes.
+async function isServerHealthy(port: number): Promise<boolean> {
+  try {
+    const resp = await fetch(`http://127.0.0.1:${port}/health`, {
+      signal: AbortSignal.timeout(2000),
+    });
+    if (!resp.ok) return false;
+    const health = await resp.json() as any;
+    return health.status === 'healthy';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Acquire an exclusive lockfile so concurrent ensureServer() calls can't BOTH spawn a
+ * daemon — a TOCTOU race that leaves orphaned headless Chromium zombies reaped only by
+ * the 30-min idle timer. Ported from gstack browse (acquireServerLock, landed v0.11.1.0).
+ * Returns a release fn, or null if another *live* process already holds the lock.
+ */
+function acquireServerLock(): (() => void) | null {
+  const lockPath = `${config.stateFile}.lock`;
+  try {
+    // 'wx' — create exclusively, fail if it already exists (atomic check-and-create).
+    // String flag (not numeric fs.constants) for Bun compiled-binary compatibility.
+    const fd = fs.openSync(lockPath, 'wx');
+    fs.writeSync(fd, `${process.pid}\n`);
+    fs.closeSync(fd);
+    return () => { try { fs.unlinkSync(lockPath); } catch {} };
+  } catch {
+    // Lock already held — clear it only if we can prove the holder is gone, then retry.
+    try {
+      const raw = fs.readFileSync(lockPath, 'utf8').trim();
+      const holderPid = parseInt(raw, 10);
+      if (Number.isNaN(holderPid)) {
+        // The file exists but has no PID yet: the winner created it with 'wx' and is
+        // mid-init (writeSync of its PID is the very next sync call). Treat a FRESH
+        // empty lock as a live holder and wait — do NOT unlink it, or we'd race the
+        // winner and both daemons would start. Only reap a long-stale empty lock left
+        // by a holder that crashed in that microsecond window.
+        const ageMs = Date.now() - fs.statSync(lockPath).mtimeMs;
+        if (ageMs < 10_000) return null;
+        fs.unlinkSync(lockPath);
+        return acquireServerLock();
+      }
+      if (isProcessAlive(holderPid)) {
+        return null; // another live process is starting the server
+      }
+      fs.unlinkSync(lockPath); // stale lock from a dead holder
+      return acquireServerLock();
+    } catch {
+      return null;
+    }
+  }
+}
+
 async function ensureServer(): Promise<ServerState> {
   const state = readState();
 
-  if (state && isProcessAlive(state.pid)) {
-    // Check for binary version mismatch (auto-restart on update)
+  // Health-check-first: HTTP is definitive, and skips the PID-reuse stall where a
+  // recycled PID passes isProcessAlive() and wastes the full health timeout.
+  if (state && await isServerHealthy(state.port)) {
+    // Binary version mismatch → auto-restart on update (falls through to locked start).
     const currentVersion = readVersionHash();
-    if (currentVersion && state.binaryVersion && currentVersion !== state.binaryVersion) {
-      console.error('[browse] Binary updated, restarting server...');
-      await killServer(state.pid);
-      return startServer();
+    if (!(currentVersion && state.binaryVersion && currentVersion !== state.binaryVersion)) {
+      return state;
     }
-
-    // Server appears alive — do a health check
-    try {
-      const resp = await fetch(`http://127.0.0.1:${state.port}/health`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      if (resp.ok) {
-        const health = await resp.json() as any;
-        if (health.status === 'healthy') {
-          return state;
-        }
-      }
-    } catch {
-      // Health check failed — server is dead or unhealthy
-    }
+    console.error('[browse] Binary updated, restarting server...');
+    await killServer(state.pid);
   }
 
-  // Need to (re)start
-  console.error('[browse] Starting server...');
-  return startServer();
+  // Need to (re)start — serialize via an exclusive lock so two CLIs that both find no
+  // healthy server don't each spawn a daemon (orphaned Chromium zombies).
+  ensureStateDir(config);
+  const releaseLock = acquireServerLock();
+  if (!releaseLock) {
+    // Another instance is starting the server — wait for it instead of spawning a rival.
+    console.error('[browse] Another instance is starting the server, waiting...');
+    const startedWaiting = Date.now();
+    while (Date.now() - startedWaiting < MAX_START_WAIT) {
+      const fresh = readState();
+      if (fresh && await isServerHealthy(fresh.port)) return fresh;
+      await Bun.sleep(200);
+    }
+    throw new Error('Timed out waiting for another instance to start the server');
+  }
+
+  try {
+    // Re-read under the lock in case another process started the server first.
+    const fresh = readState();
+    if (fresh && await isServerHealthy(fresh.port)) return fresh;
+
+    // Kill the old (unhealthy/superseded) server to avoid orphaned Chromium.
+    if (state && state.pid) await killServer(state.pid);
+
+    console.error('[browse] Starting server...');
+    return startServer();
+  } finally {
+    releaseLock();
+  }
 }
 
 // ─── Command Dispatch ──────────────────────────────────────────

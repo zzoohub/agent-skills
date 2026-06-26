@@ -39,11 +39,25 @@ target.
   registry + CLI help, and added "macOS only" to `cookie-import-browser`'s
   registry description. No behavior changes.
 
+> The list above is the canonical **Local Deltas** checklist — the intentional divergences to
+> re-confirm on every re-sync. It is mirrored, with sync tooling, in
+> [`maintenance/UPSTREAM-SYNC.md`](./maintenance/UPSTREAM-SYNC.md). **Record any new local patch
+> there the moment you make it** (each local edit is a line you must re-reconcile on every future
+> pull).
+
 ## If you ever want a specific upstream fix
 
 Browse-relevant upstream changes land in the gstack CHANGELOG under entries
 like daemonization, WebSocket re-attach, idle-shutdown, and long-session memory.
-Add the gstack remote, read `browse/` diffs since the fork point, and
-cherry-pick by hand. Given this repo is otherwise pure-markdown skills, the
-recommended default is to **stay frozen** and only pull a fix when you hit the
-bug it addresses.
+The recommended default is still to **stay frozen** and only pull a fix when you hit the
+bug it addresses — but the pull is no longer archaeology. Use the maintenance module:
+
+```bash
+cd skills/browse/maintenance
+./vendor-sync.sh diff        # read-only: our src/ vs current upstream browse src/
+./vendor-sync.sh stage       # scrubbed upstream → temp dir for manual cherry-pick (never overwrites src/)
+```
+
+See [`maintenance/UPSTREAM-SYNC.md`](./maintenance/UPSTREAM-SYNC.md) for the cadence, the
+daemon-fix decision matrix (which upstream fixes are worth pulling), and the
+re-adopt-`gen:skill-docs` note (delta #6 is the source of silent `SKILL.md`↔`commands.ts` drift).

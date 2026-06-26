@@ -70,27 +70,32 @@ Note: Server actions (`'use server'` in `.ts`/`.tsx`) are part of web — they'r
 - **Reporting:** Do **not** write qa's markdown report, `baseline.json`, or regression diff to disk — you have no `Write` tool. Report findings in **this agent's** format (Phase 5), returned to the caller. Screenshots still save fine: the browse binary writes them itself via `-o`/`screenshot <path>` through Bash.
 - **No user prompts:** You cannot ask the user (no `AskUserQuestion`). Any qa step that waits on a human — browse build consent, 2FA/OTP, CAPTCHA — cannot run here. Attempt the one-time browse build non-interactively; if it needs consent or fails, **don't block — fall back**.
 
-**If the qa skill reports `NEEDS_SETUP` and a non-interactive build fails, or the browse binary is otherwise unavailable**, fall back to Playwright (preferred) or claude-in-chrome (see the Fallback section below).
+**If the qa skill reports `NEEDS_SETUP` and a non-interactive build fails, or the browse binary is otherwise unavailable**, fall back per the bounded order in §2b: Playwright preferred; claude-in-chrome only if it responds unattended; otherwise E2E-only. **Never wait on a claude-in-chrome dialog or permission prompt** — a stall there is the most common cause of a hung verify.
 
 **If Playwright is available** (`mcp__plugin_playwright_playwright__*`), prefer it over claude-in-chrome as fallback — it's headless and doesn't require the Chrome extension to be active. Use `browser_navigate` → `browser_snapshot` → `browser_click`/`browser_fill_form` for the same verification steps.
 
 ---
 
-### 2b. Fallback: Browser Verification (Playwright preferred, claude-in-chrome last resort)
+### 2b. Fallback: Browser Verification (Playwright preferred; claude-in-chrome only if it responds unattended)
 
-**Only use when the qa skill cannot operate** (browse binary unavailable and setup fails). Prefer Playwright when available (headless, no Chrome extension needed — see the note above); use claude-in-chrome only as the last resort detailed below.
+**Only use when the qa skill cannot operate** (browse binary unavailable and setup fails).
 
-1. Call `mcp__claude-in-chrome__tabs_context_mcp`. Retry up to 3 times if it fails.
-2. After 3 failures, skip browser verification entirely — proceed to E2E only.
+**The hang trap — read this first.** browse and Playwright are headless and *bounded* (every call times out and fails fast). claude-in-chrome is **not**: it drives a real Chrome via an extension, needs per-site permission grants, and **blocks permanently on native JS dialogs (alert / confirm / beforeunload) waiting for a human you do not have.** A stalled claude-in-chrome call is the most likely cause of "verify hung forever." So treat it as opt-in-if-responsive, never as something to wait on:
 
-When using claude-in-chrome:
+1. **Prefer Playwright** (`mcp__plugin_playwright_playwright__*`): `browser_navigate` → `browser_snapshot` → `browser_click`/`browser_fill_form`. Headless, no extension, bounded.
+2. **If Playwright MCP tools are not actually present**, do **not** silently fall through to a blocking claude-in-chrome session. Prefer **E2E-only** (Phase 3) and record "browser verification skipped — no headless driver available." Only attempt claude-in-chrome under the strict bound in step 3.
+3. **claude-in-chrome (last resort, hard-bounded):** call `mcp__claude-in-chrome__tabs_context_mcp`. Treat a **stall, a non-response, or any permission/dialog prompt as a failure** — not as something to wait on. The 3-attempt retry is for *returned* failures only; if it **stalls or blocks even once, abandon it immediately** and go to step 4. **Never wait on a dialog or permission grant — you cannot satisfy it.**
+4. After abandoning (or 3 returned failures), **skip browser verification entirely — proceed to E2E only**, and say so in the report.
+
+When claude-in-chrome **is** responding unattended:
 - `read_page` for screenshots
 - `resize_window` for responsive checks (375x812, 768x1024, 1280x800)
 - `read_console_messages` for JS errors
 - `read_network_requests` for failed API calls
 - Click, fill, navigate via chrome tools
+- If it blocks on a dialog or permission prompt at any point, **stop and fall to E2E-only** (step 4) — do not wait.
 
-Note in report which tool was used: `[qa skill]`, `[playwright fallback]`, or `[claude-in-chrome fallback]`.
+Note in report which tool was used: `[qa skill]`, `[playwright fallback]`, `[claude-in-chrome fallback]`, or `[browser skipped — no headless driver]`.
 
 ---
 
@@ -245,7 +250,7 @@ Only include sections that were actually executed. Omit sections that were skipp
 2. **Don't run unit tests** — the main agent handles those via TDD
 3. **Understand what changed first** — use caller-provided scope or git diff
 4. **Classify before verifying** — run web, API, or both based on changed files
-5. **qa skill first, then Playwright (preferred) or claude-in-chrome fallback** — for browser verification
+5. **qa skill first, then Playwright (preferred); claude-in-chrome only if it responds unattended, else E2E-only** — never wait on its dialogs/permissions (the #1 cause of a hung verify; see §2b)
 6. **E2E first, API fallback** — only smoke-test endpoints without matching test files
 7. **Be specific in reports** — include file:line, screenshots, exact errors, curl commands
 8. **Flag auth gaps as CRITICAL** — unprotected endpoints are production incidents
