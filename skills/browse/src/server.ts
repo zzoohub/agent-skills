@@ -104,7 +104,7 @@ async function flushBuffers() {
       const lines = entries.map(e =>
         `[${new Date(e.timestamp).toISOString()}] [${e.level}] ${e.text}`
       ).join('\n') + '\n';
-      await Bun.write(CONSOLE_LOG_PATH, (await Bun.file(CONSOLE_LOG_PATH).text().catch(() => '')) + lines);
+      fs.appendFileSync(CONSOLE_LOG_PATH, lines); // O(1) append (gstack fix); start() truncates the log so it never accretes across restarts
       lastConsoleFlushed = consoleBuffer.totalAdded;
     }
 
@@ -115,7 +115,7 @@ async function flushBuffers() {
       const lines = entries.map(e =>
         `[${new Date(e.timestamp).toISOString()}] ${e.method} ${e.url} → ${e.status || 'pending'} (${e.duration || '?'}ms, ${e.size || '?'}B)`
       ).join('\n') + '\n';
-      await Bun.write(NETWORK_LOG_PATH, (await Bun.file(NETWORK_LOG_PATH).text().catch(() => '')) + lines);
+      fs.appendFileSync(NETWORK_LOG_PATH, lines);
       lastNetworkFlushed = networkBuffer.totalAdded;
     }
 
@@ -126,7 +126,7 @@ async function flushBuffers() {
       const lines = entries.map(e =>
         `[${new Date(e.timestamp).toISOString()}] [${e.type}] "${e.message}" → ${e.action}${e.response ? ` "${e.response}"` : ''}`
       ).join('\n') + '\n';
-      await Bun.write(DIALOG_LOG_PATH, (await Bun.file(DIALOG_LOG_PATH).text().catch(() => '')) + lines);
+      fs.appendFileSync(DIALOG_LOG_PATH, lines);
       lastDialogFlushed = dialogBuffer.totalAdded;
     }
   } catch {
@@ -356,7 +356,10 @@ async function start() {
     serverPath: path.resolve(import.meta.dir, 'server.ts'),
     binaryVersion: readVersionHash() || undefined,
   };
-  const tmpFile = config.stateFile + '.tmp';
+  // Per-process temp name (pid + random) so two daemons cold-starting on a fresh
+  // repo simultaneously can't collide on the shared `.tmp` rename and ENOENT-kill
+  // each other mid-startup (gstack tmpStatePath fix). Rename stays last-writer-wins.
+  const tmpFile = `${config.stateFile}.tmp.${process.pid}.${crypto.randomBytes(4).toString('hex')}`;
   fs.writeFileSync(tmpFile, JSON.stringify(state, null, 2), { mode: 0o600 });
   fs.renameSync(tmpFile, config.stateFile);
 
