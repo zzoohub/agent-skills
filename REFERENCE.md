@@ -1,7 +1,7 @@
 # REFERENCE.md
 
-Static-lookup companion to [`CLAUDE.md`](CLAUDE.md) — the reference detail that does **not** need to
-load every turn. `CLAUDE.md` holds the always-on core: what this repo is, the build commands, how the
+Static-lookup companion to [`AGENTS.md`](AGENTS.md) — the reference detail that does **not** need to
+load every turn. `AGENTS.md` holds the always-on core: what this repo is, the build commands, how the
 system works, the skill/agent **conventions** (the load-bearing rules), and the **Intent → agent
 decision table**. This file holds the on-demand lookup tables: each agent's **skill palette** (agent
 roster), the **Default doc locations** table, the **external dependencies**, and the **known gaps**.
@@ -145,6 +145,6 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
   Vercel-Labs-hosted rulesets, so internalizing them as-is would keep a runtime Vercel-Labs dependency;
   they were left out. `design-system` remains the primary UI-guidance authority for frontend/desktop
   developers. To adopt them, vendor the remote rulesets into a real skill dir first, then route them.
-- **Stale `.gitignore` whitelist** — the ignore-all-then-allow list still whitelists `!AGENTS.md`
-  (deleted — replaced by `CLAUDE.md`) and `!commands/` (no such dir exists), and duplicates
-  `!README.md` (no README exists either). Harmless no-ops, but worth pruning on the next pass.
+- **Stale `.gitignore` whitelist** — the ignore-all-then-allow list still whitelists `!commands/`
+  (no such dir exists) and duplicates `!README.md` (no README exists either). Harmless no-ops, but
+  worth pruning on the next pass.

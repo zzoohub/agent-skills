@@ -2,7 +2,7 @@
 
 The agent **sequencing** playbook — how the agents chain end to end. (The sequences below are
 referred to throughout the library as the *workflow chains*; this file is their home.) Companion to
-[`CLAUDE.md`](CLAUDE.md) (the always-on core: skill/agent conventions + the Intent → agent decision
+[`AGENTS.md`](AGENTS.md) (the always-on core: skill/agent conventions + the Intent → agent decision
 table) and [`REFERENCE.md`](REFERENCE.md) (the static lookup tables: agent roster, doc locations,
 external dependencies, known gaps). Read this when you need to know **what runs after what**.
 
