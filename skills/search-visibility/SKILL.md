@@ -70,7 +70,7 @@ These are not separate disciplines. They form a continuum: SEO builds the founda
 
 ### GEO Principles (Detail: `references/geo-content-extractability.md`, `references/geo-entity-clarity.md`, `references/geo-multi-platform.md`)
 
-1. **Content Extractability**: AI systems retrieve specific passages, not whole pages. Content must retain meaning when read in isolation.
+1. **Content Extractability**: AI systems retrieve specific passages, not whole pages. Content must retain meaning when read in isolation. Images are invisible to this retrieval — every content `<img>` must carry descriptive `alt` text stating what the image shows.
 2. **Entity Clarity**: AI systems must unambiguously identify what your brand is, what category it belongs to, and what it is authoritative for.
 3. **Multi-Platform Presence**: AI systems pull from YouTube, Reddit, review sites, LinkedIn, industry publications, not just your website.
 4. **Owned and Earned Signals**: Owned content demonstrates expertise; earned mentions (reviews, press, community) validate credibility.
@@ -184,6 +184,7 @@ Traditional SEO metrics (rankings, clicks, traffic) + AEO metrics (featured snip
    - GEO self-contained paragraphs for AI extractability
    - Specific facts, data, and concrete examples with sources
    - Front-loaded answers under each heading
+   - Descriptive `alt` text on every content image — never empty; AI systems read the text, not the pixels
    - E-E-A-T signals (author credentials, citations, experience)
 
 5. **Structured Data**

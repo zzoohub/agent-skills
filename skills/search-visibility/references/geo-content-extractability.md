@@ -129,6 +129,10 @@ Two measurable writing traits separate cited from uncited pages (Kevin Indig, 1.
 - **Definitive, non-hedged statements** were cited **36.2% vs 20.2%** for hedged language (~80% higher). Write assertive declaratives; avoid "may/might/could." (Note: this is authoritative-*with-evidence*; bare confidence without statistics/quotations does not work — see Pillar 2 in `ai-platform-optimization.md`.)
 - Cited content averages **~20.6% named-entity density** (brands/tools/people) vs a 5-8% English baseline. **Decision:** pack relevant named entities into liftable blocks as grounding anchors, and state claims as definitive declaratives rather than hedged prose.
 
+### 8. Alt Text on Every Content Image
+
+AI retrieval is text-based: an `<img>` without `alt` text contributes nothing to a chunk, so any fact carried only by the image (a chart's trend, a diagram's flow, a screenshot's UI state) is invisible to extraction. Every content image must carry descriptive `alt` text stating what the image shows — never empty, never keyword-stuffed. (Implementation details — filenames, `ImageObject` schema, captions: `technical-seo.md`.)
+
 ---
 
 ## High-Value Extractable Content Patterns
@@ -177,4 +181,5 @@ For each key page, assess:
 - [ ] Are there clear definition, comparison, or recommendation blocks for key topics?
 - [ ] Is there minimal use of context-dependent phrases ("as mentioned above", "this is why", "see below")?
 - [ ] Are statistics attributed to specific sources with dates?
+- [ ] Does every content image have descriptive `alt` text (no empty `alt` on images that carry information)?
 - [ ] Could an AI extract any single paragraph and present it as a coherent, accurate answer?
