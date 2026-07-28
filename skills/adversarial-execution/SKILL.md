@@ -4,16 +4,19 @@ description: |
   Runtime adversarial verification (DAST) — EXECUTE, against a running app in an isolated
   environment, the abuse and exploitation attempts a static diff review can only name. Use when:
   a high-risk change (auth/session, payments, credential/VC issuance, irreversible data, DB
-  schema/migration) needs proof that a named risk can or cannot be reproduced live — concurrency/
-  race, token/nonce replay, cross-tenant IDOR, illegal state-machine transitions, numeric/limit
-  abuse, migration dry-runs under prod-shaped data. Trigger on "adversarial test", "exploit the
-  running app", "DAST", "abuse testing", "red-team this change", "prove the race", "reproduce the
-  exploit".
+  schema/migration — including when any of these ships as an LLM/agent feature) needs proof that a
+  named risk can or cannot be reproduced live — concurrency/race, token/nonce replay, cross-tenant
+  IDOR, illegal state-machine transitions, numeric/limit abuse, migration dry-runs under prod-shaped
+  data, server-side request forgery, malicious file upload / deserialization, and prompt-injection /
+  excessive-agency / RAG data-boundary abuse against a running agent. Trigger on "adversarial test",
+  "exploit the running app", "DAST", "abuse testing", "red-team this change", "prove the race",
+  "reproduce the exploit", "jailbreak the running agent", "prove the injection", "prove the SSRF".
   Do NOT use for: the threat taxonomy itself — what to look for and why (use security-checklists for
-  OWASP/business-logic and correctness-checklists for races/idempotency; this skill EXECUTES their
-  findings, it does not restate them); static diff review with no running app (use those two
-  checklists); functional or happy-path browser/E2E verification and single-request negative checks
-  (use the qa capability); or implementing the fixes (developer's job).
+  OWASP / business-logic / SSRF / LLM and correctness-checklists for races/idempotency; this skill
+  EXECUTES their findings, it does not restate them); static diff review with no running app (use
+  those two checklists); functional or happy-path browser/E2E verification and single-request
+  negative checks (use the qa capability); or implementing the fixes (developer's job).
+compatibility: Host-coupled — requires a running app in a disposable, isolated environment (never prod) plus a way to drive concurrent, replayed, and multi-session traffic against it (a Bash/curl runtime, or a browser driver such as the Playwright MCP). With no live target it produces the attack plan and reports the missing environment as the blocker, rather than attacking a real one.
 ---
 
 # Adversarial Execution
@@ -41,6 +44,14 @@ You carry no list of your own. The catalog already exists; read the section that
   state+nonce+PKCE, SAML XSW/replay, WebAuthn → `security-checklists/references/auth.md`.
 - **Correctness under load** — idempotency, retries, partial failure, caching, boundaries →
   `correctness-checklists`.
+- **AI/LLM agent abuse** — prompt injection (direct + indirect via RAG-poisoned or fetched content),
+  jailbreaks, excessive agency / unauthorized tool-calls, cross-user RAG retrieval, system-prompt /
+  secret extraction → `security-checklists/references/llm-security.md` (the OWASP LLM Top 10 — it even
+  names the runtime red-team tooling: Garak, PyRIT, Promptfoo).
+- **Server-side request forgery** — outbound fetch pushed to cloud-metadata / internal hosts, DNS
+  rebinding, IP-encoding bypass, webhook/callback abuse → `security-checklists/references/ssrf.md`.
+- **Runtime injection & untrusted input** — stored XSS, path traversal, malicious file upload, unsafe
+  deserialization, request smuggling → `security-checklists/references/api.md`.
 
 ## 2. Safe target environment — NON-NEGOTIABLE
 
@@ -51,11 +62,15 @@ safe to break:
   instance you may corrupt and reset.
 - **Seed from prod-*shape*, anonymized** — realistic volume/distribution/edge cases; never real PII
   or real credentials.
-- **Stub every irreversible side effect** — outbound email/SMS, payment capture, webhooks, and
-  especially **credential/VC issuance to a ledger, registry, or chain** (testnet/stub only — an
-  issuance-abuse test fired at mainnet is itself the incident).
-- **Allow-list the target host.** A misconfigured base URL must fail closed, not hit prod or a third
-  party.
+- **Stub every irreversible side effect** — outbound email/SMS, payment capture, webhooks, any
+  **LLM/agent tool-call that performs a real action** (refund, delete, send, publish), and especially
+  **credential/VC issuance to a ledger, registry, or chain** (testnet/stub only — an issuance-abuse
+  test fired at mainnet is itself the incident).
+- **Allow-list the target host — and fail closed on the app's own egress.** A misconfigured base URL
+  must not hit prod or a third party; likewise an SSRF or webhook repro must be contained so it can't
+  actually reach a real cloud-metadata endpoint, internal service, or third party. Prove the
+  *reachability* (the request left, the guard was absent); don't complete the exfiltration — landing
+  on a real internal target is itself the incident.
 - **Reset between runs** so a destructive attack doesn't poison the next.
 - **Read-only on the codebase.** You attack the running system; you never edit code. Report — the
   developer fixes.
@@ -81,6 +96,13 @@ cannot create:
   the final step, present-after-revoke, re-claim a consumed benefit, transition without the guard.
 - **Numeric / limit abuse.** Negative / zero / overflow quantities, client-tampered
   price/discount/currency, `limit=999999`, unbounded export.
+- **Prompt injection & excessive agency** (LLM/agent changes). The setups a single-request, code-blind
+  verifier can't build: plant an *indirect* injection in content the agent will retrieve (a poisoned
+  RAG document, a ticket body, a fetched page) and check whether it steers a real tool-call; drive a
+  *multi-turn* jailbreak (gradual escalation, many-shot) that single-turn filters miss; hold two users
+  and see whether one's retrieval surfaces the other's documents. Target the invariant the tools are
+  supposed to enforce — "the agent never refunds / deletes / sends outside the caller's own
+  authorization." Fire what `llm-security.md` names; don't restate it.
 - **Migration dry-run** (schema changes). Run the migration against a prod-*census* clone and verify
   the named zero-downtime patterns actually hold — lock duration, the app working in the
   **intermediate state** (old code + new schema, *and* new code + old schema), backfill
@@ -124,7 +146,10 @@ cannot create:
 ```
 
 Every confirmed exploit becomes a **CI security-regression test** (red now, green after the fix) —
-the same way a permanent external contract is promoted to a CI-resident wire-guard spec.
+the same way a permanent external contract is promoted to a CI-resident wire-guard spec. Pin whatever
+made the repro non-deterministic — the concurrency timing, the injection seed, the fixture it needs —
+so the guard fails reliably on a regression instead of flapping: a flaky security gate gets muted, and
+a muted gate protects nothing.
 
 ## Trigger → battery
 
@@ -137,3 +162,6 @@ Run only the rows whose high-risk flag fired.
 | credential / VC issuance | `auth.md` (nonce/replay/alg, WebAuthn/SAML) + `business-logic.md` (State Machine, single-use) | present-after-revoke, re-issue-then-use-old, signature/alg downgrade, nonce replay, holder ≠ subject |
 | irreversible data | `correctness` (idempotency, partial failure) + `business-logic.md` (limit/refund) | retry/replay for duplicate effect, race to bypass once-only, partial-failure double-write |
 | DB schema / migration | `correctness` (Schema & Migration Safety) → `database-design` / `postgresql` refs | migration dry-run on prod-census: lock time, intermediate-state app, backfill idempotency, rollback |
+| AI/LLM agent (tool-enabled) | `llm-security.md` (+ `correctness` for tool-output handling) | indirect injection via retrieved/RAG content → unauthorized tool-call, multi-turn jailbreak, cross-user RAG retrieval, system-prompt / secret extraction, model output consumed unsanitized |
+| server-side URL fetch / webhooks | `ssrf.md` | push outbound fetch to cloud-metadata (IMDSv1 chain) / internal host, DNS rebinding, decimal/hex/octal IP bypass, blind-vs-returned response |
+| file upload / deserialization | `api.md` | malicious upload (SVG→ImageMagick SSRF/RCE, polyglot, path traversal on filename), unsafe deserialization gadget, content-type confusion |
