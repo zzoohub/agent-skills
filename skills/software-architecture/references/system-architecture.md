@@ -27,6 +27,7 @@ Client -> API Gateway -> Service A -> Service B -> DB
 **Strengths**: Simple to reason about, easy to debug, straightforward error handling, strong consistency natural.
 **Trade-offs**: Temporal coupling (caller blocks), cascading failures, harder to scale independently.
 **Choose when**: CRUD-dominant apps, simple data flows, small number of services, strong consistency required everywhere.
+**When not**: one action must fan out to several independent reactions — each new side effect edits the calling chain (the coupling EDA removes) — or traffic is spiky enough that synchronous back-pressure cascades failures downstream.
 
 **Who uses it**: Most startups, early-stage products. Stripe's core payment flow is synchronous by design — money movement needs strong consistency.
 
@@ -42,6 +43,7 @@ Service A --publishes--> Event Broker --delivers--> Service B
 **Strengths**: Loose coupling, services scale independently, natural fault isolation, excellent for fan-out (one event -> many consumers), handles traffic spikes via buffering.
 **Trade-offs**: Eventual consistency, harder to debug (distributed tracing essential), event ordering complexity, requires message broker infrastructure.
 **Choose when**: Multiple consumers need to react to the same event, traffic is spiky, you need async processing (notifications, analytics, ML pipelines), or services must evolve independently.
+**When not**: read-after-write consistency is required at most boundaries, or the system is small enough that broker infrastructure plus eventual-consistency debugging costs more than the decoupling returns. Cost shape: adding a consumer costs zero producer edits, but every flow becomes distributed — trace spread replaces call-stack locality.
 
 **Who uses it**:
 - **Netflix**: Kafka processes trillions of events/day — playback telemetry, recommendations, A/B test results, analytics all flow as events.
@@ -63,6 +65,7 @@ User Input --+                         |
 **Strengths**: Read and write sides scale independently, read models optimized per use case, natural fit for read-heavy systems.
 **Trade-offs**: Increased complexity (two models to maintain), eventual consistency between read and write sides, more infrastructure.
 **Choose when**: Read/write ratio is heavily skewed (10:1+), different consumers need different views of the same data, or you need to optimize read performance without compromising write consistency.
+**When not**: read and write shapes are essentially the same — two models make every schema change a double edit plus projection upkeep, with no read-side win to pay for it.
 
 **Who uses it**:
 - **Netflix**: their personalization pipeline is CQRS-like — viewing events feed a write path, while reads serve pre-computed recommendation lists per device type (Netflix's own term for this is offline/nearline/online computation; its explicitly-documented CQRS system is Tudum, the companion content site).
@@ -80,6 +83,7 @@ Current state = replay all events (or read from snapshot + recent events)
 **Strengths**: Complete audit trail for free, time-travel debugging (reconstruct state at any point), natural fit for domains where history matters.
 **Trade-offs**: Complexity spike (snapshots needed for performance, schema evolution is hard, querying current state requires projections), high learning curve, significantly more infrastructure.
 **Choose when**: Audit trail is a regulatory requirement, the domain is inherently event-based (finance, logistics, collaborative editing), or you need time-travel/undo capabilities.
+**When not**: nothing in the domain requires history — the complexity floor is permanent (every schema change becomes event versioning forever); see the warning below.
 
 **Who uses it**:
 - **Stripe**: Payment state transitions stored as events — enables dispute resolution, audit compliance, and exact state reconstruction.
@@ -102,6 +106,7 @@ Order Service --> Payment Service --> Inventory Service
 - **Orchestration**: A central coordinator tells each service what to do. More explicit control but introduces a single point of coordination.
 
 **Choose when**: You have distributed transactions across multiple services that need to be eventually consistent. Alternative: if you can avoid distributed transactions by keeping data in one service, always prefer that.
+**When not**: the data can live in one service (a local transaction has none of the compensation state-space), or the flow's value doesn't justify designing and testing N compensating paths — each saga step multiplies the failure states that need coverage.
 
 **Who uses it**:
 - **Uber**: Trip lifecycle (match rider -> assign driver -> process payment -> rate) is an orchestrated saga.
@@ -125,7 +130,8 @@ One deployable unit, but internally organized into strictly isolated modules wit
 
 **Strengths**: Simple deployment and ops, no network overhead between modules, easy local development, can extract to microservices later if needed.
 **Trade-offs**: Must enforce module boundaries with discipline (easy to cheat), scales as a whole unit, shared database can become a coupling point.
-**Choose when**: Small team (1-5 engineers), you want domain separation without microservice overhead, or you're at a stage where operational simplicity matters more than independent scaling.
+**Choose when**: Small team (1-5 engineers) — or a solo founder driving agents — you want domain separation without microservice overhead, or you're at a stage where operational simplicity matters more than independent scaling. Module boundaries contain a bad edit (human or agent) the same way service boundaries do, at zero network cost.
+**When not**: modules genuinely need independent scaling or deploy cadence (the single deploy train becomes the bottleneck), or org size makes one release queue untenable.
 
 **Who uses it**:
 - **Shopify**: Started as a monolith, evolved to a modular monolith (Rails + Packwerk enforcing module boundaries) before selective extraction to services.

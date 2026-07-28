@@ -40,7 +40,9 @@ Events)  |  |                               |   |   APIs)
 
 **Trade-offs**: More files and indirection than simpler approaches, port/adapter wiring can feel ceremonial for trivial services, requires discipline to keep domain truly pure.
 
-**Choose when**: This is the default. Business logic exists beyond simple CRUD. You anticipate adapter changes (provider migrations, testing strategies). Team size > 1 where clear boundaries prevent stepping on each other's code.
+**Choose when**: This is the default. Business logic exists beyond simple CRUD. You anticipate adapter changes (provider migrations, testing strategies). Team size > 1 (or multiple agents editing concurrently) where clear boundaries prevent stepping on each other's code.
+
+**When not**: a handful of genuinely independent CRUD endpoints (a slice per endpoint is cheaper — the port/adapter ceremony buys nothing until domain logic or adapter churn exists), or a one-off internal tool whose blast radius never repays the file count. Cost shape: a fixed indirection tax on every feature (more files loaded per edit) purchasing cheap adapter swaps — worth it exactly when P(provider/infra change) is real.
 
 **Structure** (framework-neutral):
 
@@ -93,6 +95,8 @@ Uncle Bob's concentric circles model. Shares hexagonal's core principle (depende
 
 **Choose when**: Team already thinks in Clean Architecture terms. Java/Kotlin/C# ecosystem where Clean Architecture conventions dominate. You want explicit Use Case objects as the primary API surface.
 
+**When not**: anywhere the team isn't already invested in its vocabulary — the delta from hexagonal is cosmetic, so migrating an existing hexagonal codebase to it re-pays the rename everywhere and buys nothing. Same cost shape as hexagonal plus one more named layer.
+
 **Who uses it**: Many Android/iOS teams (Google's recommended app architecture — UI/Domain/Data layers with an optional Use Case layer — follows Clean principles); Java/Kotlin/C# backend teams commonly adopt it.
 
 ---
@@ -127,7 +131,9 @@ src/
 
 **Trade-offs**: Code duplication between slices (intentional — independence over DRY). Shared concerns still need a cross-cutting solution. Can feel scattered when the domain has deep cross-feature interactions.
 
-**Choose when**: CQRS architecture (each command/query maps to a slice). Features are genuinely independent. You value feature isolation over code reuse. Team works on features independently.
+**Choose when**: CQRS architecture (each command/query maps to a slice). Features are genuinely independent. You value feature isolation over code reuse. Team (or a fleet of agents) works on features independently.
+
+**When not**: deep cross-feature invariants — one domain rule spanning many slices turns a rule change into an N-slice shotgun edit; or when infra/provider churn outweighs feature churn, since each slice's own data access re-pays every provider migration N times. Cost shape: the mirror of layer-first — feature changes have spread ≈ 1 slice (the smallest context load per edit), cross-cutting changes have spread ≈ N slices. Pick by which churn axis actually dominates.
 
 **Who uses it**: Many .NET teams (Jimmy Bogard's MediatR pattern popularized this). Works well in event-driven systems where each event handler is a natural slice.
 
@@ -158,6 +164,8 @@ Separate **pure business logic** (functional core) from **side effects** (impera
 
 **Choose when**: Rust (ownership model naturally separates data from I/O — this pattern is idiomatic). Complex business rules that benefit from pure-function testing. The domain can be modeled as "gather data -> compute -> persist results" without mid-computation I/O.
 
+**When not**: workflows that genuinely need mid-computation I/O (conditional fetches driven by intermediate results force a fetch-everything-upfront data shuttle), or CRUD with no rules worth isolating. Cost shape: buys the cheapest verification loop available — a pure core needs table-driven tests, no mocks, which is also the best fit for agent self-verification — paid for with shell complexity wherever I/O and logic truly interleave.
+
 **Who uses it**: Elm (the Elm Architecture forces pure update functions with effects at the boundary), many Rust and Haskell projects. Gary Bernhardt's "Boundaries" talk (2012) codified the pattern. (Rust's ownership model makes the data-vs-I/O split natural for hot-path services — e.g., Discord moved its Read States hot path to Rust.)
 
 ---
@@ -185,6 +193,13 @@ Do you have significant business logic beyond CRUD?
 - **Vertical Slice + CQRS**: Each command/query is a slice. Natural fit.
 - **Hexagonal + Functional Core**: Domain layer in hexagonal *is* the functional core. Adapters = shell.
 - **Vertical Slice + Hexagonal per slice**: Each slice internally follows hexagonal structure when the slice has complex logic.
+
+**Agentic-development weights.** When the code's primary writers and maintainers are AI agents, the decision inputs above stay the same but two coefficients grow, because every agent session starts context-empty and reloads what a human would remember:
+
+- **Context cost per edit becomes a first-order term.** The style choice sets how many files (≈ tokens) an agent must load to make one change: a slice localizes a feature edit to one directory; layer-first spreads it across L layers; pass-through ceremony multiplies it for nothing. Formally, prefer the decomposition minimizing E[cost] = Σ P(change) × spread(change) along the axis that *actually churns* — features churning → slices; adapters/providers churning → hexagonal ports.
+- **The verification loop is part of the architecture.** Agents converge by iterating against fast deterministic feedback; a structure where each module/slice carries its own runnable test boundary (pure functional core, slice-scoped tests) multiplies effective agent capability, while whole-app-only verification starves it.
+
+Two consequences, whatever you choose: **declare it** — record the style in `docs/arch/system.md` and the consuming project's agent context file, since an undeclared choice is re-guessed by every future session (and reviewers judge diffs against the *declared* style, not their own default); and **hold it consistently within the project** — agents induce conventions from neighboring code, so consistency is itself part of the prompt. Deviations are fine with an ADR.
 
 ---
 
