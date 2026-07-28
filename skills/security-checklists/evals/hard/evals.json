@@ -1,0 +1,84 @@
+{
+  "skill_name": "security-checklists",
+  "notes": "Iteration 2 \u2014 HARD set. Vulns are subtle/rare (guard-exists-but-bypassable, fetched-but-not-compared, TOCTOU, silent truncation, non-constant-time-despite-name) where base-model recall is thin. Traps are subtler too. Run on Sonnet (the reviewer agent's real model). Recall assertions tagged [SUBTLE]; precision tagged [PRECISION]. Graders ALSO emit a finding_ledger {total_findings, true_positives, false_positives} per review so we capture thoroughness + total false-positive rate, not just planted recall.",
+  "evals": [
+    {
+      "id": 0,
+      "name": "jwt-oauth-token-service",
+      "prompt": "Security review of token_service.py \u2014 our JWT verification plus OAuth callback. Anything that could forge sessions or hijack the login flow? List findings with severity.",
+      "files": [
+        "files/token_service.py"
+      ],
+      "expected_output": "Catches kid-based key-path traversal (attacker points kid at a key they control and forges RS256 tokens), OAuth state fetched-but-never-compared (login CSRF), and the protocol-relative/prefix open redirect on `next` that sets a session cookie. Does not flag the explicit RS256 allowlist or the secrets.* helpers.",
+      "expectations": [
+        "[SUBTLE] Flags that the JWT `kid` header is used to build the key file path in _load_public_key (os.path.join(KEY_DIR, kid+'.pem')) \u2014 an attacker can point kid at a key file they control and forge valid RS256 tokens (path traversal \u2192 auth bypass, CWE-22/CWE-347)",
+        "[SUBTLE] Flags that the OAuth `state` is read into saved_state but never compared to the returned state \u2014 the callback has no CSRF protection (CWE-352)",
+        "[SUBTLE] Flags the open redirect in `next`: startswith('/') accepts protocol-relative //evil.com and startswith('https://app.example.com') accepts https://app.example.com.evil.com, and a session cookie is set on that redirect (CWE-601)",
+        "[PRECISION] Does NOT flag jwt.decode(..., algorithms=['RS256']) as an algorithm-confusion / 'none' risk \u2014 the allowlist is explicit and correct",
+        "[PRECISION] Does NOT flag constant_time_match (secrets.compare_digest) or issue_session (secrets.token_urlsafe) as weak/insecure"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "payments-race-idempotency",
+      "prompt": "Review payments.py before launch. It handles wallet charges, refunds, and inventory reservation. What can go wrong under concurrency or abuse? List findings with severity.",
+      "files": [
+        "files/payments.py"
+      ],
+      "expected_output": "Catches the check-then-act TOCTOU double-spend in charge_wallet, the idempotency key added only after the charge (double-charge race), and partial refunds that can sum past the order total. Does not flag reserve_inventory (correct atomic conditional decrement).",
+      "expectations": [
+        "[SUBTLE] Flags the TOCTOU / check-then-act race in charge_wallet \u2014 balance is read, checked, then decremented in separate statements with no row lock, transaction, or `WHERE balance >= amount` guard, so concurrent requests overdraft (CWE-362)",
+        "[SUBTLE] Flags that the idempotency key is only added to processed_keys AFTER do_charge, so concurrent duplicate requests both pass the initial check and double-charge (CWE-837)",
+        "[SUBTLE] Flags that refund validates amount <= order.total per call but never accounts for prior refunds, so repeated partial refunds can exceed the order total (CWE-840)",
+        "[PRECISION] Does NOT flag reserve_inventory as a race condition \u2014 `UPDATE ... WHERE stock >= qty` plus a rowcount check is the correct atomic conditional decrement"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "ssrf-bypassable-guard",
+      "prompt": "Security pass on fetcher.js \u2014 it fetches user-supplied link previews plus assets from our CDNs. Is the SSRF handling sound? List findings with severity.",
+      "files": [
+        "files/fetcher.js"
+      ],
+      "expected_output": "Catches that the SSRF blocklist in fetchLinkPreview is inadequate (only literal localhost/127.0.0.1; bypass via 0.0.0.0, [::1], decimal IP, 169.254.169.254, or a domain resolving internal; no scheme check) and that redirect:'follow' allows a permitted URL to redirect to internal. Does not flag fetchAsset (server-side allowlist host) or healthCheck (hardcoded).",
+      "expectations": [
+        "[SUBTLE] Flags that fetchLinkPreview's SSRF guard is inadequate \u2014 the blocklist only rejects literal 'localhost'/'127.0.0.1' and is bypassable (0.0.0.0, [::1], decimal/hex IPs, 169.254.169.254 metadata, or a hostname resolving to an internal IP), with no scheme restriction (CWE-918)",
+        "[SUBTLE] Flags that redirect:'follow' lets an allowed URL 3xx-redirect to an internal address that is never re-validated (SSRF via redirect, CWE-918)",
+        "[PRECISION] Does NOT flag fetchAsset as SSRF \u2014 the host is chosen from the server-side ALLOWED_CDNS map and only the encoded `key` is user-controlled",
+        "[PRECISION] Does NOT flag healthCheck as SSRF \u2014 the URL is hardcoded"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "path-containment-stored-xss",
+      "prompt": "Pre-merge review of files.js \u2014 it handles downloads, comments, and avatars. Flag anything exploitable. List findings with severity.",
+      "files": [
+        "files/files.js"
+      ],
+      "expected_output": "Catches the path-containment bypass in /download (startsWith without a trailing separator lets file=../uploads-archive/... escape to sibling dirs) and the blacklist `sanitize` that only strips <script> then renders comments unescaped (stored XSS). Does not flag the parameterized INSERT or the basename-guarded /avatar/:id.",
+      "expectations": [
+        "[SUBTLE] Flags the path-containment bypass in /download \u2014 target.startsWith(UPLOAD_DIR) with UPLOAD_DIR='/srv/uploads' (no trailing separator) lets file=../uploads-archive/... resolve to /srv/uploads-archive/... and pass the prefix check, escaping the intended directory (CWE-22)",
+        "[SUBTLE] Flags stored XSS via /comment\u2192/comments \u2014 sanitize() only strips literal <script> (blacklist, bypassable with <img onerror=> etc.) and the body is rendered unescaped into the HTML list (CWE-79)",
+        "[PRECISION] Does NOT flag the INSERT INTO comments ... VALUES ($1,$2) as SQL injection \u2014 it is parameterized",
+        "[PRECISION] Does NOT flag /avatar/:id as path traversal \u2014 the path comes from the DB and path.basename strips any separators"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "subtle-crypto-helpers",
+      "prompt": "Review crypto_utils.py \u2014 our shared crypto helpers used across the app. Are these implementations sound? List findings with severity.",
+      "files": [
+        "files/crypto_utils.py"
+      ],
+      "expected_output": "Catches secure_compare using == (non-constant-time despite the name), hash_password not pre-hashing so bcrypt silently truncates >72-byte passwords, and derive_key using PBKDF2 with only 1000 iterations. Does not flag encrypt (fresh per-call GCM nonce), verify_webhook_sig (compare_digest), or the bcrypt cost of 12.",
+      "expectations": [
+        "[SUBTLE] Flags that secure_compare uses `a == b` \u2014 a short-circuiting, non-constant-time comparison despite its name \u2014 vulnerable to timing attacks if used on tokens/HMACs (CWE-208)",
+        "[SUBTLE] Flags that hash_password passes the raw password to bcrypt with no pre-hash, so bcrypt silently truncates at 72 bytes (and at the first NUL byte), weakening long passwords (CWE-916)",
+        "[SUBTLE] Flags that derive_key uses PBKDF2-HMAC-SHA256 with only 1000 iterations \u2014 far below the ~600,000 OWASP floor (CWE-916)",
+        "[PRECISION] Does NOT flag encrypt as nonce-reuse or weak crypto \u2014 it uses a fresh os.urandom(12) GCM nonce per call and prepends it",
+        "[PRECISION] Does NOT flag verify_webhook_sig (hmac.compare_digest) as timing-unsafe",
+        "[PRECISION] Does NOT flag bcrypt.gensalt(12) as too low a cost factor \u2014 12 is adequate"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,513 @@
+{
+  "metadata": {
+    "skill_name": "security-checklists",
+    "skill_path": "/Users/zzoo/apps/agent-skills/skills/security-checklists",
+    "executor_model": "claude (general-purpose subagent)",
+    "analyzer_model": "claude-fable-5 (main session)",
+    "timestamp": "2026-07-28T08:54:59Z",
+    "evals_run": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 191.5,
+        "tokens": 92652,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies SQL injection in GET /orders where req.query.userId is concatenated into the query string (CWE-89)",
+          "passed": true,
+          "evidence": "Critical finding: 'SQL injection via `userId` query parameter (CWE-89, OWASP A05) \u2014 orders.js:10-13, GET /orders' \u2014 notes req.query.userId is string-interpolated into WHERE user_id = ${userId} instead of a bound parameter."
+        },
+        {
+          "text": "Identifies broken access control / IDOR in GET /orders/:id \u2014 the order is fetched by id with no check that it belongs to req.user (CWE-639)",
+          "passed": true,
+          "evidence": "High finding: 'IDOR: any order readable by ID, with full-row exposure (CWE-639 + CWE-200) \u2014 orders.js:18-21, GET /orders/:id' \u2014 'no user_id predicate and no post-fetch ownership comparison'."
+        },
+        {
+          "text": "Identifies mass assignment in PATCH /orders/:id \u2014 req.body is passed straight into Order.update, letting the client set fields like status/total/user_id (CWE-915)",
+          "passed": true,
+          "evidence": "Critical finding: 'Mass assignment \u2014 raw req.body into Order.update (CWE-915) \u2014 orders.js:28' \u2014 cites {\"total\":0,\"status\":\"paid\",\"user_id\":<attacker_id>} exactly."
+        },
+        {
+          "text": "Identifies the unvalidated refund amount in POST /orders/:id/refund \u2014 no sign/upper-bound check allows negative or over-refund (business-logic / CWE-839)",
+          "passed": true,
+          "evidence": "Critical finding: 'Unvalidated refund amount \u2014 negative and over-refund (CWE-840 / CWE-839) \u2014 orders.js:34, 37' \u2014 '{\"amount\": -100}' and '{\"amount\": 999999}' over-refunds a $10 order; no sign check, no upper bound."
+        },
+        {
+          "text": "[PRECISION] Does NOT report the parameterized queries using `$1` placeholders (in GET/PATCH /orders/:id) as SQL injection",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'GET /orders/:id and the PATCH pre-flight query (lines 19, 26) \u2014 use $1 bound parameters correctly; not SQL injection. Only the GET /orders query is injectable.' No SQLi is attributed to the $1 queries anywhere."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 284.7,
+        "tokens": 100076,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags SHA-256 used for password storage in hash_password \u2014 no key stretching, needs bcrypt/argon2id (CWE-916)",
+          "passed": true,
+          "evidence": "Finding #4 'Passwords hashed with unsalted single-round SHA-256' (lines 18-19, consumed at line 25), CWE-916; fix recommends Argon2id/bcrypt."
+        },
+        {
+          "text": "Flags jwt.decode called without an algorithms allowlist in current_user \u2014 enables algorithm-confusion / 'none' acceptance (CWE-327/CWE-347)",
+          "passed": true,
+          "evidence": "Finding #1 'JWT verified without an algorithm allowlist', line 32 jwt.decode(token, JWT_SECRET), CWE-347/CWE-327; explicitly covers alg:none and algorithm-confusion."
+        },
+        {
+          "text": "Flags the password-reset token generated with uuid.uuid1() as predictable (time/MAC-based, not cryptographically random) (CWE-330)",
+          "passed": true,
+          "evidence": "Finding #2 'Password-reset token is a predictable UUIDv1', line 41, CWE-330; explains timestamp + host MAC node ID, not a CSPRNG."
+        },
+        {
+          "text": "Flags verify=False disabling TLS certificate verification on the requests.post billing call (CWE-295)",
+          "passed": true,
+          "evidence": "Finding #6 'TLS certificate verification disabled on the internal billing call', line 48 requests.post(..., verify=False), CWE-295."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag hmac.compare_digest in verify_webhook as a timing-unsafe comparison (it is the correct constant-time function)",
+          "passed": true,
+          "evidence": "Considered-and-cleared: 'the signature comparison itself *is* constant-time'. #11 flags login()'s != as non-constant-time (different, legitimate); #13 is only the non-ASCII TypeError edge. compare_digest itself never called timing-unsafe."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag secrets.token_urlsafe in new_api_key as weak/predictable randomness (it is a correct CSPRNG)",
+          "passed": true,
+          "evidence": "Considered-and-cleared: 'new_api_key() (line 57) \u2014 secrets.token_urlsafe(32) is a CSPRNG with 256 bits of entropy. Correct.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 260.0,
+        "tokens": 98709,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags SSRF in GET /proxy/image \u2014 req.query.url is fetched server-side with no scheme/host allowlist or internal-range blocking (CWE-918)",
+          "passed": true,
+          "evidence": "Finding 1 'Unauthenticated full-read SSRF in the image proxy' (critical, CWE-918): req.query.url \u2192 await fetch(url) with 'no scheme check, no host allowlist, no post-DNS IP validation, and no redirect restriction'. Fix names 10/8, 169.254/16, etc. deny-list."
+        },
+        {
+          "text": "Flags the user-configurable webhook targetUrl in POST /webhooks stored with no allowlist / SSRF validation (CWE-918)",
+          "passed": true,
+          "evidence": "Finding 4 'Stored SSRF via unvalidated webhook targetUrl' (high, CWE-918): 'Any authenticated user persists an arbitrary destination URL ... with no scheme check, no internal-range block' at lines 20-23."
+        },
+        {
+          "text": "Notes that /proxy/image pipes the upstream response body back to the caller, turning the SSRF into a data-exfiltration / internal-response-disclosure channel",
+          "passed": true,
+          "evidence": "Finding 1: 'the response body is piped back verbatim' and 'Because the body is returned rather than discarded, this is *read* SSRF, not blind: no oracle-building required.' Exploit returns IMDS AccessKeyId/SecretAccessKey/Token in the body."
+        },
+        {
+          "text": "[PRECISION] Does NOT report GET /assets/:id as SSRF \u2014 the host is a fixed internal CDN_BASE and only a validated positive integer id is user-controlled",
+          "passed": true,
+          "evidence": "Never labels /assets/:id an SSRF. Finding 5 treats it as sequential-id enumeration/IDOR; 'Considered and cleared' explicitly clears path traversal/URL injection ('template uses the coerced id, not req.params.id ... cannot be steered off ${CDN_BASE}/assets/'). These are the allowed unrelated concerns."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 210.5,
+        "tokens": 95384,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags prompt injection \u2014 the user `message` is concatenated directly into the system prompt with no separation/guardrails (OWASP LLM01)",
+          "passed": true,
+          "evidence": "Finding 5 'Prompt injection by construction \u2014 user input and RAG documents concatenated into the system prompt' (lines 33-41): '`message` and retrieved `docs` are interpolated into a single **system** message with no role separation, no delimiters'; tagged LLM01."
+        },
+        {
+          "text": "Flags XSS \u2014 msg.content (LLM output) is interpolated into an HTML response with no sanitization/encoding (CWE-79)",
+          "passed": true,
+          "evidence": "Finding 4 'XSS \u2014 unescaped LLM output rendered as raw HTML' (line 51, HTMLResponse), CWE-79: 'Model-generated text is string-interpolated into an HTML document with no escaping and served as text/html.'"
+        },
+        {
+          "text": "Flags excessive agency / command injection \u2014 the model-selected shell command is executed via subprocess.run(..., shell=True) with no confirmation or allowlist (OWASP LLM06 / CWE-78), the highest-severity issue (RCE)",
+          "passed": true,
+          "evidence": "Finding 1 'Remote code execution via LLM-controlled shell command' (lines 46-49, subprocess.run shell=True), severity critical, CWE-78, LLM01/LLM05; plus Finding 6 'Excessive agency' (LLM06). Named the highest-severity RCE finding."
+        },
+        {
+          "text": "Flags the hardcoded OpenAI API key passed to OpenAI(api_key=...) (CWE-798)",
+          "passed": true,
+          "evidence": "Finding 2 'Live OpenAI API key hardcoded in source' (line 12, OpenAI(api_key=\"sk-proj-...\")), CWE-798, severity critical."
+        },
+        {
+          "text": "[PRECISION] Does NOT claim the RAG retrieval leaks other users'/orgs' documents \u2014 retrieve() is scoped by org_id=get_org(user_id)",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'retrieve(..., org_id=...) \u2014 the RAG layer does accept a tenant scope, so this is not a \"missing tenant filter\" bug. The defect is that the scope is derived from unauthenticated client input (finding 3), not that scoping is absent.' Correctly attributes cross-tenant risk to unauthenticated user_id, not a RAG flaw."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 4,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 252.5,
+        "tokens": 97031,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags the CORS misconfiguration \u2014 cors({ origin: true, credentials: true }) reflects the request Origin while allowing credentials, so any site can make authenticated cross-origin requests (CWE-942)",
+          "passed": true,
+          "evidence": "Finding #1 'CORS reflects any origin with credentials' (line 11), CWE-942/CWE-346: 'origin: true means reflect the caller's Origin header... any website gets Access-Control-Allow-Origin: <its own origin> together with Access-Control-Allow-Credentials: true.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag execFile('convert', [args...]) as command injection \u2014 it uses an argument array, not a shell",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'The argv-array form of execFile does not spawn a shell, so ;, |, backticks, and $() in src are inert \u2014 the classic exec(userInput) command-injection pattern genuinely does not apply here.' Finding #2 is ImageMagick delegate RCE (ImageTragick), a distinct valid finding, not shell injection via the argv."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag renderBio as XSS \u2014 the bio HTML is passed through DOMPurify.sanitize before rendering",
+          "passed": true,
+          "evidence": "'Considered and cleared': renderBio DOMPurify.sanitize into element context is 'correct use of a vetted sanitizer, not stored XSS.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag findUser (knex('users').where({ id: userId })) as SQL injection \u2014 the query builder parameterizes it",
+          "passed": true,
+          "evidence": "'Considered and cleared': knex object form 'is always parameterized \u2014 no interpolation, so no SQL injection even with a fully attacker-controlled userId.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag Math.random() in tipOfTheDay as insecure randomness \u2014 it is a cosmetic, non-security use",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'Weak PRNG, but the output selects a cosmetic onboarding tip. No token, ID, nonce, or security decision depends on it, so the never use Math.random() for security values rule does not apply.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag res.redirect('/login') as an open redirect \u2014 it is a hardcoded relative path",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'The redirect target is the hardcoded literal /login, not a returnUrl/next parameter \u2014 no open redirect.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 95.5,
+        "tokens": 51773,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Identifies SQL injection in GET /orders where req.query.userId is concatenated into the query string (CWE-89)",
+          "passed": true,
+          "evidence": "Finding #1 (critical): 'SQL injection via userId query parameter' \u2014 Location GET /orders, lines 10-13; 'userId is taken straight from req.query and interpolated into the SQL text with a template literal instead of a bound parameter.'"
+        },
+        {
+          "text": "Identifies broken access control / IDOR in GET /orders/:id \u2014 the order is fetched by id with no check that it belongs to req.user (CWE-639)",
+          "passed": true,
+          "evidence": "Finding #6 (high): 'Any authenticated user can read any order (IDOR, read)' \u2014 Location GET /orders/:id, lines 18-22; 'fetched by ID alone; returned without checking row.user_id === req.user.id'."
+        },
+        {
+          "text": "Identifies mass assignment in PATCH /orders/:id \u2014 req.body is passed straight into Order.update, letting the client set fields like status/total/user_id (CWE-915)",
+          "passed": true,
+          "evidence": "Finding #5 (high): 'Mass assignment \u2014 whole request body forwarded to the model' \u2014 line 28 Order.update(req.params.id, req.body); cites {\"total\":0}, {\"status\":\"paid\"}, {\"user_id\":<attacker id>}."
+        },
+        {
+          "text": "Identifies the unvalidated refund amount in POST /orders/:id/refund \u2014 no sign/upper-bound check allows negative or over-refund (business-logic / CWE-839)",
+          "passed": true,
+          "evidence": "Finding #3 (critical): 'Refund amount is unvalidated and unbounded' \u2014 lines 34, 37; 'no positivity check, no comparison against order.total'; {\"amount\": 999999} over-refunds, {\"amount\": -50} may invert into a charge."
+        },
+        {
+          "text": "[PRECISION] Does NOT report the parameterized queries using `$1` placeholders (in GET/PATCH /orders/:id) as SQL injection",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'GET /orders/:id and PATCH /orders/:id SQL (lines 19, 26) \u2014 these use $1 bound parameters correctly. Not injectable, despite req.params.id being attacker-controlled.' The only SQLi finding (#1) is scoped to GET /orders."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 122.3,
+        "tokens": 54110,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags SHA-256 used for password storage in hash_password \u2014 no key stretching, needs bcrypt/argon2id (CWE-916)",
+          "passed": true,
+          "evidence": "Finding #3 'Passwords hashed with unsalted single-round SHA-256' (lines 18-19, consumed by line 25); fix recommends Argon2id/bcrypt/scrypt with per-user salt."
+        },
+        {
+          "text": "Flags jwt.decode called without an algorithms allowlist in current_user \u2014 enables algorithm-confusion / 'none' acceptance (CWE-327/CWE-347)",
+          "passed": true,
+          "evidence": "Finding #1 'JWT verified without an algorithm allowlist \u2014 token forgery', line 32; describes asymmetric/symmetric confusion and alg:none, fix adds algorithms=[\"HS256\"]."
+        },
+        {
+          "text": "Flags the password-reset token generated with uuid.uuid1() as predictable (time/MAC-based, not cryptographically random) (CWE-330)",
+          "passed": true,
+          "evidence": "Finding #2 'Password reset token is a UUIDv1 \u2014 predictable, not random', line 41; derived from host MAC + 100ns timestamp + clock sequence, fix uses secrets.token_urlsafe(32)."
+        },
+        {
+          "text": "Flags verify=False disabling TLS certificate verification on the requests.post billing call (CWE-295)",
+          "passed": true,
+          "evidence": "Finding #7 'TLS certificate verification disabled on the internal billing call', line 48 requests.post(..., verify=False); on-path MITM presents self-signed cert."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag hmac.compare_digest in verify_webhook as a timing-unsafe comparison (it is the correct constant-time function)",
+          "passed": true,
+          "evidence": "Considered-and-cleared: 'the *comparison itself* is constant-time; the issues filed against this function are replay (#9) and input typing (#11), not the compare.' #10 flags login()'s != instead (different, legitimate)."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag secrets.token_urlsafe in new_api_key as weak/predictable randomness (it is a correct CSPRNG)",
+          "passed": true,
+          "evidence": "Considered-and-cleared: 'new_api_key() (lines 56\u201357) \u2014 secrets.token_urlsafe(32) is a CSPRNG with ~256 bits of entropy. Correct.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 167.3,
+        "tokens": 57104,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags SSRF in GET /proxy/image \u2014 req.query.url is fetched server-side with no scheme/host allowlist or internal-range blocking (CWE-918)",
+          "passed": true,
+          "evidence": "Finding 1 'Unauthenticated full-read SSRF \u2014 CRITICAL': 'The entire request URL is taken verbatim from an unauthenticated query parameter and fetched server-side with no scheme/host/IP validation.' Fix names RFC1918/loopback/link-local deny-list."
+        },
+        {
+          "text": "Flags the user-configurable webhook targetUrl in POST /webhooks stored with no allowlist / SSRF validation (CWE-918)",
+          "passed": true,
+          "evidence": "Finding 3 'Stored / second-order SSRF via unvalidated targetUrl \u2014 HIGH': 'An arbitrary user-supplied URL is persisted as a webhook destination ... SSRF with the validation gap moved to a different process' (POST /webhooks, lines 18-25)."
+        },
+        {
+          "text": "Notes that /proxy/image pipes the upstream response body back to the caller, turning the SSRF into a data-exfiltration / internal-response-disclosure channel",
+          "passed": true,
+          "evidence": "Finding 1: 'the response body is piped back to the caller' and 'They reach anything the app server can reach and **read the response body**, not just blind-fire it' \u2014 IMDS credentials returned to the caller."
+        },
+        {
+          "text": "[PRECISION] Does NOT report GET /assets/:id as SSRF \u2014 the host is a fixed internal CDN_BASE and only a validated positive integer id is user-controlled",
+          "passed": true,
+          "evidence": "Never labels /assets/:id an SSRF. Finding 6 treats it as no-authorization/IDOR; 'Considered and cleared' explicitly clears path traversal ('only a positive integer ever reaches the template literal, so ../, ?, #, @, and CRLF are all impossible ... Correctly written'). These are the allowed unrelated concerns."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 126.1,
+        "tokens": 53403,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags prompt injection \u2014 the user `message` is concatenated directly into the system prompt with no separation/guardrails (OWASP LLM01)",
+          "passed": true,
+          "evidence": "Finding 4 'Direct prompt injection \u2014 user text concatenated into the `system` message' (lines 33-41): 'Untrusted user input is interpolated into the highest-privilege role with no delimiting, escaping, or role separation.'"
+        },
+        {
+          "text": "Flags XSS \u2014 msg.content (LLM output) is interpolated into an HTML response with no sanitization/encoding (CWE-79)",
+          "passed": true,
+          "evidence": "Finding 7 'Reflected XSS \u2014 unescaped model output in an `HTMLResponse`' (line 51): 'Model-generated text is interpolated into HTML with no escaping and served as text/html; no CSP, no sanitization.'"
+        },
+        {
+          "text": "Flags excessive agency / command injection \u2014 the model-selected shell command is executed via subprocess.run(..., shell=True) with no confirmation or allowlist (OWASP LLM06 / CWE-78), the highest-severity issue (RCE)",
+          "passed": true,
+          "evidence": "Finding 2 'Remote code execution \u2014 model-supplied string into subprocess.run(..., shell=True)' (line 48), severity critical: 'no allowlist, no argument parsing, no shell=False, and no sandbox'; plus Finding 6 'Excessive agency \u2014 a general-purpose shell tool'."
+        },
+        {
+          "text": "Flags the hardcoded OpenAI API key passed to OpenAI(api_key=...) (CWE-798)",
+          "passed": true,
+          "evidence": "Finding 1 'Hardcoded OpenAI API key in source' (line 12): 'A live-format provider secret is committed in plaintext instead of being read from the environment or a secret manager.' Severity critical."
+        },
+        {
+          "text": "[PRECISION] Does NOT claim the RAG retrieval leaks other users'/orgs' documents \u2014 retrieve() is scoped by org_id=get_org(user_id)",
+          "passed": true,
+          "evidence": "Cross-tenant risk attributed to unauthenticated user_id (Finding 3), not a RAG scoping flaw. 'Considered and cleared': 'get_org(user_id) itself \u2014 the function is not the defect; the defect is that user_id is unauthenticated input (finding 3). get_org is presumed correct.' Never claims retrieve() lacks scoping."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 4,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 163.2,
+        "tokens": 54828,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "Flags the CORS misconfiguration \u2014 cors({ origin: true, credentials: true }) reflects the request Origin while allowing credentials, so any site can make authenticated cross-origin requests (CWE-942)",
+          "passed": true,
+          "evidence": "Finding #1 'CORS reflects any origin with credentials enabled' (line 11): 'origin: true echoes back whatever Origin the request carried and pairs it with Access-Control-Allow-Credentials: true, so every site on the internet is an allowed origin for credentialed calls to this router.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag execFile('convert', [args...]) as command injection \u2014 it uses an argument array, not a shell",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'execFile with an argv array does not spawn a shell, so shell metacharacters in the path are inert; there is no command injection here.' Finding #2 is ImageMagick delegate/ImageTragick RCE, a distinct valid finding, not shell injection via the argv."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag renderBio as XSS \u2014 the bio HTML is passed through DOMPurify.sanitize before rendering",
+          "passed": true,
+          "evidence": "'Considered and cleared': renderBio output is 'DOMPurify.sanitize()d and interpolated into element content, the context DOMPurify's default config is built for... Safe as written.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag findUser (knex('users').where({ id: userId })) as SQL injection \u2014 the query builder parameterizes it",
+          "passed": true,
+          "evidence": "'Considered and cleared': \"knex's object-form .where({ id }) parameterizes the value; no raw fragment, no string concatenation. Not injectable.\" Finding #7 (findUser returns entire row) is a distinct over-fetch/data-exposure concern, not SQLi."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag Math.random() in tipOfTheDay as insecure randomness \u2014 it is a cosmetic, non-security use",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'Math.random() is a genuine problem only for tokens, session IDs, nonces, and password resets. This picks a cosmetic onboarding tip; predicting it grants nothing. Not a crypto finding.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag res.redirect('/login') as an open redirect \u2014 it is a hardcoded relative path",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'the target is a hardcoded relative path, not derived from req.query/req.body. No open redirect.'"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 239.84,
+        "stddev": 38.0023,
+        "min": 191.5,
+        "max": 284.7
+      },
+      "tokens": {
+        "mean": 96770.4,
+        "stddev": 2899.8447,
+        "min": 92652,
+        "max": 100076
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 134.88,
+        "stddev": 30.1629,
+        "min": 95.5,
+        "max": 167.3
+      },
+      "tokens": {
+        "mean": 54243.6,
+        "stddev": 1959.0644,
+        "min": 51773,
+        "max": 57104
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.00",
+      "time_seconds": "+105.0",
+      "tokens": "+42527"
+    }
+  },
+  "notes": [
+    "NON-DISCRIMINATING: pass rate is 100% in BOTH configurations across all 5 evals / 26 assertions. Every planted vuln was caught and all 10 safe traps cleared by both the with-skill and the baseline (own-knowledge) reviewer. On this test set the assertion score cannot tell the two apart.",
+    "COST: the skill costs 1.78x tokens (mean 96.8k vs 54.2k) and 1.78x wall-clock (mean 240s vs 135s) \u2014 the overhead of loading SKILL.md + 3-5 reference files \u2014 with no measured recall or precision gain on these files.",
+    "EVAL BLIND SPOT (flagged independently by 3 of 5 graders): assertions reward only the PLANTED items. The with-skill reviews surfaced extra LEGITIMATE findings that no assertion credits \u2014 reflected Content-Type -> same-origin XSS (proxy.js); query-string PII, model-alias pinning, missing audit logging (chat_endpoint.py); findUser over-fetch (account.js). The skill's most likely real benefit (thoroughness) is invisible to current scoring.",
+    "PRECISION CRUCIBLE DID NOT TRIGGER OVER-FLAGGING: on account.js both arms reported ~7-8 findings but ZERO were false positives on the 5 named safe traps; both explicitly 'considered and cleared' each trap with correct reasoning. Baseline precision matched with-skill.",
+    "INTERPRETATION: against a frontier base model these textbook-severity vulns are already in-weights, so the skill neither adds catches nor prevents FPs here; the 100% ceiling means the test set is too easy to discriminate. To measure the skill's value, iteration 2 needs (a) subtler/rarer vulns where base knowledge is thin, (b) metrics for TOTAL true-positives and TOTAL false-positives rather than planted-item recall, and optionally (c) a weaker/cheaper executor model where skill guidance has more headroom."
+  ]
+}

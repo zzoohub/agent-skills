@@ -1,0 +1,495 @@
+{
+  "metadata": {
+    "skill_name": "security-checklists",
+    "skill_path": "/Users/zzoo/apps/agent-skills/skills/security-checklists",
+    "executor_model": "claude-sonnet (general-purpose subagent)",
+    "analyzer_model": "claude-fable-5 (main session)",
+    "timestamp": "2026-07-28T09:21:36Z",
+    "evals_run": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 312.9,
+        "tokens": 97105,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags that the JWT `kid` header is used to build the key file path in _load_public_key (os.path.join(KEY_DIR, kid+'.pem')) \u2014 an attacker can point kid at a key file they control and forge valid RS256 tokens (path traversal \u2192 auth bypass, CWE-22/CWE-347)",
+          "passed": true,
+          "evidence": "Finding 1: kid from token's unverified header builds the .pem path; '../../../../tmp/attacker' or absolute '/tmp/attacker' (os.path.join discards KEY_DIR) loads attacker key, then a forged JWT verifies via jwt.decode \u2014 full session-forgery bypass."
+        },
+        {
+          "text": "[SUBTLE] Flags that the OAuth `state` is read into saved_state but never compared to the returned state \u2014 the callback has no CSRF protection (CWE-352)",
+          "passed": true,
+          "evidence": "Finding 2: 'saved_state ... is assigned and then never used \u2014 the incoming state parameter is never compared to it'; describes the login-CSRF exploit."
+        },
+        {
+          "text": "[SUBTLE] Flags the open redirect in `next`: startswith('/') accepts protocol-relative //evil.com and startswith('https://app.example.com') accepts https://app.example.com.evil.com, and a session cookie is set on that redirect (CWE-601)",
+          "passed": true,
+          "evidence": "Finding 3: next='//evil.com/x' passes startswith('/'); 'https://app.example.com.evil.com/' passes the prefix; notes redirect fires on the very response that set the session cookie."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag jwt.decode(..., algorithms=['RS256']) as an algorithm-confusion / 'none' risk \u2014 the allowlist is explicit and correct",
+          "passed": true,
+          "evidence": "'Considered and cleared': algorithm confusion 'cleared. jwt.decode(..., algorithms=[\"RS256\"]) is an explicit whitelist' \u2014 does not report it as a vuln."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag constant_time_match (secrets.compare_digest) or issue_session (secrets.token_urlsafe) as weak/insecure",
+          "passed": true,
+          "evidence": "'Session token generation: cleared. issue_session uses secrets.token_urlsafe(32) \u2014 256 bits from a CSPRNG'; constant_time_match only noted as unused, never called weak."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 504.4,
+        "tokens": 128071,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags the TOCTOU / check-then-act race in charge_wallet \u2014 balance is read, checked, then decremented in separate statements with no row lock, transaction, or `WHERE balance >= amount` guard, so concurrent requests overdraft (CWE-362)",
+          "passed": true,
+          "evidence": "Finding 5 'Wallet balance check-then-act race (overdraft / double-spend)', charge_wallet:10-14: read (L10), check (L11) and debit (L14) are 'three separate, unlocked steps' and the debit's WHERE 'never re-asserts balance >= amount'; concurrent SELECTs both read balance=100, both debit 80, leaving -60."
+        },
+        {
+          "text": "[SUBTLE] Flags that the idempotency key is only added to processed_keys AFTER do_charge, so concurrent duplicate requests both pass the initial check and double-charge (CWE-837)",
+          "passed": true,
+          "evidence": "Finding 6 'Idempotency-key check-then-act race (duplicate charge)': duplicate check (L7) and processed_keys.add (L17) are 'non-atomic and separated by the entire charge flow'; two same-key requests both reach L7 seeing 'not yet processed' and both execute the debit and do_charge."
+        },
+        {
+          "text": "[SUBTLE] Flags that refund validates amount <= order.total per call but never accounts for prior refunds, so repeated partial refunds can exceed the order total (CWE-840)",
+          "passed": true,
+          "evidence": "Finding 3 'Unbounded repeat refunds \u2014 no cumulative cap, no idempotency': 'the only check is amount > order[\"total\"] against the static order total; nothing sums refunds already issued for order_id'; calling refund N times inserts N rows and fires gateway_refund N times."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag reserve_inventory as a race condition \u2014 `UPDATE ... WHERE stock >= qty` plus a rowcount check is the correct atomic conditional decrement",
+          "passed": true,
+          "evidence": "'Considered and cleared' explicitly clears it: 'reserve_inventory oversell race ... folds the sufficiency check into the same statement as the write ... This is the correct atomic pattern and does not suffer the classic overselling race.' Not reported as a race anywhere."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 327.8,
+        "tokens": 100505,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags that fetchLinkPreview's SSRF guard is inadequate \u2014 the blocklist only rejects literal 'localhost'/'127.0.0.1' and is bypassable (0.0.0.0, [::1], decimal/hex IPs, 169.254.169.254 metadata, or a hostname resolving to an internal IP), with no scheme restriction (CWE-918)",
+          "passed": true,
+          "evidence": "Finding 1 (critical, CWE-918): blocklist has no IP-range check, no 169.254.169.254 metadata block, no defense vs DNS-to-internal; exploit list includes 0.0.0.0, [::1], 10.0.0.5, 192.168.1.1, 127.0.0.2. Finding 4 flags missing parsed.protocol scheme check. (One listed example, decimal 2130706433, is actually canonicalized to 127.0.0.1 and caught \u2014 a minor inaccuracy that does not negate the valid finding.)"
+        },
+        {
+          "text": "[SUBTLE] Flags that redirect:'follow' lets an allowed URL 3xx-redirect to an internal address that is never re-validated (SSRF via redirect, CWE-918)",
+          "passed": true,
+          "evidence": "Finding 2 (critical, CWE-918): hostname check runs once against the original input URL; redirect:'follow' follows a 3xx chain to 169.254.169.254 / internal IP with no per-hop re-validation, and the body is returned to the caller."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag fetchAsset as SSRF \u2014 the host is chosen from the server-side ALLOWED_CDNS map and only the encoded `key` is user-controlled",
+          "passed": true,
+          "evidence": "fetchAsset findings are CWE-843 gate bypass (explicitly 'not a working redirect to an attacker-chosen host') and CWE-400 no-timeout; 'Considered and cleared' affirms key encoding is safe and ALLOWED_CDNS base is 'the correct way to do it.' Never labeled SSRF."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag healthCheck as SSRF \u2014 the URL is hardcoded",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'healthCheck \u2014 hardcoded URL, zero user input, not attacker-reachable. No finding.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 293.2,
+        "tokens": 102735,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags the path-containment bypass in /download \u2014 target.startsWith(UPLOAD_DIR) with UPLOAD_DIR='/srv/uploads' (no trailing separator) lets file=../uploads-archive/... resolve to /srv/uploads-archive/... and pass the prefix check, escaping the intended directory (CWE-22)",
+          "passed": true,
+          "evidence": "Finding 2 'Path traversal via prefix-only containment check' (CWE-22): '?file=../uploads-<sibling>/<name> normalizes to /srv/uploads-<sibling>/<name> \u2014 a different directory \u2014 and still passes startsWith('/srv/uploads')'."
+        },
+        {
+          "text": "[SUBTLE] Flags stored XSS via /comment\u2192/comments \u2014 sanitize() only strips literal <script> (blacklist, bypassable with <img onerror=> etc.) and the body is rendered unescaped into the HTML list (CWE-79)",
+          "passed": true,
+          "evidence": "Finding 1 'Stored XSS via bypassable comment sanitizer' (CWE-79): 'sanitize() only strips the literal, case-insensitive substring <script>' and GET /comments 'splices r.body straight into the HTML response ... with no output encoding'; cites <img src=x onerror=...>."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag the INSERT INTO comments ... VALUES ($1,$2) as SQL injection \u2014 it is parameterized",
+          "passed": true,
+          "evidence": "Considered-and-cleared: 'POST /comment (files.js:24): the INSERT uses parameterized placeholders ($1, $2) \u2014 no SQL injection'. Not reported as a vuln."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag /avatar/:id as path traversal \u2014 the path comes from the DB and path.basename strips any separators",
+          "passed": true,
+          "evidence": "Considered-and-cleared: 'stored path value is passed through path.basename() ... which correctly strips any directory components/traversal sequences \u2014 solid containment pattern'. Not reported as traversal."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 4,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 202.6,
+        "tokens": 85653,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags that secure_compare uses `a == b` \u2014 a short-circuiting, non-constant-time comparison despite its name \u2014 vulnerable to timing attacks if used on tokens/HMACs (CWE-208)",
+          "passed": true,
+          "evidence": "Finding 1 'secure_compare is not timing-safe despite its name' (L9-10): body is 'a plain a == b, which short-circuits on the first differing byte instead of comparing in constant time'; describes byte-by-byte timing-oracle recovery."
+        },
+        {
+          "text": "[SUBTLE] Flags that hash_password passes the raw password to bcrypt with no pre-hash, so bcrypt silently truncates at 72 bytes (and at the first NUL byte), weakening long passwords (CWE-916)",
+          "passed": true,
+          "evidence": "Finding 3 'hash_password doesn't handle bcrypt's 72-byte input limit': 'password.encode() passed directly ... bcrypt silently ignores any bytes beyond the 72nd'; recommends SHA-256 pre-hash. Length-truncation raised."
+        },
+        {
+          "text": "[SUBTLE] Flags that derive_key uses PBKDF2-HMAC-SHA256 with only 1000 iterations \u2014 far below the ~600,000 OWASP floor (CWE-916)",
+          "passed": true,
+          "evidence": "Finding 2 'derive_key uses PBKDF2 at 1,000 iterations \u2014 ~600x below the current safe floor'; cites OWASP 600,000 floor for PBKDF2-HMAC-SHA256."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag encrypt as nonce-reuse or weak crypto \u2014 it uses a fresh os.urandom(12) GCM nonce per call and prepends it",
+          "passed": true,
+          "evidence": "No nonce-reuse claim. Finding 4 explicitly states 'fresh random 12-byte (96-bit) nonce via os.urandom(12) \u2014 correct RNG, correct size'; cleared section confirms AEAD usage sound. The 2^32 birthday-bound note is a different valid hardening concern, not the named vuln."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag verify_webhook_sig (hmac.compare_digest) as timing-unsafe",
+          "passed": true,
+          "evidence": "Cleared section: 'verify_webhook_sig (line 30-31) \u2014 uses hmac.compare_digest for signature comparison, exactly matching the checklist's constant-time requirement. Correct.'"
+        },
+        {
+          "text": "[PRECISION] Does NOT flag bcrypt.gensalt(12) as too low a cost factor \u2014 12 is adequate",
+          "passed": true,
+          "evidence": "Cleared section: 'bcrypt.gensalt(12) (line 14) \u2014 cost factor 12 meets the OWASP floor (\u226512); salt is freshly random per call'. Not flagged as too low."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 5,
+        "failed": 0,
+        "total": 5,
+        "time_seconds": 327.8,
+        "tokens": 80376,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags that the JWT `kid` header is used to build the key file path in _load_public_key (os.path.join(KEY_DIR, kid+'.pem')) \u2014 an attacker can point kid at a key file they control and forge valid RS256 tokens (path traversal \u2192 auth bypass, CWE-22/CWE-347)",
+          "passed": true,
+          "evidence": "Finding 2: kid from get_unverified_header interpolated into file path unsanitized; '../../../../tmp/x' or absolute '/tmp/x' (os.path.join discards KEY_DIR); attacker-placed pem \u2192 forge tokens with arbitrary claims \u2192 full auth bypass."
+        },
+        {
+          "text": "[SUBTLE] Flags that the OAuth `state` is read into saved_state but never compared to the returned state \u2014 the callback has no CSRF protection (CWE-352)",
+          "passed": true,
+          "evidence": "Finding 1: 'saved_state is read from the session but is never compared against the state query parameter anywhere'; full login-CSRF exploit described."
+        },
+        {
+          "text": "[SUBTLE] Flags the open redirect in `next`: startswith('/') accepts protocol-relative //evil.com and startswith('https://app.example.com') accepts https://app.example.com.evil.com, and a session cookie is set on that redirect (CWE-601)",
+          "passed": true,
+          "evidence": "Finding 3: next='//evil.com' passes startswith('/'); 'https://app.example.com.evil.com/' passes the second prefix; chained with cookie-planting from Finding 1."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag jwt.decode(..., algorithms=['RS256']) as an algorithm-confusion / 'none' risk \u2014 the allowlist is explicit and correct",
+          "passed": true,
+          "evidence": "'Considered and cleared': algorithm confusion 'mitigated \u2014 jwt.decode(token, key, algorithms=[\"RS256\"]) explicitly pins the accepted algorithm' \u2014 does not report it as a vuln."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag constant_time_match (secrets.compare_digest) or issue_session (secrets.token_urlsafe) as weak/insecure",
+          "passed": true,
+          "evidence": "'Randomness primitives: token_urlsafe(32) and compare_digest ... are both correct, CSPRNG-backed choices.' Finding 5 raises a different (persistence/binding) concern, not weak RNG \u2014 precision trap not tripped."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 274.6,
+        "tokens": 76914,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags the TOCTOU / check-then-act race in charge_wallet \u2014 balance is read, checked, then decremented in separate statements with no row lock, transaction, or `WHERE balance >= amount` guard, so concurrent requests overdraft (CWE-362)",
+          "passed": true,
+          "evidence": "Finding 1 'Wallet balance check-then-act race enables overdraft', lines 10-14: 'balance check (SELECT + compare) and the debit (UPDATE ... balance = balance - %s) are separate, unlocked statements, and the UPDATE carries no AND balance >= %s guard'; N concurrent calls all read the pre-debit balance and drive the wallet negative."
+        },
+        {
+          "text": "[SUBTLE] Flags that the idempotency key is only added to processed_keys AFTER do_charge, so concurrent duplicate requests both pass the initial check and double-charge (CWE-837)",
+          "passed": true,
+          "evidence": "Finding 2 'Idempotency key marked processed too late \u2014 concurrent replay double-charges', lines 7 and 17: key 'only added after do_charge() completes, leaving a wide TOCTOU window with no lock'; both requests read processed_keys before either inserts, both pass and both debit + call do_charge."
+        },
+        {
+          "text": "[SUBTLE] Flags that refund validates amount <= order.total per call but never accounts for prior refunds, so repeated partial refunds can exceed the order total (CWE-840)",
+          "passed": true,
+          "evidence": "Finding 4 'refund() has no cap on cumulative refunds per order', lines 21-28: 'The only guard is amount > order[\"total\"] for the current call \u2014 no idempotency key, no already-refunded flag, no check of prior refunds already issued for order_id'; repeatedly calling refund(order_id, order.total) passes every time."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag reserve_inventory as a race condition \u2014 `UPDATE ... WHERE stock >= qty` plus a rowcount check is the correct atomic conditional decrement",
+          "passed": true,
+          "evidence": "'Considered and cleared' explicitly clears it: 'reserve_inventory's UPDATE ... WHERE sku = %s AND stock >= %s is a properly atomic conditional decrement \u2014 the guard lives in the same statement as the write, so concurrent reservations of positive qty cannot oversell stock.' Finding 7 flags only negative/zero qty, not a race."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 340.6,
+        "tokens": 83170,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags that fetchLinkPreview's SSRF guard is inadequate \u2014 the blocklist only rejects literal 'localhost'/'127.0.0.1' and is bypassable (0.0.0.0, [::1], decimal/hex IPs, 169.254.169.254 metadata, or a hostname resolving to an internal IP), with no scheme restriction (CWE-918)",
+          "passed": true,
+          "evidence": "Finding 1 (critical): denylist omits 169.254.169.254 metadata and RFC1918/link-local/IPv6 ranges. Finding 2 (critical): string-compare never resolves IP \u2014 bypassable via DNS rebinding, [::1], 0.0.0.0. Finding 5 flags missing scheme allow-list. (Correctly notes numeric-IP obfuscation is canonicalized and caught.)"
+        },
+        {
+          "text": "[SUBTLE] Flags that redirect:'follow' lets an allowed URL 3xx-redirect to an internal address that is never re-validated (SSRF via redirect, CWE-918)",
+          "passed": true,
+          "evidence": "Finding 3 (critical): hostname check runs once against original userUrl; redirect:'follow' follows a 3xx to 169.254.169.254 / 127.0.0.1:6379 with nothing re-validating the Location at any hop; body returned."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag fetchAsset as SSRF \u2014 the host is chosen from the server-side ALLOWED_CDNS map and only the encoded `key` is user-controlled",
+          "passed": true,
+          "evidence": "fetchAsset findings are memory-buffering (res.buffer), no-timeout, and __proto__ gate bypass (explicitly 'not currently an SSRF redirect primitive'); 'Considered and cleared' states key is 'Not exploitable for SSRF/host redirection.' Never labeled SSRF."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag healthCheck as SSRF \u2014 the URL is hardcoded",
+          "passed": true,
+          "evidence": "'Considered and cleared': 'healthCheck(): fetches a single fully-hardcoded URL with no user input anywhere in the call path \u2014 not attacker-reachable at all.'"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 3,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 4,
+        "failed": 0,
+        "total": 4,
+        "time_seconds": 332.8,
+        "tokens": 81777,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags the path-containment bypass in /download \u2014 target.startsWith(UPLOAD_DIR) with UPLOAD_DIR='/srv/uploads' (no trailing separator) lets file=../uploads-archive/... resolve to /srv/uploads-archive/... and pass the prefix check, escaping the intended directory (CWE-22)",
+          "passed": true,
+          "evidence": "Finding 5 'Path-containment check can be bypassed by a same-prefix sibling directory': '../uploads-private/<name> \u2014 path.join resolves it to /srv/uploads-private/<name>, which passes the flawed check and is served'."
+        },
+        {
+          "text": "[SUBTLE] Flags stored XSS via /comment\u2192/comments \u2014 sanitize() only strips literal <script> (blacklist, bypassable with <img onerror=> etc.) and the body is rendered unescaped into the HTML list (CWE-79)",
+          "passed": true,
+          "evidence": "Finding 1 'Stored XSS via bypassable comment sanitizer': 'sanitize() only deletes the literal substring <script>' and GET /comments 'interpolates the stored body straight into an HTML string ... zero escaping'; cites <img src=x onerror=...>."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag the INSERT INTO comments ... VALUES ($1,$2) as SQL injection \u2014 it is parameterized",
+          "passed": true,
+          "evidence": "Considered-and-cleared: 'Both DB calls ... use parameterized placeholders \u2014 no SQL injection'. Not reported as a vuln."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag /avatar/:id as path traversal \u2014 the path comes from the DB and path.basename strips any separators",
+          "passed": true,
+          "evidence": "Considered-and-cleared: '/avatar/:id passes the DB-stored path through path.basename() ... which strips any directory component \u2014 a malicious value ... can't traverse out'. Not reported as traversal."
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 4,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 6,
+        "failed": 0,
+        "total": 6,
+        "time_seconds": 270.3,
+        "tokens": 75567,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "[SUBTLE] Flags that secure_compare uses `a == b` \u2014 a short-circuiting, non-constant-time comparison despite its name \u2014 vulnerable to timing attacks if used on tokens/HMACs (CWE-208)",
+          "passed": true,
+          "evidence": "Finding 1 'secure_compare is not constant-time despite its name' (L10): 'plain Python ==, which short-circuits on the first differing byte'; describes byte-by-byte statistical timing recovery of the secret."
+        },
+        {
+          "text": "[SUBTLE] Flags that hash_password passes the raw password to bcrypt with no pre-hash, so bcrypt silently truncates at 72 bytes (and at the first NUL byte), weakening long passwords (CWE-916)",
+          "passed": true,
+          "evidence": "Finding 3 'hash_password has no guard against bcrypt's 72-byte truncation': 'bcrypt silently ignores password bytes past the 72nd ... neither rejects overlong input nor pre-hashes it'. Length-truncation raised."
+        },
+        {
+          "text": "[SUBTLE] Flags that derive_key uses PBKDF2-HMAC-SHA256 with only 1000 iterations \u2014 far below the ~600,000 OWASP floor (CWE-916)",
+          "passed": true,
+          "evidence": "Finding 2 'derive_key uses a dangerously low PBKDF2 iteration count': '1,000 iterations is 2-3 orders of magnitude below current guidance ... OWASP recommends \u2265600,000'."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag encrypt as nonce-reuse or weak crypto \u2014 it uses a fresh os.urandom(12) GCM nonce per call and prepends it",
+          "passed": true,
+          "evidence": "Cleared section: 'encrypt() \u2014 Uses AESGCM with a fresh random 96-bit nonce (os.urandom(12)) per call, prepended ... the correct, library-recommended idiom'; birthday-bound framed as key-management, 'not a defect in this function'."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag verify_webhook_sig (hmac.compare_digest) as timing-unsafe",
+          "passed": true,
+          "evidence": "Cleared section: 'verify_webhook_sig() \u2014 Correctly uses hmac.compare_digest, the standard-library constant-time comparison built specifically to prevent the timing attack'."
+        },
+        {
+          "text": "[PRECISION] Does NOT flag bcrypt.gensalt(12) as too low a cost factor \u2014 12 is adequate",
+          "passed": true,
+          "evidence": "Cleared section: 'hash_password() \u2014 bcrypt work factor of 12 is within the currently accepted range (OWASP baseline is \u226510); not a finding.'"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 328.18,
+        "stddev": 109.8647,
+        "min": 202.6,
+        "max": 504.4
+      },
+      "tokens": {
+        "mean": 102813.8,
+        "stddev": 15575.1916,
+        "min": 85653,
+        "max": 128071
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 309.22,
+        "stddev": 33.9089,
+        "min": 270.3,
+        "max": 340.6
+      },
+      "tokens": {
+        "mean": 79560.8,
+        "stddev": 3223.2905,
+        "min": 75567,
+        "max": 83170
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.00",
+      "time_seconds": "+19.0",
+      "tokens": "+23253"
+    }
+  },
+  "notes": [
+    "RECALL TIE AGAIN: assertion pass rate 100% in BOTH arms (23/23) on the HARD set, run on Sonnet. Both caught every subtle planted vuln \u2014 JWT kid->key-swap, TOCTOU/idempotency races, bcrypt 72-byte truncation, non-constant-time secure_compare, PBKDF2-1000, the bypassable SSRF blocklist, the prefix path-containment bug, blacklist stored-XSS.",
+    "THOROUGHNESS FAVORS BASELINE: total real findings with_skill=29 TP vs without_skill=33 TP. The baseline surfaced MORE legitimate issues (payments +1, fetcher +2, files +1), not fewer.",
+    "PRECISION ~TIE (thin skill edge): with_skill precision 1.0 (29TP/0FP) vs without_skill 0.971 (33TP/1FP). The skill's ONLY measurable benefit across 10 reviews was 1 avoided false positive (eval-0). Single-run, so within noise.",
+    "COST: with_skill mean 102,814 tokens vs 79,561 (x1.29); time x1.06. Smaller premium than iter-1 because Sonnet baselines were themselves thorough/slow.",
+    "CROSS-ITERATION CONCLUSION: across 2 model tiers (frontier iter-1, Sonnet iter-2) and 2 difficulty levels, security-checklists produced NO measurable recall/thoroughness gain and only a razor-thin, noise-level precision edge, at 1.3-1.8x cost. For capable models the skill's exhaustive pattern lists appear to be recall the model already has. Highest-leverage improvement hypothesis: the load-bearing parts are the Exploitability Discipline (precision) + output contract + the genuinely rare checks; the bulk pattern enumeration is the trim candidate. Value for WEAK models (e.g. Haiku) and output CONSISTENCY remain untested and are the likely real justification."
+  ],
+  "finding_ledger_totals": {
+    "with_skill": {
+      "tp": 29,
+      "fp": 0,
+      "precision": 1.0
+    },
+    "without_skill": {
+      "tp": 33,
+      "fp": 1,
+      "precision": 0.971
+    }
+  }
+}

@@ -1,0 +1,87 @@
+{
+  "skill_name": "security-checklists",
+  "notes": "Each file mixes planted vulnerabilities (recall assertions) with safe-looking traps (precision assertions, prefixed [PRECISION]). Files carry NO vulnerability-naming comments. Ground truth lives only here. The with_skill agent is pointed at the security-checklists skill; the without_skill baseline reviews with its own knowledge and is told not to load any security skill.",
+  "evals": [
+    {
+      "id": 0,
+      "name": "orders-api-express",
+      "prompt": "Review orders.js for security issues before I merge this PR. It's an Express router for our order API. Give me a list of findings with severity.",
+      "files": [
+        "files/orders.js"
+      ],
+      "expected_output": "Finds SQL injection in GET /orders (userId concatenated), missing ownership/IDOR check in GET /orders/:id, mass assignment in PATCH /orders/:id (req.body into Order.update), and unvalidated refund amount. Does NOT flag the parameterized `WHERE id = $1` queries as injection.",
+      "expectations": [
+        "Identifies SQL injection in GET /orders where req.query.userId is concatenated into the query string (CWE-89)",
+        "Identifies broken access control / IDOR in GET /orders/:id \u2014 the order is fetched by id with no check that it belongs to req.user (CWE-639)",
+        "Identifies mass assignment in PATCH /orders/:id \u2014 req.body is passed straight into Order.update, letting the client set fields like status/total/user_id (CWE-915)",
+        "Identifies the unvalidated refund amount in POST /orders/:id/refund \u2014 no sign/upper-bound check allows negative or over-refund (business-logic / CWE-839)",
+        "[PRECISION] Does NOT report the parameterized queries using `$1` placeholders (in GET/PATCH /orders/:id) as SQL injection"
+      ]
+    },
+    {
+      "id": 1,
+      "name": "auth-service-fastapi",
+      "prompt": "Security review on our new auth service (auth_service.py). Focus on anything that could lead to account takeover. List findings with severity.",
+      "files": [
+        "files/auth_service.py"
+      ],
+      "expected_output": "Finds SHA-256 password hashing, jwt.decode without an algorithms allowlist, uuid1-based reset token, and verify=False on the billing call. Does NOT flag hmac.compare_digest or secrets.token_urlsafe.",
+      "expectations": [
+        "Flags SHA-256 used for password storage in hash_password \u2014 no key stretching, needs bcrypt/argon2id (CWE-916)",
+        "Flags jwt.decode called without an algorithms allowlist in current_user \u2014 enables algorithm-confusion / 'none' acceptance (CWE-327/CWE-347)",
+        "Flags the password-reset token generated with uuid.uuid1() as predictable (time/MAC-based, not cryptographically random) (CWE-330)",
+        "Flags verify=False disabling TLS certificate verification on the requests.post billing call (CWE-295)",
+        "[PRECISION] Does NOT flag hmac.compare_digest in verify_webhook as a timing-unsafe comparison (it is the correct constant-time function)",
+        "[PRECISION] Does NOT flag secrets.token_urlsafe in new_api_key as weak/predictable randomness (it is a correct CSPRNG)"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "ssrf-image-proxy",
+      "prompt": "Can you do a security pass on proxy.js? It's our image proxy plus webhook registration endpoint. What's exploitable?",
+      "files": [
+        "files/proxy.js"
+      ],
+      "expected_output": "Finds SSRF in GET /proxy/image (user-controlled url fetched server-side), the webhook targetUrl stored without allowlist, and notes the proxy returns the upstream body (exfil channel). Does NOT flag GET /assets/:id (fixed host + validated integer id).",
+      "expectations": [
+        "Flags SSRF in GET /proxy/image \u2014 req.query.url is fetched server-side with no scheme/host allowlist or internal-range blocking (CWE-918)",
+        "Flags the user-configurable webhook targetUrl in POST /webhooks stored with no allowlist / SSRF validation (CWE-918)",
+        "Notes that /proxy/image pipes the upstream response body back to the caller, turning the SSRF into a data-exfiltration / internal-response-disclosure channel",
+        "[PRECISION] Does NOT report GET /assets/:id as SSRF \u2014 the host is a fixed internal CDN_BASE and only a validated positive integer id is user-controlled"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "llm-chat-endpoint",
+      "prompt": "Review this new LLM chat endpoint (chat_endpoint.py) for security problems before launch. It's a support agent backed by GPT-4o with a lookup tool.",
+      "files": [
+        "files/chat_endpoint.py"
+      ],
+      "expected_output": "Finds direct prompt injection (user message in system prompt), XSS via unsanitized LLM output rendered as HTML, excessive agency / command injection via shell=True on model output, and a hardcoded API key. Does NOT claim the RAG retrieval leaks cross-user data (it is scoped by org_id).",
+      "expectations": [
+        "Flags prompt injection \u2014 the user `message` is concatenated directly into the system prompt with no separation/guardrails (OWASP LLM01)",
+        "Flags XSS \u2014 msg.content (LLM output) is interpolated into an HTML response with no sanitization/encoding (CWE-79)",
+        "Flags excessive agency / command injection \u2014 the model-selected shell command is executed via subprocess.run(..., shell=True) with no confirmation or allowlist (OWASP LLM06 / CWE-78), the highest-severity issue (RCE)",
+        "Flags the hardcoded OpenAI API key passed to OpenAI(api_key=...) (CWE-798)",
+        "[PRECISION] Does NOT claim the RAG retrieval leaks other users'/orgs' documents \u2014 retrieve() is scoped by org_id=get_org(user_id)"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "precision-crucible-account",
+      "prompt": "Pre-merge security review of account.js please. Flag anything risky.",
+      "files": [
+        "files/account.js"
+      ],
+      "expected_output": "The ONLY real finding is the CORS config (origin:true + credentials:true reflects any origin). Everything else is safe and must not be flagged: execFile with args array, DOMPurify.sanitize, knex().where({id}), Math.random for a cosmetic tip, and a hardcoded relative redirect.",
+      "expectations": [
+        "Flags the CORS misconfiguration \u2014 cors({ origin: true, credentials: true }) reflects the request Origin while allowing credentials, so any site can make authenticated cross-origin requests (CWE-942)",
+        "[PRECISION] Does NOT flag execFile('convert', [args...]) as command injection \u2014 it uses an argument array, not a shell",
+        "[PRECISION] Does NOT flag renderBio as XSS \u2014 the bio HTML is passed through DOMPurify.sanitize before rendering",
+        "[PRECISION] Does NOT flag findUser (knex('users').where({ id: userId })) as SQL injection \u2014 the query builder parameterizes it",
+        "[PRECISION] Does NOT flag Math.random() in tipOfTheDay as insecure randomness \u2014 it is a cosmetic, non-security use",
+        "[PRECISION] Does NOT flag res.redirect('/login') as an open redirect \u2014 it is a hardcoded relative path"
+      ]
+    }
+  ]
+}
