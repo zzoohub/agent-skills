@@ -106,7 +106,7 @@ Read **every relevant checklist** — most reviews need 3-5 checklists. (Resolve
 
 ### Phase 5: Correctness Analysis (Pass 1 — CRITICAL)
 
-Reference the **correctness-checklists** skill when the diff touches concurrency, locks, transactions, retries, webhooks/event handlers, caching, background jobs, money/inventory state machines, or data crossing serialization/network/DB boundaries. These pass tests + lint + types and still corrupt data in production. Sections: Concurrency & Races, Idempotency & Retries, Partial Failure & Side-Effect Ordering, Caching, Trust & Serialization Boundaries, Schema & Migration Safety. A confirmed finding blocks the commit.
+Reference the **correctness-checklists** skill when the diff touches concurrency, locks, transactions, retries, webhooks/event handlers, caching, background jobs, pagination or batch reads, datetime/timezone logic, money/inventory state machines, or data crossing serialization/network/DB boundaries. These pass tests + lint + types and still corrupt data in production. Sections: Concurrency & Races, Idempotency & Retries, Transactions & Outbox, Partial Failure & Side-Effect Ordering, Caching, Data Volume & Pagination, Time & Calendars, Trust & Serialization Boundaries, Schema & Migration Safety. A confirmed finding blocks the commit.
 
 ### Phase 6: Maintainability Analysis (Pass 2 — INFORMATIONAL)
 
