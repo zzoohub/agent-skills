@@ -42,7 +42,7 @@ The review lens nothing else covers. Tests prove *behavior*; linters and type-ch
 | `correctness-checklists` | races, idempotency, cache invalidation, partial-failure, boundary defects — and missing *runtime* validation (unchecked responses/`res.ok`, unvalidated input): that a check is absent is a correctness finding, not an error-handling-design one |
 | A dedicated cleanup pass (e.g. `/simplify` in Claude Code), if available | reuse / efficiency / micro-simplification cleanups |
 
-This skill is for **staff-level design judgment** and the **survive-prod bugs** those miss. Pick sections by what the diff changes.
+This skill is for **staff-level design judgment** — the cost-to-change problems none of those own. Pick sections by what the diff changes.
 
 **Language instantiation.** The sections below are language-agnostic categories. For the concrete per-language spellings — what reads as `any` in TypeScript reads as `unsafe`/`Rc<RefCell<T>>` sprawl in Rust — read `references/typescript.md` (TS/JS diffs) or `references/rust.md` (Rust diffs) when they exist and the diff is in that language. Other languages: instantiate by analogy — the judgment, the gates, and the output contract don't change.
 
@@ -160,4 +160,4 @@ The gates kill findings you *can't ground* — they never excuse the ones you ca
   - Fix: [specific — "extract X behind interface Y", not "improve the design"]
 ```
 
-These are Pass 2 (informational). This is the non-blocking layer within the reviewer gate — security/correctness findings block, these inform (unless project policy escalates them). Don't block a PR on them unless project policy says so — but raise high coupling and missing abstractions early, because they get exponentially more expensive to fix the longer they live.
+These are Pass 2 (informational) — the non-blocking layer within the reviewer gate: security/correctness findings block, these inform, unless project policy escalates them. But raise high coupling and missing abstractions early, because they get exponentially more expensive to fix the longer they live.
