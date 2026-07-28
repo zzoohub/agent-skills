@@ -14,7 +14,11 @@ description: |
   security-checklists (OWASP) and correctness-checklists. Trigger on "code
   review", "maintainability", "refactor smell", "is this extensible", "tech
   debt", "design review", "god object", "fat controller", "coupling", "anemic
-  model", "test quality", "DRY", "error handling design".
+  model", "test quality", "DRY", "error handling design" — and on
+  plain-language symptoms with no jargon: "is this fine or will it bite us
+  later", code described as messy/tangled/growing out of control, a class
+  every feature has to touch, or doubts that the tests actually protect the
+  code.
   Do NOT use for: security vulnerabilities (use security-checklists);
   correctness bugs that survive CI (use correctness-checklists); formatting,
   unused variables, or unreachable code (linters/formatters own
