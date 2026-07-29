@@ -16,6 +16,9 @@
 !skills/
 !skills/**
 
+# codex 내장 시스템 스킬 (~/.codex/skills 링크 경유, 로컬 전용)
+skills/.system/
+
 # skills 빌드 산출물 제외
 skills/**/dist/
 skills/**/node_modules/
