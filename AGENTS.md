@@ -22,7 +22,7 @@ This repo is **not an application** — it is a **portable skill library + a Cla
 There is no product source code here. It ships three things:
 
 - **`skills/`** — **46** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 32 skills), `rules/` (per-rule guideline files —
+  `references/` (deep-dive docs loaded on demand — 33 skills), `rules/` (per-rule guideline files —
   `composition-patterns`, `react-best-practices`, `react-native-skills`), `templates/` (output scaffolds
   — `qa`, `software-architecture`), and `scripts/` (helpers — `database-design`, `postgresql`; both `.sql`).
   A `SKILL.md` runs on any Agent-Skills-compatible runtime; only `name` + `description` frontmatter
@@ -171,7 +171,7 @@ Claude Code, by design.
   `Skill` (`Read, Write, Edit, Grep, Glob, Skill`) — the skills it invokes do the reads and writes.
   (Two *skills*, `plan-ceo-review` and
   `plan-eng-review`, pin `allowed-tools` too, though they are not host-coupled — only `browse`/`qa`
-  carry `compatibility:`.)
+  and `adversarial-execution` carry `compatibility:`.)
 
 ### Why this lives here
 
