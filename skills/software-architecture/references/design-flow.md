@@ -166,7 +166,19 @@ Classify every bounded context (Evans/Vernon strategic DDD) — this is the budg
 |---|---|---|
 | **Core** | Differentiates the product — why users pay | Build and invest: hexagonal rigor, deepest tests, evolution headroom |
 | **Supporting** | Necessary and specific to this product, but not differentiating | Build thin: simplest structure that works (plain CRUD is fine) |
-| **Generic** | Solved industry-wide — auth, billing, email, search, analytics | **Buy/SaaS by default** (see a house-stack catalog's External Services, if available); building one in-house requires an ADR |
+| **Generic** | Solved industry-wide — auth, billing, email, search, analytics | **Build or self-host by default** — agentic dev collapsed the build cost, and generic subdomains are an agent's best-documented territory. Buy only what isn't code (below); each vendor adopted carries an ADR |
+
+**Buy only what you cannot write.** Agentic dev deflated one cost: writing and changing code. A vendor is worth a permanent dependency only when it sells something else:
+
+| Vendor actually sells | Examples | Verdict |
+|---|---|---|
+| **Liability transfer** | card data (PCI scope), KYC/AML, tax nexus | **Buy** — you can't write your way out of an audit |
+| **An earned asset** | email deliverability (IP/DMARC reputation), SMS carrier routes, cross-merchant fraud signals | **Buy** — the value is accumulated reputation, not the API |
+| **Someone else's pager** | 24/7 on-call, heavy infra to operate | **Buy** when there's no rotation — an agent writes it once; a human still wakes at 3am |
+| **Spec conformance under attack** | crypto, OAuth/OIDC/passkeys, sessions | **Neither** — audited library, self-hosted |
+| **Just code** | uploads, search over your own data, feature flags, cron/queues, admin CRUD, internal reporting, notifications, PDF/image | **Build** — no per-seat cost, no API drift, and the agent can read and test the whole path |
+
+Still true against build: you own every CVE you wrote, and running cost ≠ writing cost (a self-hosted search cluster can outbill the SaaS it replaced). Weigh those, not line count.
 
 The most expensive architecture mistake is not a bad pattern — it's spending core-domain rigor on a generic subdomain, or core-domain *negligence* on the actual differentiator. Record the classification in `context.md` §4; Stage 5 varies internal rigor per type.
 
@@ -262,7 +274,7 @@ One iteration through stages 2->3->4->(back to 2 if needed) is usually sufficien
 
 Choose technologies that fit the ASRs and patterns from stages 2-4. Record each choice with rationale in the "Core Technology" table of `docs/arch/system.md` §2. Default to `references/house-stack.md`; deviating is fine but carries an ADR per that file's deviation contract (capability gap, cost of deviation, revisit condition).
 
-**Match rigor to Stage 3's subdomain classification**: full hexagonal discipline for core contexts; a generic context bought as SaaS needs only a driven adapter (and an anti-corruption layer if its model leaks — see `service-architecture.md` § Strategic Context Mapping).
+**Match rigor to Stage 3's subdomain classification**: full hexagonal discipline for core contexts; a generic context built in-repo gets the simplest structure that works (rigor here is the classic misallocation); one bought as SaaS gets only a driven adapter (plus an anti-corruption layer if its model leaks — see `service-architecture.md` § Strategic Context Mapping).
 
 ### Hexagonal Architecture (Default)
 
@@ -606,7 +618,7 @@ Use this structured ADR format (Nygard/MADR-style fields) for consistency:
 - Offline/sync strategy — when offline capability is needed
 - Distribution/packaging — for libraries, CLIs, desktop apps
 - Concurrency model — for high-throughput or real-time systems
-- Build-vs-buy — when a generic/supporting subdomain (Stage 3) is built in-house rather than bought
+- Build-vs-buy — when a generic subdomain (Stage 3) is bought as an external service rather than built or self-hosted; state which non-code asset the vendor sells
 
 ### Risk Register
 

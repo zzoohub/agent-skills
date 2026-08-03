@@ -103,8 +103,9 @@ D2 context map showing bounded contexts and their relationships.
 | Context | Type | Owns | Key Entities | Sourcing |
 |---|---|---|---|---|
 | e.g., Matching | Core | Ranking, recommendation rules | Match, Score | Build — invest (hexagonal rigor) |
-| e.g., Identity | Generic | Auth, sessions, profiles | User, Session | Buy — managed auth + thin adapter |
-| e.g., Billing | Generic | Subscriptions, payments | Subscription, Invoice | Buy — Stripe + webhook adapter |
+| e.g., Identity | Generic | Auth, sessions, profiles | User, Session | Self-host — audited auth library, our DB |
+| e.g., Notifications | Generic | In-app feed, preferences | Notification | Build — plain CRUD, in-repo |
+| e.g., Billing | Generic | Subscriptions, payments | Subscription, Invoice | Buy — Stripe + webhook adapter (PCI scope; ADR-00N) |
 
 ### Ubiquitous Language
 

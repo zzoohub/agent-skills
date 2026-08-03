@@ -188,7 +188,7 @@ Before finalizing, verify:
 - [ ] ATAM gate passed — all [H,H] items verified against chosen patterns
 - [ ] Every [H,H] ASR also has a *standing guard* — a CI fitness function or a runtime SLO alert, not just the one-time ATAM check
 - [ ] Scale envelope computed from the PRD (peak RPS, data growth, working set) — and every pattern escalation cites one of its numbers or a non-scale driver
-- [ ] Every generic subdomain has a buy-over-build decision; any built in-house carries an ADR
+- [ ] Every generic subdomain has a sourcing decision (build / self-host / buy); each external service adopted carries an ADR naming the non-code asset it sells
 - [ ] Ubiquitous language terms match code terms 1:1 *within each bounded context* (the same term may legitimately differ across contexts)
 - [ ] Fitness functions defined for key architectural properties (3-5 CI checks)
 - [ ] Quality targets have numbers (not "fast" or "reliable" — actual thresholds)

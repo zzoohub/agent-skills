@@ -116,6 +116,8 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 
 ## External Services
 
+Shortlist for the minority of generic subdomains where buying still wins (`design-flow.md` § Subdomain Classification). Not a default menu — anything outside these rows is built or self-hosted in-repo. "Auth" is the protocol, implemented with an audited library, not a hosted identity vendor.
+
 | Role | Options |
 |---|---|
 | Auth | OAuth2 + JWT |

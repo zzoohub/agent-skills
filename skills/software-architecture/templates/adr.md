@@ -41,5 +41,5 @@ When applicable:
 - Offline/sync strategy — when offline capability is needed
 - Distribution/packaging — for libraries, CLIs, desktop apps
 - Concurrency model — for high-throughput or real-time systems
-- Build-vs-buy — when a generic/supporting subdomain is built in-house rather than bought
+- Build-vs-buy — when a generic subdomain is bought as an external service rather than built or self-hosted
 -->
