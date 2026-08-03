@@ -15,7 +15,7 @@ Deviation is fine when justified. Unjustified deviation is tech debt.
 
 **Maturity tags**: items tagged **(beta)** / **(RC)** are pre-GA — fine as defaults, but a production-critical dependency on one should be a conscious choice, not an accident. Prefer the inline GA fallback when the guarantee matters.
 
-**Agentic operability**: this stack is built and operated primarily by AI agents, so selections also weigh three properties — a first-class local dev loop (`wrangler dev`, emulators, `bun test`) an agent can iterate against; typed SDKs and declarative config an agent can read, edit, and diff (files, not dashboard clicks); and failures observable from the CLI (logs/errors reachable without a browser). The IaC-first rows (Wrangler, Pulumi, GitHub Actions) are load-bearing for this, not conveniences — a dashboard-only service would need an ADR arguing why losing agent operability is worth it.
+**Agentic operability**: this stack is built and operated primarily by AI agents, so selections also weigh three properties — a first-class local dev loop (`wrangler dev`, emulators, `bun test`) an agent can iterate against; typed SDKs and declarative config an agent can read, edit, and diff (files, not dashboard clicks); and failures observable from the CLI (logs/errors reachable without a browser). The IaC-first rows (OpenTofu, Wrangler, GitHub Actions) are load-bearing for this, not conveniences — a dashboard-only service would need an ADR arguing why losing agent operability is worth it.
 
 **Cloud split — read first**: Cloudflare and GCP are *not* interchangeable co-equals; the relationship is **hub-and-spoke**. Default to **Cloudflare** for the edge / serverless / agent fabric and the global front door; reach for **GCP** for regional heavy compute (Cloud Run GPUs, Cloud SQL, BigQuery, Pub/Sub) and the **Korea data-residency anchor** (`asia-northeast3`). Workers VPC + Hyperdrive stitch the two into one private network (Workers in front, Cloud SQL behind). When a row lists both, the CF option is the primary and the GCP option is the heavy-or-Korea trigger.
 
@@ -69,7 +69,7 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Multi-tenant | Workers for Platforms |
 | DNS + CDN | Cloudflare, Cloud CDN + Cloud DNS |
 | CI/CD | GitHub Actions + Workers Builds |
-| Config (IaC) | Wrangler, Pulumi — eval Alchemy for the CF-only surface; OpenTofu over BSL-Terraform |
+| Config (IaC) | **OpenTofu** — fixed; not Terraform (BSL) or Pulumi. Wrangler stays for the Workers surface (`wrangler.jsonc`) |
 | Secrets | Worker Secrets (GA), Secrets Store **(beta)**, Secret Manager |
 | Zero Trust / private net | CF Zero Trust (GA), Workers VPC **(beta)** — fall back to Tunnel + Access if GA is required |
 
@@ -129,6 +129,6 @@ Shortlist for the minority of generic subdomains where buying still wins (`desig
 | Email (transactional) | Resend |
 | Email (notification) | Resend, CF Email Service **(beta)** |
 | Errors | Sentry, OTel |
-| Tracing + Logging | OTel, Axiom, CF Workers Logpush |
+| Tracing + Logging | OTel, CF Workers Logpush |
 | Analytics | PostHog |
 | Feature flags | KV + PostHog |

@@ -35,12 +35,12 @@ This file covers the architectural decisions. Vendor / SDK choice is in `house-s
 OpenTelemetry (OTel) is the vendor-neutral standard for emitting traces, metrics, and (increasingly) logs. Instrument once with the OTel SDK; route to any backend via the **OTel Collector**.
 
 ```
-Application -> OTel SDK -> OTLP -> OTel Collector -> [ Tempo | Jaeger | Axiom | Datadog | Honeycomb | ... ]
-                                                  -> [ Prometheus | Mimir | Datadog | ...                ]
-                                                  -> [ Loki | Elastic | Axiom | Datadog | ...            ]
+Application -> OTel SDK -> OTLP -> OTel Collector -> [ Tempo | Jaeger | Datadog | Honeycomb | ... ]
+                                                  -> [ Prometheus | Mimir | Datadog | ...        ]
+                                                  -> [ Loki | Elastic | Datadog | ...            ]
 ```
 
-The backend names above illustrate the vendor-neutral fan-out; the house pick is Axiom (+ CF Workers Logpush) per `house-stack.md`.
+The backend names above illustrate the vendor-neutral fan-out; the house pick is OTel + CF Workers Logpush per `house-stack.md` — no third-party logging vendor by default.
 
 **Why this matters architecturally**:
 
