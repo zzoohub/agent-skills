@@ -8,7 +8,7 @@ description: |
 
 # i18n Architecture
 
-**For latest APIs, verify against each platform's official docs (linked at the top of every reference file) — or context7 for `next-intl`, `paraglide-js`, `i18next` — before writing code.**
+**For latest APIs, verify against each platform's official docs (linked at the top of every reference file) before writing code.**
 
 ## Platform → Library Matrix
 

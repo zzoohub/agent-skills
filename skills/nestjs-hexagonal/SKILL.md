@@ -9,7 +9,7 @@ description: |
 
 # NestJS + Hexagonal Architecture
 
-**For latest NestJS/TypeORM/Zod/nestjs-zod APIs, use context7.**
+**For latest NestJS/TypeORM/Zod/nestjs-zod APIs, verify against the official docs with a doc-lookup tool if one is available.**
 
 ## Core Philosophy
 

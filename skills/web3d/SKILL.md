@@ -50,7 +50,7 @@ Read the relevant reference file when working on a specific domain:
 
 ## Staying Current
 
-This is a fast-moving domain. The architectural patterns and principles in this skill are stable, but specific API signatures may change. When writing code that touches a specific library's API, verify against the latest documentation using Context7 (`resolve-library-id` then `get-library-docs`). Prioritize Context7 lookup for: Three.js node material APIs, WebXR hook signatures, Koota trait/query API, and Rapier component props.
+This is a fast-moving domain. The architectural patterns and principles in this skill are stable, but specific API signatures may change. When writing code that touches a specific library's API, verify against the latest official documentation with a doc-lookup tool if one is available. Prioritize a lookup for: Three.js node material APIs, WebXR hook signatures, Koota trait/query API, and Rapier component props.
 
 ---
 

@@ -9,7 +9,7 @@ description: |
 
 # Hono + Hexagonal Architecture
 
-**For latest Hono/Drizzle/Zod APIs, use context7.**
+**For latest Hono/Drizzle/Zod APIs, verify against the official docs with a doc-lookup tool if one is available.**
 
 ## Core Philosophy
 

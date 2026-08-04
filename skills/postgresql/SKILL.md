@@ -9,7 +9,7 @@ description: |
   concurrency control, zero-downtime migrations, connection pooling, VACUUM strategy,
   batched backfills, pg_stat_statements setup, or any PostgreSQL query-level work.
   Do NOT use for: schema design or data modeling (use database-design skill first),
-  basic SQL syntax lookup (use context7).
+  basic SQL syntax lookup (use a docs lookup).
 ---
 
 # PostgreSQL Query & Optimization Skill

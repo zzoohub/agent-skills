@@ -17,7 +17,7 @@ Explicit over magic. End-to-end type safety. URL as first-class state.
 **Package manager**: `bun`.
 **Packages**: `@tanstack/react-start` + `@tanstack/react-router` (+ `react`, `react-dom`). Add `@tanstack/react-query` + `@tanstack/react-router-ssr-query` for Query integration. `@tanstack/zod-adapter` + `zod` are optional — only needed for `zodValidator` on route `validateSearch` (under Zod v4 you can pass the schema directly).
 
-> For latest APIs, use context7 MCP: resolve `tanstack/router` → query.
+> For latest APIs, verify against the official TanStack Start / Router docs with a doc-lookup tool if one is available.
 
 ---
 

@@ -9,7 +9,7 @@ description: |
 
 # Axum + Hexagonal Architecture
 
-**For latest Axum/SQLx APIs, use a doc-lookup tool (e.g. context7) if one is available.**
+**For latest Axum/SQLx APIs, verify against the official docs with a doc-lookup tool if one is available.**
 
 > **SQLx version (0.8/0.9):** `sqlx 0.9.0` is now current; this skill's patterns target **0.8/0.9** and work unchanged on both. The `query!`/`query_as!` macros and `&mut **tx` still apply — string-literal queries satisfy 0.9's new `SqlSafeStr` bound automatically. What 0.9 adds: `SqlSafeStr` (dynamic / non-`'static` query strings must now be wrapped in `AssertSqlSafe(...)`), an optional `sqlx.toml` config file, `sqlx::raw_sql()` for running a string directly against an `Executor`, and removal of the `TransactionManager` re-export. The `.sqlx/` offline-prepare workflow is unchanged.
 

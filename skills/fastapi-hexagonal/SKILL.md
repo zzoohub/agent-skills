@@ -9,7 +9,7 @@ description: |
 
 # FastAPI + Hexagonal Architecture
 
-**For latest FastAPI/Pydantic/SQLAlchemy APIs, use context7.**
+**For latest FastAPI/Pydantic/SQLAlchemy APIs, verify against the official docs with a doc-lookup tool if one is available.**
 
 ## Core Philosophy
 
