@@ -116,11 +116,21 @@ cannot create:
   invariant. No repro → not a finding (and no false positives: a reproduction is proof).
 - **Failure to reproduce ≠ safe.** You could not build the right conditions; that is not proof the
   flaw is absent. A risk the static review named and you couldn't trigger stays **OPEN** (documented),
-  never closed. You confirm; you do not clear.
+  never closed. You confirm; you do not clear. But **open ≠ a work order** — what it obligates is
+  decided by disposition (next section).
 - Keep an attempt log — invariant → attack → result — so a clean pass is *evidenced coverage*, not a
   shrug.
 
-## 5. Output + promote to CI
+## 5. Disposition — the verdict is not the fix list
+
+Two outputs, two obligations; conflating them is where this turns into gold-plating.
+
+- **Reproduced exploit → fix once, at the invariant's choke point** (unique constraint, `FOR UPDATE`, `WHERE status='pending'`, authz at the query). Checks sprinkled around it hide the real guard — true defense-in-depth is independent layers failing closed on the *same* invariant, not two on one layer.
+- **Un-reproduced risk → obligates no code.** It's coverage evidence, logged as residual risk. "Open, not cleared" = *not certified impossible*, not *go build a defense*; the gate passes with these present by design.
+- **Guard one anyway only when blast-radius × plausibility beats the guard's cost** — a high-value invariant (money, auth, tenant, irreversible) plus a cheap canonical guard earns the hedge; a speculative trigger, or a guard heavier than its risk, is deferred.
+- **The stopping line is invariants, not attacks** — a slice's invariants are a short list; attacks aren't. Defend it to the depth a *named, plausible* attack reaches, then stop. Can't name the trigger? Don't write the defense — log it.
+
+## 6. Output + promote to CI
 
 ```markdown
 ## Adversarial Execution Report
@@ -131,11 +141,12 @@ cannot create:
 - **[Name]** — invariant violated: [what must never happen]
   - Repro: [exact request sequence / concurrency setup / replayed token]
   - Impact: [what an attacker achieves]
+  - Fix locus: [the one choke point the invariant funnels through — developer implements one guard, not scaffolding around it]
   - Promote: [the CI security-regression test this becomes — red now, green after fix]
 
-### Attempted, Not Reproduced (risks stay OPEN — not cleared)
+### Attempted, Not Reproduced — residual risk (non-blocking; NOT a fix backlog)
 - **[Name from reviewer/catalog]** — attack tried: […] — result: not reproduced under [conditions].
-  Static risk remains open.
+  - Disposition: [accept & log | guard now — only if blast-radius × plausibility warrants the cheap guard]. Recommend; do not mandate.
 
 ### Coverage
 - Invariants targeted: […] · Techniques run: [concurrency / replay / IDOR / state / numeric / migration]
@@ -143,6 +154,7 @@ cannot create:
 ### Verdict
 - [ ] No exploit reproduced → adversary gate PASSES
 - Any confirmed exploit → BLOCKS merge; route to developer; re-run after fix
+- Residual (not-reproduced) risks do **not** block — they ship as logged, accepted risk unless a Disposition above says to guard now
 ```
 
 Every confirmed exploit becomes a **CI security-regression test** (red now, green after the fix) —

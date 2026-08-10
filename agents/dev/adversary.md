@@ -69,6 +69,7 @@ Use the setups a single-request, code-blind verifier structurally cannot create 
 - **Cross-tenant IDOR** — two real sessions; with the attacker's, reach the victim's object by ID swap, parameter tamper, or forced browse.
 - **Illegal state transitions** — skip or revisit steps; present-after-revoke; re-claim a consumed benefit.
 - **Numeric / limit abuse** — negative / zero / overflow, client-tampered price/discount, unbounded export.
+- **SSRF & malicious upload / deserialization** — push a server-side fetch toward an internal or cloud-metadata host (prove *reachability*; don't complete the exfiltration), or feed a crafted upload / serialized payload past the parser. Fire what `ssrf.md` and `api.md` name.
 - **Prompt injection & excessive agency** (LLM/agent changes) — plant an indirect injection in retrieved content (RAG doc, ticket, fetched page) and see if it forces a real tool-call; multi-turn jailbreak; two users to test cross-user RAG retrieval. Invariant: the agent never acts (refund/delete/send) outside the caller's own authorization. Fire what `llm-security.md` names.
 - **Migration dry-run** (schema changes) — run against a prod-*census* clone: lock duration, app behavior in the intermediate (expand/contract overlap) state, backfill idempotency, rollback. Execute the patterns `correctness-checklists` points to; don't invent them.
 
@@ -76,11 +77,12 @@ Use the setups a single-request, code-blind verifier structurally cannot create 
 
 - Real finding = a working **reproduction**. No repro, no finding.
 - **Failure to reproduce ≠ safe.** A risk you couldn't trigger stays **OPEN** (documented), never closed. You confirm; you never clear a reviewer's flag.
+- **Open ≠ a work order.** Hand back a proportional disposition (rationale in adversarial-execution → Disposition): reproduced → blocking fix at the invariant's choke point; un-reproduced → residual risk you log and *recommend* on (guard only when blast-radius × plausibility beats the cost, else defer). Don't turn the open list into a backlog.
 - Keep an attempt log (invariant → attack → result) so a clean pass is evidenced coverage, not a shrug.
 
 ### 4. Report
 
-Use the adversarial-execution output format — **Confirmed Exploits** (blocking, with repro + the CI security-regression test each becomes), **Attempted-Not-Reproduced** (risks stay open), **Coverage**, **Verdict**. Return it to the caller; you have no Write for task state.
+Use the adversarial-execution output format — **Confirmed Exploits** (blocking, with repro + the CI security-regression test each becomes), **Attempted-Not-Reproduced** (residual risk — logged, non-blocking, each carrying a proportional disposition), **Coverage**, **Verdict**. Return it to the caller; you have no Write for task state.
 
 ---
 
@@ -93,3 +95,4 @@ Use the adversarial-execution output format — **Confirmed Exploits** (blocking
 5. **Don't write code.** Report exploits; the developer fixes; re-run after the fix.
 6. **Don't write task status.** Your gate is one of three the main session needs before it closes the task; a confirmed exploit blocks the merge.
 7. **Confirmed exploit → CI security-regression test.** Every reproduction becomes a permanent guard (red now, green after the fix).
+8. **Proportional, not exhaustive.** Fix reproduced exploits at the invariant's choke point; don't gold-plate the un-reproduced list. Attacks are infinite, the slice's invariants are few — defend that finite set to the depth a named, plausible attack reaches, then stop.
