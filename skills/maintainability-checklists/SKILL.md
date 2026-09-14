@@ -2,28 +2,19 @@
 name: maintainability-checklists
 description: |
   Maintainability and design-quality checklists for pre-landing review — the
-  "will this stay cheap to change" lens that tests, linters, and type-checkers
-  are structurally blind to. Covers modularity, cohesion & coupling, abstraction
-  fit, inheritance & interfaces, extensibility, state & side effects,
-  error-handling design, readability/cognitive load, domain modeling,
-  testability, and test quality.
-  Use when: reviewing a diff before commit/PR for design smells, high coupling,
-  low cohesion, leaky or wrong abstractions, hard-to-extend or hard-to-test
-  code, business logic in the wrong layer, type-system escape hatches,
-  feature-flag sprawl, or refactor-hostile tests. Complements
-  security-checklists (OWASP) and correctness-checklists. Trigger on "code
-  review", "maintainability", "refactor smell", "is this extensible", "tech
-  debt", "design review", "god object", "fat controller", "coupling", "anemic
-  model", "test quality", "DRY", "error handling design" — and on
-  plain-language symptoms with no jargon: "is this fine or will it bite us
-  later", code described as messy/tangled/growing out of control, a class
-  every feature has to touch, or doubts that the tests actually protect the
-  code.
+  "will this stay cheap to change" lens that tests and linters miss: modularity,
+  cohesion & coupling, abstraction fit, extensibility, state & side effects,
+  error-handling design, domain modeling, testability, and test quality.
+  Use when: reviewing a diff before commit/PR for design smells: high coupling,
+  leaky abstractions, hard-to-extend or hard-to-test code, logic in the wrong
+  layer, feature-flag sprawl, refactor-hostile tests.
+  Trigger on "code review", "maintainability", "refactor smell", "tech debt",
+  "design review", "god object", "fat controller", "coupling", "anemic model",
+  "test quality", or plain-language symptoms ("will this bite us later", a
+  class every feature has to touch).
   Do NOT use for: security vulnerabilities (use security-checklists);
-  correctness bugs that survive CI (use correctness-checklists); formatting,
-  unused variables, or unreachable code (linters/formatters own
-  those); behavioral correctness of deterministic logic (tests own that);
-  reuse/simplification micro-cleanups (use /simplify or /code-review); or
+  correctness bugs that survive CI (use correctness-checklists);
+  formatting/unused code (linters); micro-cleanups (/simplify); or
   implementing the fixes.
 ---
 

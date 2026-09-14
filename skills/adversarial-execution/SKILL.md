@@ -2,20 +2,16 @@
 name: adversarial-execution
 description: |
   Runtime adversarial verification (DAST) — EXECUTE, against a running app in an isolated
-  environment, the abuse and exploitation attempts a static diff review can only name. Use when:
-  a high-risk change (auth/session, payments, credential/VC issuance, irreversible data, DB
-  schema/migration — including when any of these ships as an LLM/agent feature) needs proof that a
-  named risk can or cannot be reproduced live — concurrency/race, token/nonce replay, cross-tenant
-  IDOR, illegal state-machine transitions, numeric/limit abuse, migration dry-runs under prod-shaped
-  data, server-side request forgery, malicious file upload / deserialization, and prompt-injection /
-  excessive-agency / RAG data-boundary abuse against a running agent. Trigger on "adversarial test",
-  "exploit the running app", "DAST", "abuse testing", "red-team this change", "prove the race",
-  "reproduce the exploit", "jailbreak the running agent", "prove the injection", "prove the SSRF".
-  Do NOT use for: the threat taxonomy itself — what to look for and why (use security-checklists for
-  OWASP / business-logic / SSRF / LLM and correctness-checklists for races/idempotency; this skill
-  EXECUTES their findings, it does not restate them); static diff review with no running app (use
-  those two checklists); functional or happy-path browser/E2E verification and single-request
-  negative checks (use the qa capability); or implementing the fixes (developer's job).
+  environment, the exploits a static diff review can only name. Use when a high-risk change
+  (auth/session, payments, credential issuance, irreversible data, DB migrations, LLM/agent
+  features) needs live proof that a named risk can or cannot be reproduced: races, token/nonce
+  replay, cross-tenant IDOR, illegal state transitions, limit abuse, migration dry-runs, SSRF,
+  and prompt-injection / excessive-agency abuse of a running agent. Trigger on "adversarial
+  test", "exploit the running app", "DAST", "abuse testing", "red-team this change", "prove the
+  race", "reproduce the exploit", "jailbreak the running agent", "prove the SSRF".
+  Do NOT use for: the threat taxonomy itself (use security-checklists and correctness-checklists —
+  this skill EXECUTES their findings); static review with no running app; happy-path browser/E2E
+  checks (use the qa capability); or implementing the fixes.
 compatibility: Host-coupled — requires a running app in a disposable, isolated environment (never prod) plus a way to drive concurrent, replayed, and multi-session traffic against it (a Bash/curl runtime, or a browser driver such as the Playwright MCP). With no live target it produces the attack plan and reports the missing environment as the blocker, rather than attacking a real one.
 ---
 

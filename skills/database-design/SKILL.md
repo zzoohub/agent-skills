@@ -1,22 +1,20 @@
 ---
 name: database-design
 description: |
-  Expert guide for PostgreSQL database design, modeling, and optimization.
-  Covers table design, schema modeling, index strategy, normalization/denormalization
-  decisions, ACID transaction design, partitioning, multi-tenancy/RLS, isolation
-  levels, migration planning, and schema-level performance tuning.
-  Use when user asks to "design a database", "create tables",
-  "model data", "design queries around schema", "add indexes", "normalize",
-  "denormalize", "partition", "multi-tenant/RLS", "isolation level",
-  "plan migration", "review schema", "design ERD",
-  or discusses database architecture, data modeling, or PostgreSQL performance.
-  Do NOT use for simple SELECT queries, one-off SQL syntax questions,
-  non-database application logic, writing/EXPLAIN-tuning queries, or the
-  lock-safe EXECUTION of a migration against live traffic — choosing
-  CONCURRENTLY vs NOT VALID, batching a live backfill, sequencing
-  expand-contract under load (use postgresql skill). This skill decides
-  WHAT schema change to make and how to structure migration files;
-  postgresql decides HOW to run it safely in production.
+  Expert guide for PostgreSQL database design, modeling, and optimization:
+  table design, schema modeling, index strategy, normalization/denormalization,
+  ACID transaction design, partitioning, multi-tenancy/RLS, isolation levels,
+  migration planning, and schema-level performance tuning.
+  Use when user asks to "design a database", "create tables", "model data",
+  "add indexes", "normalize", "denormalize", "partition", "multi-tenant/RLS",
+  "isolation level", "plan migration", "review schema", "design ERD", or
+  discusses data modeling or PostgreSQL performance.
+  Do NOT use for simple SELECT queries, SQL syntax questions, non-database
+  application logic, writing/EXPLAIN-tuning queries, or the lock-safe
+  EXECUTION of a migration against live traffic — CONCURRENTLY vs NOT VALID,
+  batching a live backfill, expand-contract under load (use postgresql skill).
+  This skill decides WHAT schema change to make and how to structure migration
+  files; postgresql decides HOW to run it safely in production.
 ---
 
 # PostgreSQL Database Design Skill

@@ -4,14 +4,12 @@ description: |
   SaaS pricing strategy: tiers, packaging, models, and pricing-page optimization.
   Use when: setting prices, designing tiers, choosing pricing models (seat/usage/outcome/hybrid/credits),
   analyzing competitor pricing, running pricing research, optimizing expansion revenue, pricing AI/LLM
-  products, or when user mentions "pricing", "tier", "plan", "freemium", "trial",
-  "subscription", "packaging", "value metric", "upgrade", "annual vs monthly", "ARPU", "NRR",
-  "price localization", "PPP", "willingness to pay". Trigger broadly within Do NOT boundaries.
+  products, or when user mentions "pricing", "tier", "plan", "freemium", "trial", "subscription",
+  "packaging", "value metric", "upgrade", "annual vs monthly", "ARPU", "NRR", "price localization",
+  "PPP", "willingness to pay". Trigger broadly within Do NOT boundaries.
   Do NOT use for: paywall UI optimization (use cro), pricing-page copy (use copywriting),
   psychology principles only (use marketing-psychology), revenue analytics (use product-analytics),
   or referral incentive structure (use growth-loops; pricing sets only the referral reward $).
-  Output scope: public tier strategy → the pricing doc (default `biz/marketing/pricing.md`); in-app
-  paywall/upgrade pricing → the paywall-pricing doc (default `biz/growth/paywall-pricing.md`); caller may redirect the `biz/<area>/` root.
 ---
 
 # Pricing Strategy
@@ -21,6 +19,8 @@ Pricing is the single most powerful growth lever — yet the most neglected.
 A 1% improvement in pricing yields an **11% increase in profit** (McKinsey). Monetization has **~7.5x the impact of acquisition** on revenue (Patrick Campbell / ProfitWell), yet the average SaaS company spends fewer than 10 hours per year on pricing. Companies that review pricing quarterly see 30% higher growth rates.
 
 This skill provides the frameworks, data, and decision tools to get pricing right.
+
+Output: public tier strategy goes to the pricing doc (default `biz/marketing/pricing.md`); in-app paywall/upgrade pricing goes to the paywall-pricing doc (default `biz/growth/paywall-pricing.md`). The caller may redirect the `biz/<area>/` root.
 
 (The benchmark figures throughout — growth rates, adoption lifts, conversion ranges — are directional industry numbers from 2024-2026 reports. They drift; verify against current sources before quoting them externally.)
 

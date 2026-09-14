@@ -1,16 +1,17 @@
 ---
 name: competitor-pages
 description: |
-  Competitor comparison pages, alternative pages, and vs pages — built to rank in search, get cited in AI answers, and convert.
-  Use when: creating "[Competitor] alternative" pages, "vs" comparison pages, competitor
-  comparison tables, migration guides, or when user mentions "competitor page", "alternative page",
-  "vs page", "comparison page", "switching from", "migrate from", "competitor alternative".
-  Do NOT use for: general competitive analysis strategy (use marketer agent — this skill produces the published
-  page artifact; competitive analysis is the internal strategy doc biz/marketing/competitors.md), pricing strategy
-  or competitor-pricing analysis (use pricing skill — this skill only renders a pricing-comparison table from prices you already have),
-  site-wide SEO/AEO/GEO strategy, keyword research, technical SEO, or cross-engine AI-citation measurement
-  (use search-visibility skill — this skill bakes page-level GEO into the comparison page itself; search-visibility
-  owns the site-wide, off-site, and measurement layers), or page conversion optimization (use cro skill).
+  Competitor comparison pages, alternative pages, and vs pages — built to rank in search, get cited
+  in AI answers, and convert.
+  Use when: creating "[Competitor] alternative" pages, "vs" comparison pages, competitor comparison
+  tables, migration guides, or when user mentions "competitor page", "alternative page", "vs page",
+  "comparison page", "switching from", "migrate from", "competitor alternative".
+  Do NOT use for: competitive analysis strategy (use marketer agent — this skill produces the
+  published page; the internal analysis is biz/marketing/competitors.md), pricing strategy or
+  competitor-pricing analysis (use pricing — this skill only renders a comparison table from prices
+  you already have), site-wide SEO/AEO/GEO strategy, keyword research, technical SEO, or AI-citation
+  measurement (use search-visibility — this skill bakes page-level GEO into the page itself), or
+  page conversion optimization (use cro).
 ---
 
 # Competitor Comparison Pages
