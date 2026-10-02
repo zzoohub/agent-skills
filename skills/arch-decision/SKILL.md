@@ -13,7 +13,7 @@ description: |
   produces the full design doc plus initial ADRs). Do NOT use for: schema
   decisions (use database-design). Do NOT use for: writing feature requirements
   (use feature-spec). Do NOT use for: pure code refactors that don't shift
-  architecture (just open a task).
+  architecture (no ADR needed).
 ---
 
 # Arch Decision — Single ADR
@@ -26,7 +26,12 @@ Record one decision, tied to the existing system's ASRs, without rewriting
 The architecture docs root defaults to `docs/arch/` (caller may redirect).
 `docs/arch/context.md` and `docs/arch/system.md` are the inputs; if either is
 absent, ask the caller rather than halting — you can still record an ADR
-against a missing context, but flag the gap.
+against a missing context, but flag the gap. If there is no `context.md` and the
+request is really a new system, it is greenfield: run a full design pass (the
+`software-architecture` skill, if available) instead.
+
+Write only under the architecture docs root — read the PRD/feature specs, never
+edit them or any other owner's docs.
 
 ## What This Skill Does
 
@@ -95,9 +100,10 @@ When options differ in reversibility, weigh it explicitly: a cheaply-reversible 
    `docs/arch/adr/` and add 1. NNN is zero-padded to 3 digits (`ADR-001`). If
    `docs/arch/adr/` doesn't exist yet, start at `ADR-001`. If two writers grab
    the same number in parallel, the later writer renumbers.
-3. **Frame one decision** — If multiple decisions surface, ask the caller which
-   to record first (or default to the most foundational — the one the others
-   depend on); defer the rest to follow-up ADRs.
+3. **Frame one decision** — If multiple decisions surface, record the most
+   foundational one first (the one the others depend on) and return the
+   deferred decisions as text in your summary for the caller to sequence as
+   follow-up ADRs — don't block on asking inline.
 4. **Draft 2-4 options** — Include "keep current" as one option. Weigh each on
    the driving quality attributes, cost delta (infra **and** migration effort),
    reversibility (note each option's door if they differ), and blast radius

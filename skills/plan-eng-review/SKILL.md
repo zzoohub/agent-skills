@@ -62,7 +62,7 @@ Answer these before reviewing:
 1. **What existing code already partially or fully solves each sub-problem?** Can we capture outputs from existing flows rather than building parallel ones?
 2. **What is the minimum set of changes that achieves the stated goal?** Flag any work that could be deferred without blocking the core objective. Be ruthless about scope creep.
 3. **Complexity check:** >8 files touched or >2 new classes/services is a smell — challenge whether the same goal can be achieved with fewer moving parts.
-4. **Tasks cross-reference:** Read the task board (default `tasks/board.md`; caller may redirect the tasks/ root) and `tasks/features/*.md` if they exist. Are deferred items blocking this plan? Can any be bundled in without expanding scope? Does this plan create new work to capture as a task?
+4. **Deferred-work check:** If the caller supplied known deferred or in-flight work, is any of it blocking this plan? Can any be bundled in without expanding scope? Does this plan create new work to propose as a follow-up?
 
 Then ask which mode (one AskUserQuestion call — see "How to ask questions"):
 1. **TRIM:** Trim *clearly redundant* work from the fixed plan, then review the trimmed version. This removes obvious dead weight only — it does NOT re-open scope or rethink premises. (Distinct from `plan-ceo-review`'s SCOPE REDUCTION mode, which genuinely cuts scope.) For a genuine scope rethink or a 10x-ambition pass, hand off to `plan-ceo-review`.
@@ -161,21 +161,20 @@ The plan should use ASCII diagrams for any non-trivial data flow, state machine,
 ### Failure modes
 For each new codepath in the test-review diagram, list one realistic production failure (timeout, nil reference, race condition, stale data) and whether: (1) a test covers it, (2) error handling exists, (3) the user sees a clear error or a silent failure. **Any codepath with no test AND no error handling AND a silent failure → CRITICAL GAP.**
 
-### tasks/board.md updates
-This skill does **not** write the board itself. After the user approves a task, hand it to the canonical task-appender capability (`task-add`) if available — that capability owns ID assignment, grouping, and schema conformance. Row + detail shape follow the canonical board schema (`task-craft/references/board-schema.md` if installed): the board row is 8 columns `| id | feature | task | type | priority | status | assignee | touches |`, `type` ∈ `feature | bugfix | refactor | chore | spike | hotfix`, `priority` is lowercase `high | medium | low`, and the `status` lifecycle (`backlog → active → blocked → done`) is owned by the task-status capability — do not hand-maintain a "Completed" section here.
+### Proposed follow-ups
+This skill does **not** record or track work. Approved follow-ups go into a plain list returned to the caller (the main session), which decides what to do with them.
 
-Present each potential task individually (never batch tasks — one per issue; never silently skip this step), rendered via AskUserQuestion if the runtime provides it, otherwise as plain text. For each, describe:
+Present each potential follow-up individually (never batch — one per issue; never silently skip this step), rendered via AskUserQuestion if the runtime provides it, otherwise as plain text. For each, describe:
 * **What:** one-line description.
 * **Why:** the concrete problem solved or value unlocked.
 * **Pros / Cons:** what you gain; cost, complexity, risk.
 * **Context:** enough that someone picking this up in 3 months understands the motivation, current state, and where to start.
 * **Type:** `feature | bugfix | refactor | chore | spike | hotfix`
-* **Effort:** S / M / L / XL (the task-capture capability splits L/XL proposals into session-sized tasks)
-* **Priority:** `high | medium | low` (canonical 3-level — see `board-schema.md`). high = blocking/critical-this-cycle; medium = important not urgent; low = nice-to-have.
-* **Touches:** comma-separated file/dir paths the task creates or modifies (required — used for conflict detection).
+* **Effort:** S / M / L / XL
+* **Priority:** `high | medium | low`. high = blocking/critical-this-cycle; medium = important not urgent; low = nice-to-have.
 * **Depends on:** prerequisites or ordering, or "None".
 
-Then present options (recommended first): **Hand off** to the task-appender capability (`task-add` if available) to append the row · **Skip** — not valuable enough · **Promote** into the current scope and review it now (still no code). (No A/B/C letters on the option cards — lettering is report-text only.) Do NOT append vague bullets — a TODO without context is worse than none.
+Then present options (recommended first): **Keep** — add it to the returned follow-up list · **Skip** — not valuable enough · **Promote** into the current scope and review it now (still no code). (No A/B/C letters on the option cards — lettering is report-text only.) Do NOT propose vague bullets — a TODO without context is worse than none.
 
 ### Completion summary
 Display this at the end so the user sees all findings at a glance:
@@ -187,11 +186,11 @@ Display this at the end so the user sees all findings at a glance:
 - Performance Review: ___ issues found
 - NOT in scope: written
 - What already exists: written
-- tasks/ updates: ___ items proposed
+- Proposed follow-ups: ___ items
 - Failure modes: ___ critical gaps flagged
 - Unresolved decisions: ___ (listed below)
 
-In SMALL CHANGE mode, the required outputs reduce to: test diagram + failure modes + completion summary + a single tasks round (still one issue per proposed task — the "never batch tasks" rule holds). BIG CHANGE and TRIM produce all required outputs.
+In SMALL CHANGE mode, the required outputs reduce to: test diagram + failure modes + completion summary + a single follow-ups round (still one question per proposed follow-up — the "never batch" rule holds). BIG CHANGE and TRIM produce all required outputs.
 
 ### Unresolved decisions
 If the user does not respond to an AskUserQuestion, interrupts to move on, or a decision was auto-deferred in non-interactive mode, list these as "Unresolved decisions that may bite you later." Never silently default to an option.

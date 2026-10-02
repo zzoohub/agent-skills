@@ -4,15 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **What this file is:** the auto-loaded **core** of this agent + skill library — what the repo is, the
 build commands, how the system works, the **skill/agent conventions** (the load-bearing rules), and
-the **Intent → agent decision table** (which agent to call). The on-demand reference detail — each
-agent's full skill palette, **how the agents chain end to end**, **where each agent reads and writes
-files by convention**, and **what external tools the system depends on** — lives in
-[`REFERENCE.md`](REFERENCE.md), read only when needed. (This core content lives here in `AGENTS.md`;
-`CLAUDE.md` is a one-line `@AGENTS.md` import stub, so Claude Code still auto-loads this file as
-project instructions.)
+the **Intent → skill or agent table** (what to load or call). The on-demand reference detail — each
+agent's full skill palette, **how the skills and agents chain end to end**, **where each skill reads
+and writes files by convention**, and **what external tools the system depends on** — lives in
+[`REFERENCE.md`](REFERENCE.md) (the chains in [`PLAYBOOK.md`](PLAYBOOK.md)), read only when needed.
+(This core content lives here in `AGENTS.md`; `CLAUDE.md` is a one-line `@AGENTS.md` import stub, so
+Claude Code still auto-loads this file as project instructions.)
 
-> The plan agents are the domain owners of their doc trees: `product-manager` owns `docs/prd/`,
-> `architect` owns `docs/arch/`, `ux-designer` owns `docs/ux/`, `task-manager` owns `tasks/`.
+> The planning skills are the conventional owners of their doc trees: `product-brief` / `prd-craft` /
+> `feature-spec` write `docs/prd/`, `software-architecture` / `arch-decision` (plus `database-design`
+> and `llm-app-design` for their own files) write `docs/arch/`, `ux-design` / `screen-design` write
+> `docs/ux/` (all caller-overridable defaults).
 
 ---
 
@@ -21,23 +23,23 @@ project instructions.)
 This repo is **not an application** — it is a **portable skill library + a Claude Code agent layer**.
 There is no product source code here. It ships three things:
 
-- **`skills/`** — **46** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 33 skills), `rules/` (per-rule guideline files —
+- **`skills/`** — **41** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
+  `references/` (deep-dive docs loaded on demand — 30 skills), `rules/` (per-rule guideline files —
   `composition-patterns`, `react-best-practices`, `react-native-skills`), `templates/` (output scaffolds
   — `qa`, `software-architecture`), and `scripts/` (helpers — `database-design`, `postgresql`; both `.sql`).
   A `SKILL.md` runs on any Agent-Skills-compatible runtime; only `name` + `description` frontmatter
   is load-bearing.
-- **`agents/`** — **16** Claude-Code-only subagent definitions, split `agents/plan/` (4) ·
-  `agents/dev/` (8) · `agents/biz/` (4). Each `.md` carries `name`, `description`, `tools`, `model`,
-  `skills`, `color` frontmatter (+ an `mcpServers` array on the 5 MCP-bound agents: `verifier`, `adversary`,
-  `release-engineer`, `data-analyst`, `desktop-developer`). `agents/` is the source of truth; Claude
+- **`agents/`** — **4** Claude-Code-only subagent definitions, split `agents/dev/` (3: `reviewer`,
+  `verifier`, `adversary`) · `agents/biz/` (1: `data-analyst`). Each `.md` carries
+  `name`, `description`, `tools`, `model`, `skills`, `color` frontmatter (+ an `mcpServers` array on the
+  3 MCP-bound agents: `verifier`, `adversary`, `data-analyst`). `agents/` is the source of truth; Claude
   Code consumes agents from `.claude/agents/` — this repo does **not** vendor that mapping (deploy or
   symlink per environment). The only `.claude/` content here is `settings.local.json`.
 - **`AGENTS.md`** + **`REFERENCE.md`** — this auto-loaded core map (imported by the one-line
   `CLAUDE.md` stub) and its on-demand reference companion.
 
-**The `apps/*`, `db/`, `docs/`, `tasks/`, and `biz/` paths referenced throughout describe the
-consuming project an agent operates on — never this library's own contents** (whose only top-level
+**The `apps/*`, `db/`, `docs/`, and `biz/` paths referenced throughout describe the
+consuming project a skill or agent operates on — never this library's own contents** (whose only top-level
 dirs are `agents/` and `skills/`). Don't look for app code or those doc trees here.
 
 **Internalized React/RN skills (formerly external symlinks).** Four skills here were vendored in
@@ -90,18 +92,27 @@ outputs: `skills/**/dist/`, `skills/**/node_modules/`, `skills/**/*.bun-build`.
 
 ## How the system works
 
-- **Two kinds of agents.** *Routers* (the plan layer) own no skills themselves — they read your
-  intent and invoke the right skill. *Doers* (dev + biz) do the work, calling skills as needed.
-- **Agents never call other agents.** Each agent invokes *skills* only. Sequencing across agents
-  is orchestrated by the main conversation (you, or the top-level assistant). The **workflow
-  chains** in [`PLAYBOOK.md`](PLAYBOOK.md) are the intended sequences — run them step by step,
-  checking each output before the next agent consumes it.
-- **Skills load on demand.** An agent pulls a skill into context only when the task needs it.
-  Skills hold the method, the format, and the quality bar; agents hold the routing and judgment.
-- **Files are the handoff medium.** product-manager writes `docs/prd/`, architect reads it and
-  writes `docs/arch/`, and so on. The **Default doc locations** table in `REFERENCE.md` records the
-  conventional layout these agents follow, so a later agent can find where an earlier one left off.
-  It is a reference of where things live by default, not a contract this file enforces.
+- **The main session does the work; skills supply the method.** Planning, design, implementation
+  and marketing are done by the main session (or general-purpose subagents it spawns) loading the
+  relevant skills directly — skills auto-load from their `description`. There are no router or
+  builder agents.
+- **The remaining agents are narrow, independent roles.** Gates: `reviewer` (static pre-landing
+  review), `verifier` (proves behavior in a real browser / against endpoints), `adversary`
+  (high-risk only, reproduces exploits in an isolated env). An analytics reader: `data-analyst`.
+  Each returns its verdict or findings to the main session. Shipping is the main session's job too,
+  with the deploy platform's own skills/CLI.
+- **Agents never call other agents.** Each agent invokes *skills* only. Sequencing across skills
+  and agents is orchestrated by the main conversation (you, or the top-level assistant). The
+  **workflow chains** in [`PLAYBOOK.md`](PLAYBOOK.md) are the intended sequences — run them step by
+  step, checking each output before the next step consumes it.
+- **Skills load on demand.** The session or agent pulls a skill into context only when the task
+  needs it. Skills hold the method, the format, and the quality bar; the caller holds the routing
+  and judgment.
+- **Files are the handoff medium.** `prd-craft` writes `docs/prd/`, `software-architecture` reads it
+  and writes `docs/arch/`, `ux-design` writes `docs/ux/`, the marketing skills write under `biz/`,
+  and so on. The **Default doc locations** table in `REFERENCE.md` records the conventional layout
+  these skills follow, so a later step can find where an earlier one left off. It is a reference of
+  where things live by default, not a contract this file enforces.
 
 ---
 
@@ -144,31 +155,26 @@ Claude Code, by design.
   job; sequencing an agent's *own* skills in dependency order is fine.
 - **The agent owns the three things a decoupled skill hands back:**
   1. **Input provisioning.** Read `CLAUDE.md` first (it may redirect roots), resolve
-     and pass the doc paths the skill needs, so the skill's "ask the caller" never
-     dead-ends in a subagent that cannot prompt. A genuinely missing input becomes a
-     *text question in the return summary*, never an interactive prompt. Each plan
-     agent lists these in a **Required Inputs** section.
-  2. **Output paths.** The agent owns where artifacts land (the skill's path is a
+     and pass the doc paths the skill needs (e.g. the diff plus any project `checklist.md`
+     for `reviewer`), so the skill's "ask the
+     caller" never dead-ends in a subagent that cannot prompt. A genuinely missing input
+     becomes a *text question in the return summary*, never an interactive prompt.
+  2. **Output paths.** The agent owns where its artifacts land (the skill's path is a
      caller-overridable default). See the Default doc locations table in `REFERENCE.md`.
-  3. **Sequencing / build.** The agent drives the skill to produce + place the
-     artifact and reports back. Chains removed from skill bodies (e.g.
-     `software-architecture` → `arch-decision` per decision) live in the owning agent.
-- **Task lifecycle has one owner per transition.** `task-manager` writes the **left
-  edge** (`backlog`→`active` + assignee, on dispatch) and the **close**
-  (`active`→`done`) — the close only after the main session confirms reviewer *and*
-  verifier passed (plus `adversary` on high-risk changes). Builder agents never
-  self-certify `done` (they leave the task `active`, or mark `blocked` if they couldn't
-  finish); the verifier *proves* behavior (and the adversary, high-risk only,
-  *reproduces exploits*) — neither writes status. The main session sequences the chain
-  and triggers the close.
+  3. **Sequencing / build.** The agent drives its skills in dependency order to produce
+     its verdict, report or deploy, and returns it to the main session. When the main
+     session runs a skill directly, it owns this sequencing itself (e.g.
+     `software-architecture` → `arch-decision` per decision).
+- **Gates report; they do not certify.** `reviewer`, `verifier` and (high-risk only)
+  `adversary` each return an independent verdict and findings to the main session,
+  which decides whether the change is done.
 - **Model policy is intentionally uniform `opus`** (reviewer/verifier = `sonnet`).
   Not a cost oversight — leave it.
 - **Frontmatter fields.** Every agent sets `name`, `description`, `tools`, `model`, `skills`,
-  `color`. The 5 MCP-dependent agents (`verifier`, `adversary`, `release-engineer`, `data-analyst`,
-  `desktop-developer`) additionally declare an `mcpServers:` array plus the matching `mcp__*` globs
-  in `tools:`. "Agents never call other agents" is enforced *structurally* — no agent is granted a
-  subagent-spawning tool (`Task`/`Agent`), routers included; a router's `tools:` are file-I/O +
-  `Skill` (`Read, Write, Edit, Grep, Glob, Skill`) — the skills it invokes do the reads and writes.
+  `color`. The 3 MCP-dependent agents (`verifier`, `adversary`, `data-analyst`)
+  additionally declare an `mcpServers:` array plus the matching `mcp__*` globs in `tools:`.
+  "Agents never call other agents" is enforced *structurally* — no agent is granted a
+  subagent-spawning tool (`Task`/`Agent`).
   (Two *skills*, `plan-ceo-review` and
   `plan-eng-review`, pin `allowed-tools` too, though they are not host-coupled — only `browse`/`qa`
   and `adversarial-execution` carry `compatibility:`.)
@@ -182,47 +188,52 @@ conventions above were chosen by blind A/B experiment, not assertion.
 
 ---
 
-## Intent → agent decision table
+## Intent → skill or agent table
 
-Find the row that matches what you want, call that agent.
+Find the row that matches what you want. A **skill** row means the main session (or a
+general-purpose subagent it spawns) loads that skill and does the work; an **agent** row means
+call that agent.
 
-| You want to… | Agent | Layer |
+| You want to… | Skill(s) or agent | Kind |
 |---|---|---|
-| Validate a new product idea / write a one-pager (the *why*) | `product-manager` | plan |
-| Write a full PRD, or spec a single feature on an existing PRD | `product-manager` | plan |
-| Design the system architecture, an ADR, a DB schema, or an LLM/AI app | `architect` | plan |
-| Design app-wide UX/IA, a single screen, or audit existing UX | `ux-designer` | plan |
-| Generate the task board, add/revise a task, move task status, audit the board | `task-manager` | plan |
-| Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | `backend-developer` | dev |
-| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `frontend-developer` | dev |
-| Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | `mobile-developer` | dev |
-| Build/modify a desktop app: Tauri core + web UI (`apps/desktop`) | `desktop-developer` | dev |
-| Pre-landing code review: security + correctness + maintainability | `reviewer` | dev |
-| Verify behavior in a real browser / smoke-test endpoints before merge | `verifier` | dev |
-| Red-team a high-risk change: reproduce exploits against a running app in an isolated env | `adversary` | dev |
-| **Ship to production: deploy, env/secrets, migrations, CI/CD, rollback** | **`release-engineer`** | dev |
-| Marketing strategy, launch, positioning, competitor angle, pricing strategy, ad creative | `marketer` | biz |
-| Ongoing content: social, email sequences, blog/SEO, changelog, build-in-public | `content-marketer` | biz |
-| Conversion (CRO), referral/viral loops, churn/retention, paywall/upgrade | `growth-optimizer` | biz |
-| Analytics: tracking plan, funnels, retention/PMF, weekly reports, A/B analysis | `data-analyst` | biz |
+| Validate a new product idea / write a one-pager (the *why*) | `product-brief` | skill |
+| Write a full PRD | `prd-craft` | skill |
+| Spec a single feature on an existing PRD | `feature-spec` | skill |
+| Design the system architecture | `software-architecture` | skill |
+| Record a single architecture decision (ADR) on an existing system | `arch-decision` | skill |
+| Design a DB schema | `database-design` (+ `postgresql` for lock-safe execution and query tuning) | skill |
+| Design an LLM/AI feature or app | `llm-app-design` | skill |
+| Design app-wide UX/IA, or audit existing UX | `ux-design` | skill |
+| Design a single screen | `screen-design` | skill |
+| Implement 3D / XR on the web | `web3d` | skill |
+| Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | the hexagonal skill matching the stack — `axum-hexagonal` (default), `hono-hexagonal`, `fastapi-hexagonal`, `nestjs-hexagonal` — + `database-design` / `postgresql` | skill |
+| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-best-practices`, `composition-patterns`, `react-view-transitions`, `design-system`, `i18n` | skill |
+| Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | `react-native-skills` (+ `design-system`, `i18n`) | skill |
+| Pre-landing code review: security + correctness + maintainability | `reviewer` | agent |
+| Verify behavior in a real browser / smoke-test endpoints before merge | `verifier` | agent |
+| Red-team a high-risk change: reproduce exploits against a running app in an isolated env | `adversary` (method in `adversarial-execution`) | agent |
+| Ship to production: deploy, env/secrets, migrations, CI/CD, rollback | the deploy platform's own skills/CLI (e.g. `vercel:*`, `cloudflare:wrangler`, Supabase) + `postgresql` for lock-safe migration execution | platform skill |
+| Positioning, launch, pricing strategy, ad creative, competitor pages | `pricing`, `competitor-pages`, `ad-creative`, `copywriting`, `marketing-psychology` | skill |
+| Ongoing content: social, email sequences, blog/SEO, changelog, build-in-public | `copywriting`, `social-content`, `email-marketing`, `search-visibility` | skill |
+| Conversion (CRO), referral/viral loops, churn/retention, paywall/upgrade | `cro`, `growth-loops`, `churn-prevention` | skill |
+| Analytics: tracking plan, funnels, retention/PMF, weekly reports, A/B analysis | `data-analyst` (method in `product-analytics`) | agent |
 
 For a plan review *before* writing code, the main agent can invoke the `plan-ceo-review`
 (scope/vision) or `plan-eng-review` (locked-scope execution rigor) skills directly — these are
-not owned by an agent. The review skill **proposes** task rows but does not place them: after the
-review, the main session renders the structured issue list interactively (it is the runtime that
-supplies the question UI) and carries any approved tasks to `task-manager`, which appends them via
-`task-add`.
+not owned by an agent. The review returns its structured issue list and proposed follow-ups to
+the main session, which renders them interactively (it is the runtime that supplies the question
+UI) and decides what to act on.
 
 ---
 
 ## Companion files (read on demand)
 
 Detail that doesn't belong in every turn's context lives in two companions. These are plain
-markdown links, **not** `@imports` — Claude Code does not auto-load them; they cost nothing until an
-agent chooses to open one:
+markdown links, **not** `@imports` — Claude Code does not auto-load them; they cost nothing until the
+session or an agent chooses to open one:
 
-- [`PLAYBOOK.md`](PLAYBOOK.md) — how the agents chain end to end: the 5 workflow sequences (full
-  launch, feature, growth, GTM, review), the task-status ownership rules, and the solo-founder
-  minimum spine.
-- [`REFERENCE.md`](REFERENCE.md) — static lookup tables: the agent skill-palette **roster**,
-  **Default doc locations**, **external dependencies** (MCP/plugins + fallbacks), and **known gaps**.
+- [`PLAYBOOK.md`](PLAYBOOK.md) — how the skills and agents chain end to end: the 5 workflow
+  sequences (full launch, feature, growth, GTM, review) and the solo-founder minimum spine.
+- [`REFERENCE.md`](REFERENCE.md) — static lookup tables: the agent skill-palette **roster**, the
+  **skill map by area**, **Default doc locations**, **external dependencies** (MCP/plugins +
+  fallbacks), and **known gaps**.

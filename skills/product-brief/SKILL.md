@@ -30,8 +30,13 @@ Keep the brief lean — anything the PRD covers in depth does not belong here.
 A brief is a discovery tool for *new product directions*, not for incremental
 feature work on an existing product. For one feature on a product that already has
 a PRD (default `docs/prd/prd.md`; caller may redirect the `docs/<area>/` root),
-hand off to a feature-spec capability if available; for a full new-product PRD,
-hand off to a PRD-authoring capability (e.g. prd-craft) if available.
+hand off to a feature-spec capability if available — once per feature, never a
+PRD rewrite; when a brief already exists and the user wants the full PRD, hand
+off to a PRD-authoring capability (e.g. prd-craft) if available.
+
+When **neither a brief nor a PRD** exists, start here — even if the user asked
+for a PRD outright: write the brief first, then hand off to PRD authoring, which
+reads it. If it's unclear which applies, ask the caller.
 
 ## What a Product Brief Is (and Is Not)
 

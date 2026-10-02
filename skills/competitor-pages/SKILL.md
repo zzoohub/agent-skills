@@ -6,7 +6,7 @@ description: |
   Use when: creating "[Competitor] alternative" pages, "vs" comparison pages, competitor comparison
   tables, migration guides, or when user mentions "competitor page", "alternative page", "vs page",
   "comparison page", "switching from", "migrate from", "competitor alternative".
-  Do NOT use for: competitive analysis strategy (use marketer agent — this skill produces the
+  Do NOT use for: competitive analysis strategy (the caller's job — this skill produces the
   published page; the internal analysis is biz/marketing/competitors.md), pricing strategy or
   competitor-pricing analysis (use pricing — this skill only renders a comparison table from prices
   you already have), site-wide SEO/AEO/GEO strategy, keyword research, technical SEO, or AI-citation
@@ -28,7 +28,7 @@ Create high-converting competitor comparison, alternative, and migration pages t
 - **The formats AI answers cite most** — "best [category]" roundups and "[A] vs [B]" comparisons sit at the top of the content types generative engines cite, because a comparison page's sections map directly onto the sub-questions AI search decomposes a query into. Write these pages to be **lifted**, not only ranked
 - **Brand positioning** — Define how your product compares on your terms
 
-**Set expectations honestly, though: this page is necessary, not sufficient.** "Alternative" and "vs" queries are review-style queries, and for those, generative engines draw the majority of brand citations from *earned and third-party* sources (G2, Capterra, Reddit, press, roundups) rather than the brand's own domain — own-site content is roughly a quarter of brand citations overall, and less on review-style queries (directional, methodology-dependent). This page is the slice you fully control and the one AI engines quote for concrete pricing/feature facts; it does not substitute for off-site presence. Route that workstream to the search-visibility capability (site-wide/off-site/measurement) and the marketer role (review-site and community presence), if available.
+**Set expectations honestly, though: this page is necessary, not sufficient.** "Alternative" and "vs" queries are review-style queries, and for those, generative engines draw the majority of brand citations from *earned and third-party* sources (G2, Capterra, Reddit, press, roundups) rather than the brand's own domain — own-site content is roughly a quarter of brand citations overall, and less on review-style queries (directional, methodology-dependent). This page is the slice you fully control and the one AI engines quote for concrete pricing/feature facts; it does not substitute for off-site presence. Route that workstream to the search-visibility capability (site-wide/off-site/measurement), if available, and hand review-site and community presence back to the caller as off-site follow-ups.
 
 ---
 
@@ -99,7 +99,7 @@ After drafting, review for four things:
 
 Produce the page in **markdown** by default. Include an HTML block at the top for meta tags (title, description). If the user specifies a different format (HTML, JSX, MDX), adapt accordingly.
 
-When asked to save the draft (and a file-write capability is present), write it to the competitor-pages dir (default `biz/marketing/competitor-pages/{slug}.md`; caller may redirect the `biz/<area>/` root) — the published page itself lives wherever the project's site content lives.
+When asked to save the draft (and a file-write capability is present), write it to the competitor-pages dir (default `biz/marketing/competitor-pages/{slug}.md`; caller may redirect the `biz/<area>/` root) — the published page itself lives wherever the project's site content lives. Update an existing file in place rather than creating a duplicate.
 
 ---
 

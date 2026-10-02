@@ -10,6 +10,8 @@ description: |
 
 A design and operational-planning skill, not a coding skill. It helps you decide **what to build, how to structure it, how to know if it works, and how to operate it** — everything before and around the SDK, but not the SDK calls themselves.
 
+Works on a new or existing system — one feature per run, written to `docs/arch/ai-features/{feature}.md` (default; caller may redirect). When the same request also needs a system design or schema, run those first (the `software-architecture` then `database-design` skills, if available). Writes only that feature file; reads the PRD and other architecture docs but never edits them — a missing input becomes a gap in your summary.
+
 ## The first question: do you need an LLM?
 
 LLMs are the right tool when the problem has:

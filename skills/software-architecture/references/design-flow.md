@@ -414,7 +414,7 @@ How a release reaches production is an architectural decision with a deployabili
 - **Rollback / forward-fix trigger**: the SLO condition that auto-aborts a rollout, and whether recovery is rollback or roll-forward.
 - **Schema-during-deploy**: expand-contract ordering so a migration and the code needing it ship safely under live traffic (execution is owned by a migration capability such as the `postgresql` skill, if available).
 
-This stage decides the strategy and records the ADR; the lock-safe **execution** of a release and rollback is a release-engineering concern (e.g. the `release-engineer` agent) — define the boundary, don't do its job here.
+This stage decides the strategy and records the ADR; the lock-safe **execution** of a release and rollback is a release-time concern (the caller's deploy step; lock-safe migration execution via the postgresql skill, if available) — define the boundary, don't do its job here.
 
 ### Scaling Ladder
 

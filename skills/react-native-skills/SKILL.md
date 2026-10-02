@@ -2,7 +2,7 @@
 name: react-native-skills
 description: |
   React Native and Expo best practices for building performant mobile apps. Use when building React Native components, optimizing list performance, implementing Reanimated animations, or working with native modules. Triggers on tasks involving React Native, Expo, mobile performance, or native platform APIs.
-  Do not use for: design tokens / theming (use design-system), animation choreography concepts (use motion), web React performance (use react-best-practices), or internationalization (use i18n).
+  Do not use for: design tokens / theming / motion tokens (use design-system), web React performance (use react-best-practices), or internationalization (use i18n).
 license: MIT
 source: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-native-skills
 ---

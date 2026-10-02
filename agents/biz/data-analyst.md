@@ -6,8 +6,8 @@ description: |
   analytics reports, diagnosing funnel drop-offs, interpreting metrics for product decisions,
   setting up GA4/GTM tracking, analyzing A/B test results, or designing UTM strategies.
   Do NOT use for: implementing tracking code (developer task), marketing content creation
-  (use content-marketer), product feature design (use ux-designer), or CRO experiment design
-  (use growth-optimizer).
+  (use the social-content / email-marketing / copywriting skills), product feature design (use
+  ux-design / screen-design), or CRO experiment design (use cro).
 tools: Read, Write, Edit, Grep, Glob, Skill, mcp__posthog__*, mcp__plugin_posthog_posthog__*
 model: opus
 skills: [product-analytics]
@@ -75,7 +75,7 @@ Use **product-analytics** for all methodology — Aha Moment discovery, retentio
 
 ### 2. A/B Test Results Analysis
 
-When growth-optimizer runs experiments, analyze results here. Methodology: product-analytics (A/B test results analysis).
+When an experiment designed via the cro, growth-loops, or churn-prevention skills runs, analyze results here. Methodology: product-analytics (A/B test results analysis).
 
 ### 3. Analytics Tracking Design
 
@@ -99,7 +99,7 @@ Funnel drop-off, feature impact (before/after cohort), retention drivers, channe
 
 ### 8. Customer Health Score (`biz/analytics/health-score.md`)
 
-The health-score *framework* — signal weights, thresholds, scoring formula — lives in the **churn-prevention** skill, not in product-analytics. Load it on demand with `Skill('churn-prevention')` (see its "Customer Health Score Framework"), then *execute* it against live PostHog engagement data. You own the quantitative computation and the `health-score.md` deliverable; growth-optimizer consumes it for interventions.
+The health-score *framework* — signal weights, thresholds, scoring formula — lives in the **churn-prevention** skill, not in product-analytics. Load it on demand with `Skill('churn-prevention')` (see its "Customer Health Score Framework"), then *execute* it against live PostHog engagement data. You own the quantitative computation and the `health-score.md` deliverable; whoever designs interventions (via the churn-prevention skill) consumes it.
 
 ---
 
@@ -149,7 +149,7 @@ the decision and what should happen next; don't hand off to another agent yourse
 - Confidence: [high/med/low — note sample size; flag if <500 users / cohort <100 = directional only]
 
 ## Recommendations / Handoffs
-- [e.g. "drop-off at X → growth-optimizer"; "new persona/feature signal → product-manager"]
+- [e.g. "drop-off at X → CRO work (cro skill)"; "new persona/feature signal → product brief / PRD update (product-brief / prd-craft)"]
 
 ## Open Questions
 - [data gaps, untracked events, anything needing user input — surface here, you cannot prompt interactively]
@@ -162,4 +162,4 @@ the decision and what should happen next; don't hand off to another agent yourse
 - `docs/prd/product-brief.md` — what success looks like
 - `biz/marketing/strategy.md` — channel strategy, viral loop design
 - `biz/ops/feedback-log.md` — qualitative data to cross-reference with metrics
-- `biz/growth/experiments.md` — experiment log (output by growth-optimizer)
+- `biz/growth/experiments.md` — experiment log (written when experiments are designed via the cro skill)

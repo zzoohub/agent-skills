@@ -82,7 +82,9 @@ Strategy, sequence design, and execution for email marketing across SaaS lifecyc
 
 ## Default Output Format
 
-**Output:** when asked to save a sequence/campaign and a file-write capability is present, write to the email content dir (default `biz/marketing/content/email/`; caller may redirect the `biz/<area>/` root) — otherwise return inline.
+**Output:** when asked to save a sequence/campaign and a file-write capability is present, write to the email content dir (default `biz/marketing/content/email/`; caller may redirect the `biz/<area>/` root) — otherwise return inline. If the file already exists, update it in place rather than creating a duplicate.
+
+**Drafts only.** Never send, schedule, or activate an email, campaign, or automation (in an ESP or otherwise) without the caller's explicit approval — produce the drafts and hand them back.
 
 When creating email sequences, produce this structure unless the user requests something different:
 

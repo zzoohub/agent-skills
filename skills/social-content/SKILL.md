@@ -19,9 +19,11 @@ description: |
 
 Social media content creation, strategy, and multi-platform publishing -- built on research from 50+ sources including academic papers on virality, platform algorithm documentation, and methods from top practitioners (Justin Welsh, Alex Hormozi, Naval Ravikant, Sahil Bloom).
 
-**Read product context first.** If `docs/prd/product-brief.md` exists, read it for product and audience info. If `biz/marketing/strategy.md` exists, read it for brand voice and channel priorities. If neither exists, ask the user or infer from the request.
+**Read product context first.** If `docs/prd/product-brief.md` exists, read it for product and audience info. If `biz/marketing/strategy.md` exists, read it for brand voice and channel priorities. If neither exists, ask the user or infer from the request. Treat both as read-only context — never author the product brief from here.
 
-**Output:** when asked to save deliverables (posts, calendars, pillar docs) and a file-write capability is present, write to the social content dir (default `biz/marketing/content/social/`; caller may redirect the `biz/<area>/` root) — otherwise return inline.
+**Output:** when asked to save deliverables (posts, calendars, pillar docs) and a file-write capability is present, write to the social content dir (default `biz/marketing/content/social/`; caller may redirect the `biz/<area>/` root) — otherwise return inline. If the file already exists, update it in place rather than creating a duplicate.
+
+**Drafts only.** Never post, publish, or schedule anything to a live account without the caller's explicit approval — produce the drafts and hand them back.
 
 ---
 
@@ -60,7 +62,7 @@ Not every platform matters. Pick 2-3 based on your audience and goal.
 **Distribution** (choose 2-3): Twitter/X, LinkedIn, Instagram
 **Launch platforms** (use strategically): Product Hunt, Hacker News, Reddit —
 launch *strategy* and one-off assets (PH tagline, HN title, channel sequencing)
-come from the marketing-strategy capability's launch playbook; this skill owns
+come from the caller's launch plan (if absent, ask the caller); this skill owns
 the ongoing launch threads and comment engagement
 
 **Weekly workflow:**

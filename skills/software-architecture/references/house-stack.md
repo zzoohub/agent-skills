@@ -55,6 +55,11 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Game | Godot, Bevy **(pre-1.0)** |
 | Data Pipeline | Cloudflare Pipelines **(beta)**, Cloud Dataflow, dbt (Core v2 / Fusion engine) |
 
+**TanStack Start house taste** (explicit over magic, end-to-end types):
+- **FSD layering** — route files are thin routing glue (loader, guard, head); page UI lives in `views/`; server functions live in the owning slice's `api/`; layers import only downward (`views` → `widgets` → `features` → `entities` → `shared`).
+- **URL is first-class state** — filters, tabs, and pagination live in validated, typed search params, not client state, so views stay shareable and bookmarkable.
+- **Every server function is a public endpoint** — the build exposes each as an HTTP-reachable RPC route, so validate input and authenticate, authorize (ownership, not just a session), and tenant-scope *inside* the function; route guards are navigation UX only. Only `VITE_`-prefixed env vars reach the client — all of them do — so secrets stay unprefixed and server-side.
+
 ---
 
 ## Infrastructure

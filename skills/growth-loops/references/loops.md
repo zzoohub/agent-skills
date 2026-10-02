@@ -1,6 +1,6 @@
 # Growth Loops & Referral Programs
 
-Frameworks for designing compounding user-acquisition loops: viral, content, paid, and integration loops. This file is the canonical reference for the growth-optimizer agent's referral/viral work.
+Frameworks for designing compounding user-acquisition loops: viral, content, paid, and integration loops. This file is the canonical reference for referral/viral loop design.
 
 ## Table of Contents
 
@@ -14,7 +14,7 @@ Frameworks for designing compounding user-acquisition loops: viral, content, pai
 8. [When NOT to Build a Loop](#when-not-to-build-a-loop)
 9. [Common Loop Patterns (Reference)](#common-loop-patterns-reference)
 10. [Marketplace Cold-Start](#marketplace-cold-start)
-11. [Output Format (for growth-optimizer agent)](#output-format-for-growth-optimizer-agent)
+11. [Output Format](#output-format)
 
 ---
 
@@ -224,7 +224,7 @@ UGC / marketplace loops are listed above as a loop type, but they can't bootstra
 
 ---
 
-## Output Format (for growth-optimizer agent)
+## Output Format
 
 When designing a referral/viral loop, produce:
 

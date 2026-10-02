@@ -21,6 +21,8 @@ description: |
 
 PostgreSQL-specific database design skill. Provides systematic guidance from schema design through performance optimization.
 
+Owns schema, index, and migration design on a new or existing system. When the same request also needs a full system design, run that first (the `software-architecture` skill, if available) — the schema follows its data architecture. Writes only its own outputs (see Output); reads the PRD and other architecture docs but never edits them — a missing input becomes a gap in your summary.
+
 ## Core Principles
 
 ### 1. Think First, Design Later

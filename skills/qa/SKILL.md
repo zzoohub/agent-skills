@@ -137,7 +137,7 @@ This is the **primary mode** for developers verifying their work. When the user 
 
 5. **Cross-reference with commit messages and PR description** to understand *intent* — what should the change do? Verify it actually does that.
 
-6. **Check `tasks/board.md`** (if it exists) for known bugs or issues related to the changed files. Cross-reference with `tasks/features/*.md` for details. If a task describes a bug that this branch should fix, add it to your test plan. If you find a new bug during QA that isn't in `tasks/`, note it in the report.
+6. **Check known issues the caller supplied** (if any) for the changed files. If one describes a bug that this branch should fix, add it to your test plan. Note any new bug you find during QA in the report.
 
 7. **Report findings** scoped to the branch changes:
    - "Changes tested: N pages/routes affected by this branch"

@@ -7,11 +7,13 @@ description: |
   Feature Overview table and Dev Order WITHOUT rewriting the PRD vision.
   Use when: adding a feature to a product that already has `docs/prd/prd.md`.
   Trigger phrases: "spec out a feature", "write requirements for [feature]",
-  "add a feature to the PRD", "feature spec for X".
+  "add a feature to the PRD", "feature spec for X". For several features, run
+  once per feature — never re-run prd-craft to add features (it rewrites the
+  vision).
   Do NOT use for: a new product from scratch (use prd-craft — it creates the
-  full PRD plus all feature specs at once). Do NOT use for user stories or
-  sprint tickets, breaking the feature into tasks (use task-add), architecture
-  decisions (use arch-decision), or screen design (use screen-design).
+  full PRD plus all feature specs at once). Do NOT use for user stories,
+  sprint tickets, or implementation task breakdown, architecture decisions
+  (use arch-decision), or screen design (use screen-design).
 ---
 
 # Feature Spec — Single Feature on Existing Product
@@ -24,10 +26,17 @@ rewriting the vision PRD.
 The PRD must already exist (default `docs/prd/prd.md`; caller may redirect).
 
 **If no PRD exists yet**, ask the caller rather than halting — a single feature
-spec with no product vision to anchor it has nothing to tie back to. Surface
-that the full-PRD path (which creates the vision PRD plus feature specs) or an
-earlier product-brief path fits better if the idea is still unvalidated, and
-route there if such a capability is available.
+spec with no product vision to anchor it has nothing to tie back to. Route by
+what exists, if those capabilities are available: a product brief (default
+`docs/prd/product-brief.md`) but no PRD → the full-PRD path (e.g. `prd-craft`,
+which creates the vision PRD plus feature specs); neither a brief nor a PRD →
+the product-brief path first (e.g. `product-brief`), since the idea is still
+unvalidated.
+
+**Several features at once** ("add X, Y, Z") → run this skill once per feature.
+Never re-run the full-PRD path to add features: it rewrites the vision. Adding a
+feature is not a pivot, no matter how big the feature — only a change to the
+problem, target users, or success metric is (that is a PRD-level rewrite).
 
 ## What This Skill Does
 
@@ -134,5 +143,5 @@ Unknowns still being resolved. Flag them — don't invent answers. Remove as the
 
 **Next:** once the spec is approved, the feature flows into the same downstream
 stages as any PRD feature — an architecture-decision pass (if it needs an
-architecture call), screen design (if it has UI), then task breakdown — using
+architecture call), screen design (if it has UI), then implementation — using
 those capabilities if available. Routing hints, not steps this skill performs.

@@ -43,7 +43,7 @@ You are not here to rubber-stamp this plan. You are here to make it extraordinar
 4. **Interactions have edge cases.** Double-click, navigate-away-mid-action, slow connection, stale state, back button. Map them.
 5. **Observability is scope, not afterthought.** New dashboards, alerts, runbooks are first-class deliverables.
 6. **Diagrams are mandatory.** No non-trivial flow goes undiagrammed. ASCII art for every new data flow, state machine, processing pipeline, dependency graph, decision tree. (This governs *deliverables*; the question-escape-hatch governs only AskUserQuestion calls — produce required diagrams regardless of whether issues are found.)
-7. **Everything deferred must be written down.** Vague intentions are lies. `tasks/board.md` (via a task-capture capability such as `task-add` if available) or it doesn't exist.
+7. **Everything deferred must be written down.** Vague intentions are lies. If it isn't in the proposed follow-ups this review returns to the caller, it doesn't exist.
 8. **Optimize for the 6-month future, not just today.** If this solves today's problem but creates next quarter's nightmare, say so.
 9. **You may say "scrap it and do this instead."** If there's a fundamentally better approach, table it.
 
@@ -78,7 +78,7 @@ git stash list                                 # Any stashed work
 grep -r "TODO\|FIXME\|HACK\|XXX" --include="*.ts" --include="*.tsx" --include="*.rs" --include="*.py" -l
 ```
 (Adjust the `--include` globs to the project's languages, and `main` to its default branch.)
-Then read the project-conventions file if present (e.g. `CLAUDE.md`), the plan itself, `tasks/board.md`, `tasks/features/*.md`, and existing architecture docs. When reading `tasks/`: note tasks this plan touches/blocks/unlocks; check deferred work related to this plan; map known pain points to this plan's scope.
+Then read the project-conventions file if present (e.g. `CLAUDE.md`), the plan itself, and existing architecture docs. If the caller supplied known deferred or in-flight work, note what this plan touches/blocks/unlocks and map known pain points to this plan's scope.
 
 Map: current system state · what's already in flight (open PRs, branches, stashes) · existing pain points relevant to this plan · FIXME/TODO in files this plan touches.
 
@@ -113,8 +113,8 @@ Each section ends with the section gate (below). Apply mode-specific behavior pe
 
 ## Section gate (applies after every step and section)
 After each section: produce a structured list of its issues, each with a recommended resolution, using the question protocol below — then **pause and wait for the user before the next section** when an interactive user is present. Resolve all raised issues before proceeding.
-* **Per-section issue budget:** surface at most the top 5-8 issues per section; capture the long tail as a single deferred task (see required outputs). Don't open a blocking question for every low-severity nit.
-* **Whole-review budget:** a healthy full pass lands 15-30 decisions total. Past ~40 you are litigating nits — batch the tail into deferred tasks and keep moving.
+* **Per-section issue budget:** surface at most the top 5-8 issues per section; capture the long tail as a single proposed follow-up (see required outputs). Don't open a blocking question for every low-severity nit.
+* **Whole-review budget:** a healthy full pass lands 15-30 decisions total. Past ~40 you are litigating nits — batch the tail into proposed follow-ups and keep moving.
 * **When no interactive prompt is available** (headless/CI/no interactive user, or the runtime lacks AskUserQuestion): do NOT block and do NOT fabricate an answer. Emit each issue as plain text with its recommended option pre-selected, mark it `UNRESOLVED-AUTO` in Unresolved Decisions, and continue.
 
 ## How to ask questions
@@ -131,7 +131,7 @@ For every issue:
 * **Escape hatch:** if a section has no issues, say so and move on. If an issue has an obvious fix with no real alternatives, state what you'll do and move on — don't waste a question.
 
 ## Required Outputs
-Produce all applicable outputs per **`references/required-outputs.md`** (NOT-in-scope, What-already-exists, Dream-state delta, Error/Rescue registry, Failure Modes registry, tasks/board.md updates (via a task-capture capability such as `task-add` if available), Delight Opportunities [EXPANSION], mandatory diagrams, stale-diagram audit, completion summary, unresolved decisions).
+Produce all applicable outputs per **`references/required-outputs.md`** (NOT-in-scope, What-already-exists, Dream-state delta, Error/Rescue registry, Failure Modes registry, Proposed follow-ups (returned to the caller), Delight Opportunities [EXPANSION], mandatory diagrams, stale-diagram audit, completion summary, unresolved decisions).
 
 ## Formatting Rules
 * NUMBER issues and LETTER options **in the written report** (e.g. "3A") — not in the AskUserQuestion cards.
@@ -143,5 +143,5 @@ Produce all applicable outputs per **`references/required-outputs.md`** (NOT-in-
 | Need | File |
 |---|---|
 | Full Step 0 prompts + the 10 review sections (with mode-specific additions) | `references/review-sections.md` |
-| Output templates, registries, board/task hand-off, completion summary | `references/required-outputs.md` |
+| Output templates, registries, proposed follow-ups, completion summary | `references/required-outputs.md` |
 | Mode-by-mode behavior matrix (EXPANSION / HOLD / REDUCTION) | `references/mode-reference.md` |

@@ -9,7 +9,7 @@ description: |
   "TikTok ads", "LinkedIn ads", "UGC ads", "video ads", "hook", "scroll-stopping",
   "ad angles", "creative testing", "ad fatigue", "creative refresh".
   Do NOT use for: organic social content (use social-content skill), landing page copy
-  (use copywriting skill), ad targeting/budget strategy (use marketer agent),
+  (use copywriting skill), ad targeting/budget strategy (the caller's media plan, not creative),
   ad performance analysis (use product-analytics skill), or selecting/ethics-judging
   psychological principles themselves (use marketing-psychology skill).
 ---
@@ -52,7 +52,9 @@ Each fully written ad must include:
 For video ads, include a timestamped script table:
 `| Time | Visual | Audio/Text Overlay |`
 
-**Output:** when asked to save deliverables, write them to the marketing-assets dir (default `biz/marketing/assets/`; caller may redirect the `biz/<area>/` root). If no file-write capability is present, return the ads inline.
+**Output:** when asked to save deliverables, write them to the marketing-assets dir (default `biz/marketing/assets/`; caller may redirect the `biz/<area>/` root). If no file-write capability is present, return the ads inline. Update an existing file in place rather than creating a duplicate.
+
+**Drafts only.** Never launch, publish, or schedule an ad or campaign (or change live budgets/targeting) in an ad platform without the caller's explicit approval — produce the drafts and hand them back.
 
 ---
 

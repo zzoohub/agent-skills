@@ -19,7 +19,7 @@ description: |
 
 ~70 mental models organized for marketing application (the reference's `###` headers count slightly higher because Social Proof and Mental Accounting (Pricing) are explicit aliases and the AIDA/PAS/BAB/4Ps/SSS group are copywriting frameworks, not standalone models). Use these to understand why people buy, influence behavior ethically, and make better marketing decisions.
 
-**Product context**: read the product brief (default `docs/prd/product-brief.md`) and the marketing strategy doc (`biz/marketing/strategy.md`) first if they exist, to tailor recommendations to the specific product and audience.
+**Product context**: read the product brief (default `docs/prd/product-brief.md`) and the marketing strategy doc (`biz/marketing/strategy.md`) first if they exist, to tailor recommendations to the specific product and audience. Treat them as read-only context — never author the product brief from here; if absent, ask the caller or proceed on stated assumptions.
 
 ---
 

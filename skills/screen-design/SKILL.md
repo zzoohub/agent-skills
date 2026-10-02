@@ -6,17 +6,16 @@ description: |
   `docs/ux/screens/{screen}.md` with screen purpose, layout, all 7 states,
   interactions, and UX copy. Touches `docs/ux/ux-design.md` ONLY when IA or
   global patterns genuinely change.
-  Use when: designing or redesigning one screen on an existing app. Trigger
-  phrases: "design the X screen", "redesign the X page", "spec out the X
-  modal", "fix the X flow".
+  Use when: `docs/ux/ux-design.md` exists and you are designing or redesigning
+  one screen on that app; several new screens → one run per screen (may run
+  in parallel). Triggers: "design the X screen", "redesign the X page", "spec
+  out the X modal", "fix the X flow".
   This skill owns structural layout, states, and copy. Do NOT use for: a new
-  product's entire app structure (use ux-design — it produces the app-level UX
-  plus all initial screens); conversion/funnel-driven flow optimization (use
-  cro — it diagnoses the fix, this skill specs the resulting screen);
-  3D/XR/spatial screens (use ux-design — this skill carries no 3D/XR
-  methodology); animation/motion polish (use motion); visual styling, color
-  palettes, design tokens (use design-system); or frontend/UI implementation
-  code.
+  product's app structure, or when ux-design.md is absent (use ux-design);
+  conversion/funnel-driven flow optimization (use cro — it diagnoses, this
+  skill specs the resulting screen); 3D/XR/spatial screens (use ux-design);
+  animation polish, visual styling, color palettes, design tokens (use
+  design-system); or frontend/UI implementation code.
 ---
 
 # Screen Design — Single Screen on Existing App
@@ -28,8 +27,9 @@ Designs one screen against an existing app-level UX without rewriting
 
 The app-level UX (default `docs/ux/ux-design.md`; caller may redirect the
 `docs/ux/` root) defines IA, global patterns, and shared interactions. If it is
-absent, this is likely greenfield — ask the caller (an app-level UX capability,
-e.g. `ux-design`, fits better) rather than halting.
+absent, this is greenfield — do not design the screen here; ask the caller to
+run an app-level UX capability (e.g. `ux-design`) first rather than halting.
+3D/XR/spatial screens also belong to that capability, whatever the file state.
 
 **Methodology lives in the `ux-design` skill.** This skill is lean by design and
 has no reference files of its own. For the depth behind each quality bar —
@@ -60,13 +60,12 @@ nothing app-level. See **Workflow** below for the procedure.
 
 - Does not rewrite app-level UX
 - Does not redesign navigation unless the new screen demands it
-- Does not produce visual designs, tokens, or component code
-- Does not produce tasks
+- Does not produce visual designs, tokens, motion, or component code
 
 **Next:** routing hints, not steps this skill performs — once the screen spec is
-approved, a task-breakdown capability (e.g. `task-add`) can split it into
-implementation tasks, and a design-token capability (e.g. `design-system`)
-covers visual tokens and components, if available.
+approved, it returns to the caller for implementation, and a design-token
+capability (e.g. `design-system`) covers visual tokens, components, and motion
+guidance, if available.
 
 ## Workflow
 
@@ -85,7 +84,8 @@ covers visual tokens and components, if available.
 5. **Write UX copy** — specific verbs for buttons, "what + how to fix" for
    errors, explanation + CTA for empty states
 6. **Patch `ux-design.md` if needed** — only when global IA or conventions
-   change
+   change. When several screens are designed in parallel, keep each patch to
+   its own entries so the edits don't collide
 
 ## Quality Bar
 

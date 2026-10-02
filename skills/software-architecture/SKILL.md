@@ -44,6 +44,14 @@ Great architecture documents are **decision records, not implementation manuals*
 - **Build Mode (default)** — produce or extend the full architecture from a PRD via the Design Flow below. This is everything in this file except the Review / Diagnose Mode section.
 - **Review / Diagnose Mode** — a **read-only** audit of an *existing* architecture. Triggered when the architecture context doc already exists (default `docs/arch/context.md`; caller may redirect) and the user asks to review / audit / diagnose rather than build. It critiques the docs and never regenerates the context or system doc. Jump to the [Review / Diagnose Mode](#review--diagnose-mode) section and follow it instead of the Design Flow.
 
+**Route by file state.** The greenfield sentinel is the context doc (default `docs/arch/context.md`) — not the `docs/arch/` directory, which a database-design pass may have created on its own. No context doc → greenfield: Build Mode from the PRD. Context doc exists → a single decision goes to a standalone-ADR capability (the `arch-decision` skill, if available), schema / index / migration design to the `database-design` skill, an LLM/AI feature to the `llm-app-design` skill (fine on an existing system), and a review / audit to Review / Diagnose Mode. A request that spans scopes ("design the system **and** the database") runs in dependency order — this skill → `database-design` → `llm-app-design` — with one report at the end.
+
+**Ownership.** This skill writes only under the architecture docs root (default `docs/arch/`). Read the PRD and brief; never edit them or any other owner's docs — a missing or wrong input becomes a gap in your summary.
+
+**After a Build pass**, audit `docs/arch/adr/` against the Minimum ADRs list (`references/design-flow.md`) and gap-fill only the foundational decisions the design settled but did not record, via the `arch-decision` skill if available — most foundational first, never duplicating ADRs the pass already wrote.
+
+**Report back** a short summary, not the document contents: files created/updated · key decisions (stack, architecture pattern, database) · open questions and assumptions for the caller to relay · 2-3 sentence summary. For a review, replace key decisions with the severity-ranked findings (🔴/🟠/🟡/🟢, see the severity rubric). Push back both ways: simple CRUD doesn't need event sourcing; concurrent financial transactions need explicit concurrency design.
+
 ---
 
 ## Scope Boundaries

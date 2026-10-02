@@ -2,7 +2,7 @@
 name: react-best-practices
 description: |
   React and Next.js performance optimization guidelines. Use when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, re-render reduction, or load-time improvements.
-  Do not use for: design tokens / theming (use design-system), animation choreography (use motion), React Native / Expo apps (use react-native-skills), or backend/API architecture.
+  Do not use for: design tokens / theming / motion (use design-system), React Native / Expo apps (use react-native-skills), or backend/API architecture.
 license: MIT
 source: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
 ---

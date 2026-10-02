@@ -21,30 +21,23 @@ Complete table of every method that can fail, every exception class, rescued sta
 ```
 **Any row with RESCUED=N AND TEST=N AND USER SEES=Silent → CRITICAL GAP.** (This deterministic gate is the load-bearing output — never soften it.)
 
-## tasks/board.md updates
-This skill does **not** write the board itself — it only proposes; with no write tools pinned, it cannot place rows even by accident. After the user approves a task, hand it to the caller's task-capture capability (`task-add`, if available — the canonical appender), which owns ID assignment, grouping, and schema conformance. Row + detail shape are defined by `task-craft/references/board-schema.md` (canonical):
-* Board row is 8 columns: `| id | feature | task | type | priority | status | assignee | touches |`.
-* `type` ∈ `feature | bugfix | refactor | chore | spike | hotfix`.
-* `priority` is lowercase `high | medium | low` (NOT `P0/P1/P2/P3`). high = blocking/critical-this-cycle; medium = important not urgent; low = nice-to-have.
-* `status` lifecycle (`backlog → active → blocked → done`) is owned by the `task-status` skill — do not hand-maintain a "Completed" section.
+## Proposed follow-ups
+This skill does **not** record or track work — it only proposes; with no write tools pinned, it cannot write anything even by accident. Approved follow-ups go into a plain list returned to the caller (the main session), which decides what to do with them.
 
-Present each potential task as its own individual AskUserQuestion (never batch tasks — one per question; never silently skip this step). For each, describe:
+Present each potential follow-up as its own individual AskUserQuestion (never batch — one per question; never silently skip this step). For each, describe:
 * **What:** one-line description of the work.
 * **Why:** the concrete problem solved or value unlocked.
 * **Pros / Cons:** what you gain; cost, complexity, risk.
 * **Context:** enough that someone picking this up in 3 months understands the motivation, current state, and where to start.
 * **Type:** `feature | bugfix | refactor | chore | spike | hotfix`
-* **Effort:** S / M / L / XL (the task-capture capability splits L/XL proposals into session-sized tasks)
-* **Priority:** `high | medium | low`
-* **Touches:** comma-separated file/dir paths the task creates or modifies (required — used for conflict detection).
+* **Effort:** S / M / L / XL
+* **Priority:** `high | medium | low`. high = blocking/critical-this-cycle; medium = important not urgent; low = nice-to-have.
 * **Depends on:** prerequisites or ordering constraints, or "None".
 
-Then present options (recommended first): **Hand off** to the task-capture capability (`task-add`) to append the row · **Skip** — not valuable enough · **Promote** into the current scope and review it now (still no code). (No A/B/C letters on the option cards — lettering is report-text only.)
-
-The matching `tasks/features/{feature}.md` detail (written by `task-add`) follows task-craft's format: `### T-NNN` then `phase`, `priority` (high/medium/low), `depends_on`, `touches`, `context`, `acceptance`.
+Then present options (recommended first): **Keep** — add it to the returned follow-up list · **Skip** — not valuable enough · **Promote** into the current scope and review it now (still no code). (No A/B/C letters on the option cards — lettering is report-text only.)
 
 ## Delight Opportunities (EXPANSION mode only)
-Identify at least 5 "bonus chunk" opportunities (<30 min each) that would make users think "oh nice, they thought of that." Present each as its own individual AskUserQuestion (never batch). For each: what it is, why it would delight, effort estimate. Options: **Hand off** to the task-capture capability as a vision item · **Skip** · **Promote** into the current scope and review it now (still no code).
+Identify at least 5 "bonus chunk" opportunities (<30 min each) that would make users think "oh nice, they thought of that." Present each as its own individual AskUserQuestion (never batch). For each: what it is, why it would delight, effort estimate. Options: **Keep** — add it to the returned follow-up list as a vision item · **Skip** · **Promote** into the current scope and review it now (still no code).
 
 ## Diagrams (mandatory, produce all that apply)
 1. System architecture · 2. Data flow (including shadow paths) · 3. State machine · 4. Error flow · 5. Deployment sequence · 6. Rollback flowchart.
@@ -76,7 +69,7 @@ Display this compact table at the end:
 | Dream state delta | written |
 | Error/rescue registry | ___ methods, ___ CRITICAL GAPS |
 | Failure modes | ___ total, ___ CRITICAL GAPS |
-| tasks/ updates | ___ items proposed |
+| Proposed follow-ups | ___ items |
 | Delight opportunities | ___ (EXPANSION only) |
 | Diagrams produced | ___ (list types) |
 | Stale diagrams found | ___ |

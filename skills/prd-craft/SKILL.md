@@ -13,8 +13,9 @@ description: |
   Also use to "review a PRD", "improve my PRD", "audit my PRD".
   Do NOT use for: a single feature on an existing product (use feature-spec
   instead — it's lighter and won't rewrite the vision PRD; adding one feature is
-  not a PRD review). Do NOT use for user stories, sprint tickets, API
-  documentation, or architecture decision records.
+  not a PRD review). Never re-run on an existing PRD to add features — run
+  feature-spec once per feature. Do NOT use for user stories, sprint tickets,
+  API documentation, or architecture decision records.
 ---
 
 # PRD Craft — Vision PRD for a New Product
@@ -75,6 +76,12 @@ Before discovery, check if a product brief already exists at
 briefs mean multiple explored directions, so confirm which one this PRD builds
 on. If a brief exists, use it as a starting point to accelerate discovery.
 
+If **neither a brief nor a PRD** exists, the idea is unvalidated: write the brief
+first via a product-brief capability, if available (e.g. the `product-brief`
+skill, default `docs/prd/product-brief.md`), then continue here — this phase
+reads it. Do this even when the user asked for a PRD outright. If no such
+capability is available, ask the caller whether to go straight to discovery.
+
 Also check if `docs/prd/prd.md` already exists. If yes, do **not** rewrite it
 blindly — branch:
 
@@ -84,11 +91,18 @@ blindly — branch:
   metric have changed, not just the feature set → run the creation flow to
   rewrite the vision in place. Confirm the pivot scope with the user first so
   you don't discard a still-valid vision. A pivot rewrite also refreshes the
-  brief's Problem/Direction (`product-brief.md`) — marketing-side agents read
-  the brief, not the PRD, as product context, and a stale brief poisons them.
-- Otherwise it's probably a **single-feature add** → return to the user and
+  brief's Problem/Direction (`product-brief.md`) — marketing-side work reads
+  the brief, not the PRD, as product context, and a stale brief poisons it.
+- Otherwise it's probably a **feature add** → return to the user and
   suggest a single-feature-spec capability if available (e.g. the `feature-spec`
-  skill), which patches the PRD in place without rewriting the vision.
+  skill), which patches the PRD in place without rewriting the vision. For
+  several features ("add X, Y, Z"), run it once per feature — never re-run this
+  skill to add them. Adding a feature is not a pivot, no matter how big the
+  feature.
+
+A bare "regenerate / redo / rewrite the PRD" request is not by itself a pivot.
+Ask what changed: if the problem, users, and success metric still hold, route to
+Review / Audit Mode or per-feature specs instead of discarding the vision.
 
 ### Phase 1: Discovery Interview
 
@@ -205,9 +219,8 @@ List all features with one-line descriptions. Each has a detailed spec
 in `docs/prd/features/`.
 
 Feature names are **kebab-case** (e.g. `file-parser`). The same token is the
-Feature Overview key, the Dev Order entry, the `docs/prd/features/{feature}.md`
-filename, and later the task board `feature` column — keep it identical across
-all four so downstream skills can join on it.
+Feature Overview key, the Dev Order entry, and the `docs/prd/features/{feature}.md`
+filename — keep it identical across all three so downstream skills can join on it.
 
 | Feature | Description | Spec |
 |---------|-------------|------|
@@ -222,8 +235,8 @@ Features ordered by dependency and priority. State **why** this order, don't jus
 assert it — one rationale line per version bucket, or one global ordering
 principle (riskiest-assumption-first, core-value-first, unblocks-the-most). For moderate/large products, tag each
 feature Must / Should / Could (MoSCoW) or note its value-vs-effort. Annotate
-cross-feature dependencies inline (`depends on: file-parser`) so task-craft can
-consume the graph rather than re-deriving it.
+cross-feature dependencies inline (`depends on: file-parser`) so downstream
+planning can consume the graph rather than re-deriving it.
 
 ### v0.1 — Core (minimum usable state) — core value first
 1. file-parser — everything depends on parsed input [Must]
@@ -369,8 +382,6 @@ are available (routing hints, not inline reads):
    for a brownfield change → `docs/arch/`
 2. **UX** — `ux-design` for app-wide design, or `screen-design` for a single
    screen → `docs/ux/`
-3. **Tasks** — `task-craft` to generate the initial phased board from the PRD +
-   arch + UX → `tasks/board.md`
 
 This skill stays at the WHAT/WHY altitude and does not produce any of those
 artifacts itself.

@@ -19,7 +19,7 @@ description: |
 
 Strategies for reducing both voluntary and involuntary churn through proactive intervention, cancel flow optimization, and payment recovery.
 
-**Output:** Write the churn-prevention strategy to the growth docs root (default `biz/growth/churn-prevention.md`; caller may redirect the `biz/<area>/` root) and the dunning / payment-recovery playbook to `biz/growth/dunning.md`. If no file-write tool is present, return the content inline.
+**Output:** Write the churn-prevention strategy to the growth docs root (default `biz/growth/churn-prevention.md`; caller may redirect the `biz/<area>/` root) and the dunning / payment-recovery playbook to `biz/growth/dunning.md`. If no file-write tool is present, return the content inline. Update an existing file in place rather than creating a duplicate.
 
 ---
 

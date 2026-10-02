@@ -5,16 +5,17 @@ description: |
   global navigation, shared interaction conventions, and accessibility standards.
   Produces `docs/ux/ux-design.md` plus per-screen specs for every screen in the
   initial design.
-  Use when: starting UX for a new web, mobile, or native (iOS/Android) product;
-  designing the overall app structure (IA, navigation, onboarding flows,
-  dashboards, wireframes); defining IA / global patterns / accessibility
-  standards; or designing for 3D/XR/spatial computing (AR, VR, MR, visionOS,
-  Quest, spatial UI). Also use to review or diagnose an existing app's UX — a
-  read-only audit that produces findings without rewriting the design docs.
-  Do NOT use for: designing a single screen on an existing app (use
-  screen-design — lighter, doesn't rewrite ux-design.md). Do NOT use for visual
-  styling, color palettes, component implementation, design tokens (use
-  design-system skill), or frontend/UI implementation code.
+  Use when: no `docs/ux/ux-design.md` exists yet — starting UX for a new web,
+  mobile, or native product; designing the app structure (IA, navigation,
+  onboarding, dashboards, wireframes) or global patterns / accessibility
+  standards; an app-wide IA restructure explicitly asked for; or 3D/XR/spatial
+  UX (AR, VR, MR, visionOS, Quest) — always here, even one screen (web3d is
+  engine implementation only). Also use to review or diagnose an existing
+  app's UX — read-only findings unless the caller asks for changes.
+  Do NOT use for: a single screen on an existing app (use screen-design, once
+  per screen — doesn't rewrite ux-design.md); visual styling, color palettes,
+  component implementation, design tokens (use design-system); or
+  frontend/UI implementation code.
 ---
 
 # UX Design — Full App Pass
@@ -31,11 +32,16 @@ If the PRD or feature specs exist (default `docs/prd/prd.md` or
 **If the UX design doc already exists**, this is not a fresh greenfield
 pass — do not rewrite it blindly. Branch:
 - Single screen to add or change → hand off to a single-screen design
-  capability (e.g. `screen-design`) if available.
+  capability (e.g. `screen-design`) if available. Several new screens → one
+  single-screen run per screen (they may run in parallel), never a rerun of
+  this skill — it would rewrite the app-level doc.
 - Audit/critique request ("review my UX", "what's wrong with this flow") → run
   **Review / Diagnose Mode** (below).
 - Genuine app-wide restructure the user explicitly asked for → proceed, but
   consolidate rather than regenerate from scratch.
+- 3D / XR / spatial work → stays in this skill regardless of file state (even a
+  single screen); the single-screen capability carries no 3D/XR methodology,
+  and `web3d`, if available, covers engine implementation only.
 
 ---
 
@@ -248,9 +254,10 @@ read-only:
 3. **Output a prioritized critique, not a rewritten doc.** Produce a findings
    list: each finding = location + the principle it violates (cite the
    reference) + severity + a concrete fix. Lead with the highest-impact issues.
-4. **Edit only if explicitly asked.** If the user then says "apply the fixes",
-   make the minimal targeted edits — still no full-doc rewrite unless they ask
-   for a restructure.
+4. **Edit only if explicitly asked.** If the caller then asks to "apply the
+   fixes", make the minimal targeted edits — still no full-doc rewrite unless
+   they ask for a restructure. A fix scoped to building one screen goes to the
+   single-screen capability (e.g. `screen-design`) instead.
 
 This mirrors the standard Review / Audit pattern (as in `prd-craft` if
 available): a critique by default, edits only on request.
@@ -303,6 +310,6 @@ Before updating, check the file's line count. If it exceeds the limit, first con
 ### Next
 
 Routing hints, not steps this skill performs: once the UX is approved, hand
-visual styling and design tokens to a design-system capability (e.g.
-`design-system`), and break the screens into implementation work with a
-task-tracking capability (e.g. `task-add`) — each if available.
+visual styling, design tokens, and motion to a design-system capability (e.g.
+`design-system`), if available, and return the screen inventory to the caller
+for implementation.

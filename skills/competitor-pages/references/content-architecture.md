@@ -192,7 +192,7 @@ Two widely-repeated tactics do less than their reputation suggests, and over-inv
 
 A perfect comparison page cannot win the category alone. Across brand citations, earned media runs roughly half and third-party/commercial sites about a third, leaving own-domain content near a quarter — and for *review-style* queries, which is exactly what "alternative" and "vs" queries are, the earned share runs far higher (Omniscient Digital, ~23K citations — directional). Source pools also diverge by engine; B2B comparison answers lean heavily on G2, Capterra, and Reddit.
 
-**So:** this page is the artifact you fully control and the one engines quote for concrete pricing, feature, and migration facts. Being listed and well-reviewed on the review sites your buyers use, and genuinely present in the relevant communities, is the larger half of the same job — route that, and cross-engine citation measurement, to the search-visibility capability and the marketer role, if available.
+**So:** this page is the artifact you fully control and the one engines quote for concrete pricing, feature, and migration facts. Being listed and well-reviewed on the review sites your buyers use, and genuinely present in the relevant communities, is the larger half of the same job — route cross-engine citation measurement to the search-visibility capability, if available, and return the review-site and community work to the caller as off-site follow-ups.
 
 ---
 

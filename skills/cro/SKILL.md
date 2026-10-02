@@ -29,7 +29,7 @@ What is the ONE primary action? Be specific: "signup", "upgrade to paid", "submi
 ### 2. Map the Current Funnel
 Document every step from entry to conversion. Identify where users enter, what they see, and where they drop off.
 
-If funnel- or field-level data doesn't exist yet, instrument it first — drawing on a product-analytics capability (tracking-plan and GA4/event-setup guidance) if one is available. You can't optimize what you can't measure; absent data, fall back to a heuristic audit and flag that lift estimates are unvalidated.
+If funnel- or field-level data doesn't exist yet, instrument it first — drawing on a product-analytics capability (tracking-plan and GA4/event-setup guidance) if one is available. You can't optimize what you can't measure; absent data, fall back to a heuristic audit and flag that lift estimates are unvalidated — never promise a measured lift from heuristic mode.
 
 Before treating funnel/drop-off numbers as exact, account for measurement gaps: consent-banner opt-outs (declined users aren't tracked), Safari/Firefox cookie restrictions and ad-blockers (lost sessions), and GA4 Consent Mode modeled (estimated, not observed) conversions. For high-stakes calls, reconcile against server-side or order-level data.
 
@@ -80,7 +80,7 @@ Structure output as:
 | A/B test design (hypothesis, sample size, variants, ramp) | `references/experiments.md` |
 | A/B test analysis (significance, segments, revenue impact) | `product-analytics` skill |
 
-**Multi-area requests** (e.g., "optimize my SaaS funnel"): Read the most relevant reference first, then pull in additional references as needed. For full-funnel work, read in the order the funnel demands: SaaS/subscription → page → signup → onboarding → paywall; e-commerce/transactional → page → form → checkout. Synthesize into a single cohesive analysis — don't produce separate reports per area.
+**Multi-area requests** (e.g., "optimize my SaaS funnel"): Read the most relevant reference first, then pull in additional references as needed. For full-funnel work, read in the order the funnel demands: SaaS/subscription → page → signup → onboarding → paywall; e-commerce/transactional → page → form → checkout. Synthesize into a single cohesive analysis — don't produce separate reports per area. When choosing which stage to fix first, work bottom-up: retention → activation → acquisition (pouring traffic into a leaky funnel wastes it).
 
 ---
 
@@ -113,7 +113,11 @@ Contrast (~4.5:1 text, 3:1 UI), a visible focus ring, and errors announced to sc
 
 This is the default shape. When a reference defines its own Output Format (e.g. `page-cro.md`, `signup-flow-cro.md`, `onboarding-cro.md`, `form-cro.md`), follow the reference's format and treat this template as the fallback.
 
-**Output:** When asked to save a written CRO analysis (if a file-write capability is available), write it to the growth-output root (default `biz/growth/cro/{page-or-flow}-analysis.md`; caller may redirect the `biz/<area>/` root).
+**Output:** When asked to save a written CRO analysis (if a file-write capability is available), write it to the growth-output root (default `biz/growth/cro/{page-or-flow}-analysis.md`; caller may redirect the `biz/<area>/` root). Update an existing file in place rather than creating a duplicate.
+
+**Recommend, don't ship.** This skill produces analyses, recommendations, and experiment designs; it never edits application code itself — implementation goes back to the caller.
+
+**Growth experiment log.** When an experiment is designed or concludes, record it in the experiment log (default `biz/growth/experiments.md`; caller may redirect) — the analytics side (the data-analyst agent, or the product-analytics skill) reads it for significance analysis. Update the file in place; one entry per experiment with: a falsifiable hypothesis, one primary metric, a guardrail metric, the pre-committed sample size or stopping rule (see `references/experiments.md`), and the outcome (filled in when it concludes). If no file-write capability is present, return the entry inline.
 
 ```markdown
 ## CRO Analysis: [Page/Flow Name]

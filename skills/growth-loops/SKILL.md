@@ -36,4 +36,4 @@ For loop types, K factor math, the 5-stage design framework, amplification techn
 
 ## Output
 
-When this skill produces a referral or loop design, write it to the referral doc (default `biz/growth/referral-program.md`; caller may redirect the `biz/<area>/` root). If no file-write capability is present, return the design inline.
+When this skill produces a referral or loop design, write it to the referral doc (default `biz/growth/referral-program.md`; caller may redirect the `biz/<area>/` root). If no file-write capability is present, return the design inline. Update an existing file in place rather than creating a duplicate.

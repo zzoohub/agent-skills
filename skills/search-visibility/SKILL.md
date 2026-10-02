@@ -27,7 +27,7 @@ A unified skill for optimizing brand and content visibility across traditional s
 
 These are not separate disciplines. They form a continuum: SEO builds the foundation, AEO captures direct-answer opportunities on that foundation, and GEO extends visibility into AI-generated experiences. Each layer builds on the one before it.
 
-**Output:** optimized articles and content briefs ship to the blog-content dir (default `biz/marketing/content/blog/`); audits, keyword research, and SEO/AEO/GEO strategy docs to the search dir (default `biz/marketing/seo/`; caller may redirect the `biz/<area>/` root). If no file-write capability is present, return results inline.
+**Output:** optimized articles and content briefs ship to the blog-content dir (default `biz/marketing/content/blog/`); audits, keyword research, and SEO/AEO/GEO strategy docs to the search dir (default `biz/marketing/seo/`; caller may redirect the `biz/<area>/` root). If no file-write capability is present, return results inline. Update an existing file in place rather than creating a duplicate.
 
 ---
 

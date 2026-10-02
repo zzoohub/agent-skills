@@ -182,6 +182,8 @@ For every copy deliverable, provide:
 
 For page-level copy, follow the section structure in `references/copy-frameworks.md`.
 
+**Drafts only.** Produce copy as drafts for the caller; never publish, ship, send, or schedule it anywhere (CMS, app store listing, live site, ESP) without the caller's explicit approval.
+
 ### 6. Quality Checklist
 
 Before delivering any copy, verify:

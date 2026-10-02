@@ -11,6 +11,10 @@ description: |
 
 **For latest NestJS/TypeORM/Zod/nestjs-zod APIs, verify against the official docs with a doc-lookup tool if one is available.**
 
+**Confirm the stack from the build files** (`@nestjs/*` in `package.json`), not from docs alone — on an existing project the framework is already fixed; if the build files show another framework, use the matching hexagonal skill or mirror the project's existing conventions.
+
+**The project's architecture doc is binding** (default `docs/arch/system.md`; caller may redirect): read its cross-cutting / reliability / observability rules, not just the stack line, and apply them in the cross-cutting step below. If absent, apply this skill's defaults.
+
 ## Core Philosophy
 
 Separate **business domain** from **infrastructure**. Domain defines *what*; adapters decide *how*.

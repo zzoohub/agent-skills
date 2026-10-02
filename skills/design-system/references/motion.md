@@ -37,6 +37,18 @@ Non-negotiable. `prefers-reduced-motion: reduce` → skip animation entirely, do
 
 Platform-specific implementation lives in this skill's platform references: the CSS `@media (prefers-reduced-motion: reduce)` reset in `references/platform-web.md`, and `AccessibilityInfo.isReduceMotionEnabled()` (plus the `reduceMotionChanged` listener) in `references/react-native/platform.md`. (both also linked directly from SKILL.md)
 
+## Implementation Rules
+
+Engine-agnostic rules for any animation that consumes these tokens (scroll reveals, parallax, gestures, page transitions):
+
+- **Reduced motion renders the final state.** Skip the animation and jump to the end state; never "fake" it by speeding up — a 100x flash still triggers vestibular issues. Listen for live OS-setting changes, not a one-shot check.
+- **One animation engine per surface.** Never animate the same property on the same element with two engines — they fight and flicker. Choose per component.
+- **Animate `transform` and `opacity` only.** They stay on the compositor; animating layout properties causes layout shift (CLS) and input jank.
+- **Never server-render content at `opacity: 0`.** Content must be fully visible without JS — animation enhances, never gates content.
+- **Tear down on unmount.** Kill timelines, scroll triggers, and scroll/gesture listeners when their component or element goes away.
+- **Scroll smoothing (e.g. Lenis) only at the app root, never nested** — and only where the feel earns it (marketing/portfolio), not on blogs, docs, or dashboards.
+- **Every gesture needs a non-gesture fallback** (a visible button or tap target) so the action stays reachable for assistive tech.
+
 ## Principle
 
 Animation should communicate, not decorate. If removing an animation makes the interaction confusing (modal appearing from nowhere), keep it. If it's purely aesthetic (background shimmer), make it optional.

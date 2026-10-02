@@ -11,6 +11,10 @@ description: |
 
 **For latest Axum/SQLx APIs, verify against the official docs with a doc-lookup tool if one is available.**
 
+**Confirm the stack from the build files** (`axum` in `Cargo.toml`), not from docs alone — on an existing project the framework is already fixed; if the build files show another framework, use the matching hexagonal skill or mirror the project's existing conventions.
+
+**The project's architecture doc is binding** (default `docs/arch/system.md`; caller may redirect): read its cross-cutting / reliability / observability rules, not just the stack line, and apply them in the cross-cutting step below. If absent, apply this skill's defaults.
+
 > **SQLx version (0.8/0.9):** `sqlx 0.9.0` is now current; this skill's patterns target **0.8/0.9** and work unchanged on both. The `query!`/`query_as!` macros and `&mut **tx` still apply — string-literal queries satisfy 0.9's new `SqlSafeStr` bound automatically. What 0.9 adds: `SqlSafeStr` (dynamic / non-`'static` query strings must now be wrapped in `AssertSqlSafe(...)`), an optional `sqlx.toml` config file, `sqlx::raw_sql()` for running a string directly against an `Executor`, and removal of the `TransactionManager` re-export. The `.sqlx/` offline-prepare workflow is unchanged.
 
 ## Core Philosophy

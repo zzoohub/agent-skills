@@ -3,7 +3,7 @@ name: design-system
 description: |
   Design token architecture, component patterns, and cross-platform UI for web and React Native.
   Use when: building UI components, defining design tokens, creating themed interfaces, setting up dark mode or theming, configuring Tailwind with design tokens, setting up typography or motion systems, choosing component API patterns (flat vs compound vs explicit variants), adding shadows or elevation, or any task involving consistent styling across components. Use this skill whenever the user mentions design tokens, theming, dark mode toggle, component variants, or cross-platform styling — even if they don't explicitly say "design system".
-  Do not use for: UX research or user journey decisions (use ux-design), single-screen specs (use screen-design), motion choreography (scroll reveals, parallax, gestures — use motion; tokens here, choreography there), business logic, data fetching, API design.
+  Do not use for: UX research or user journey decisions (use ux-design), single-screen specs (use screen-design), business logic, data fetching, API design.
 ---
 
 # Design System
@@ -73,7 +73,7 @@ Always respect `prefers-reduced-motion`. When reduced, skip animation entirely �
 
 → Motion tokens and usage table: `references/motion.md`. Platform reduced-motion implementation lives in `references/platform-web.md` and `references/react-native/platform.md`.
 
-This skill owns motion **tokens** (durations/easings) and reduced-motion policy. For motion **choreography** that consumes these tokens — scroll reveals, parallax, gestures, page transitions, animated charts — use the `motion` skill.
+This skill owns motion **tokens** (durations/easings), reduced-motion policy, and the engine-agnostic implementation rules any choreography that consumes these tokens — scroll reveals, parallax, gestures, page transitions — must follow (`references/motion.md` § Implementation Rules). For React route and shared-element transitions, see the react-view-transitions skill, if available.
 
 ## Shadow & Elevation
 

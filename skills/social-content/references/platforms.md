@@ -341,7 +341,7 @@ Community-driven; each subreddit has unique norms. ~121M daily active uniques, ~
 
 ## Product Hunt
 
-> Launch *strategy* — the timing call, tagline, channel sequencing — belongs to the marketing-strategy capability's launch playbook; on conflict it wins. This section is platform mechanics for the launch threads and comment engagement this skill owns.
+> Launch *strategy* — the timing call, tagline, channel sequencing — belongs to the caller's launch plan; on conflict it wins. This section is platform mechanics for the launch threads and comment engagement this skill owns.
 
 ### Pre-Launch (30+ days before)
 1. Start participating in PH discussions (comments, upvotes, feedback to other makers)
@@ -379,7 +379,7 @@ Community-driven; each subreddit has unique norms. ~121M daily active uniques, ~
 
 ## Hacker News
 
-> Same ownership note as Product Hunt above: launch strategy and the one-off title are the launch playbook's call; this section covers HN mechanics for the threads and comments this skill owns.
+> Same ownership note as Product Hunt above: launch strategy and the one-off title are the launch plan's call; this section covers HN mechanics for the threads and comments this skill owns.
 
 ### Algorithm & Ranking
 - Time-decayed vote scoring: every 45 minutes the gravity multiplier increases

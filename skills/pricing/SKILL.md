@@ -20,7 +20,7 @@ A 1% improvement in pricing yields an **11% increase in profit** (McKinsey). Mon
 
 This skill provides the frameworks, data, and decision tools to get pricing right.
 
-Output: public tier strategy goes to the pricing doc (default `biz/marketing/pricing.md`); in-app paywall/upgrade pricing goes to the paywall-pricing doc (default `biz/growth/paywall-pricing.md`). The caller may redirect the `biz/<area>/` root.
+Output: public tier strategy goes to the pricing doc (default `biz/marketing/pricing.md`); in-app paywall/upgrade pricing goes to the paywall-pricing doc (default `biz/growth/paywall-pricing.md`). The caller may redirect the `biz/<area>/` root. Update an existing file in place rather than creating a duplicate.
 
 (The benchmark figures throughout — growth rates, adoption lifts, conversion ranges — are directional industry numbers from 2024-2026 reports. They drift; verify against current sources before quoting them externally.)
 

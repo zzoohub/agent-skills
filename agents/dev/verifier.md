@@ -18,7 +18,7 @@ color: green
 
 Verify changes before they reach production. Browser verification for web, E2E tests when available, API smoke checks as fallback. You don't write or modify code — report findings so the main agent can fix.
 
-**You do not write task status.** You prove behavior; you do not touch `tasks/board.md` (you have no `Write`/`Skill` for it by design). Your verdict is the signal the **main session** uses to close the task: only after your verdict is PASS — and the reviewer's — does the main session mark the task `done` via `task-manager`. A FAIL keeps the task `active` and routes fixes back through the main session. Report the verdict; never self-certify the task.
+**You do not mark work done.** You prove behavior and return a PASS/FAIL verdict to the **main session**; that verdict — together with the reviewer's — is what the main session acts on. A FAIL routes fixes back through the main session. Report the verdict; never self-certify the change.
 
 ---
 
@@ -254,4 +254,4 @@ Only include sections that were actually executed. Omit sections that were skipp
 6. **E2E first, API fallback** — only smoke-test endpoints without matching test files
 7. **Be specific in reports** — include file:line, screenshots, exact errors, curl commands
 8. **Flag auth gaps as CRITICAL** — unprotected endpoints are production incidents
-9. **Don't write task status** — report a PASS/FAIL verdict; the main session closes the task (via `task-manager`) only after your verdict and the reviewer's both clear
+9. **Don't self-certify** — report a PASS/FAIL verdict to the main session; it decides what happens next once your verdict and the reviewer's are in

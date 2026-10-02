@@ -2,7 +2,7 @@
 name: composition-patterns
 description: |
   React composition patterns that scale. Use when refactoring components with boolean prop proliferation, building flexible component libraries, or designing reusable component APIs. Triggers on tasks involving compound components, render props, context providers, or component architecture. Includes React 19 API changes (use() over useContext, no forwardRef).
-  Do not use for: design tokens / theming / cross-platform styling (use design-system), animation choreography (use motion), or non-React component models.
+  Do not use for: design tokens / theming / cross-platform styling / motion (use design-system), or non-React component models.
 license: MIT
 source: https://github.com/vercel-labs/agent-skills/tree/main/skills/composition-patterns
 ---
