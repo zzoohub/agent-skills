@@ -47,7 +47,8 @@ function MyComponent() {
 ```
 
 Use `useAnimatedReaction` only for side effects that don't produce a value
-(e.g., triggering haptics, logging, calling `runOnJS`).
+(e.g., triggering haptics, logging, calling `scheduleOnRN` — `runOnJS` on
+Reanimated 3).
 
 Reference:
 [Reanimated useDerivedValue](https://docs.swmansion.com/react-native-reanimated/docs/core/useDerivedValue)

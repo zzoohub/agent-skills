@@ -1,6 +1,6 @@
 # Persuasion Frameworks
 
-Canonical copywriting frameworks. Single source of truth for the structures — channel-specific skills (ad-creative, social-content) apply them to their medium; email-marketing and marketing-psychology cross-reference them.
+Canonical copywriting frameworks. Single source of truth for the structures — channel-specific applications (the ad-creative skill; this skill's social reference, `references/social/`) apply them to their medium; the email reference (`references/email/`) and the persuasion-psychology reference (`references/psychology/`) cross-reference them.
 
 ---
 
@@ -33,7 +33,7 @@ Schwartz's 5 Awareness Levels (Eugene Schwartz, *Breakthrough Advertising*, 1966
 
 ## PAS — Problem, Agitate, Solve
 
-The workhorse of direct response (folklore formula, popularized by Dan Kennedy). Works because loss aversion makes losses feel roughly 2x stronger than equivalent gains (λ≈2.25; Tversky & Kahneman, 1992 — the concept was introduced in Kahneman & Tversky, 1979).
+The workhorse of direct response (folklore formula, popularized by Dan Kennedy). Draws on loss aversion: losses often loom larger than equivalent gains (λ≈2.25 in lab estimates; Tversky & Kahneman, 1992 — the concept was introduced in Kahneman & Tversky, 1979), though the size varies by context (Gal & Rucker, 2018).
 
 | Step | Purpose | Technique |
 |------|---------|-----------|
@@ -113,13 +113,13 @@ The framework for UGC and testimonial-style copy (popularized by Gary Halbert). 
 
 ## Psychological Triggers Reference
 
-The mechanisms below are owned by the **marketing-psychology** skill (the single source of truth for the biases themselves); this table is the copy-application layer — how to phrase each trigger, not the canonical definition. See marketing-psychology for full mechanisms and ethical guardrails.
+The mechanisms below are owned by the persuasion-psychology reference (`references/psychology/guide.md` and `references/psychology/mental-models-reference.md` — the single source of truth for the biases themselves); this table is the copy-application layer — how to phrase each trigger, not the canonical definition. See it for full mechanisms, ethical guardrails, and the dark-pattern anti-catalog.
 
 Stack 1-2 per piece of copy, never more. Only use where the trigger is *real* (fake scarcity destroys trust).
 
 | Trigger | Mechanism | Copy Application |
 |---------|-----------|------------------|
-| **Loss Aversion** | Pain of loss is ~2x stronger than pleasure of gain (Tversky & Kahneman, 1992) | "Don't miss out" > "Get access"; frame as what they'll lose |
+| **Loss Aversion** | Losses often loom larger than equal gains (~2x in lab estimates, Tversky & Kahneman, 1992; context-dependent, Gal & Rucker, 2018) | Frame what they'll lose by not acting ("Don't miss out") — but loss framing isn't reliably better than gain framing ("Get access"), so test both |
 | **Social Proof** | People follow the crowd | Numbers ("12,847 teams"), logos, testimonials, ratings |
 | **Scarcity** | Limited availability → perceived value | "Only 23 spots left" (real limits only) |
 | **Urgency** | Deadlines create action pressure | "Offer ends Friday", real countdown timers |
@@ -131,7 +131,7 @@ Stack 1-2 per piece of copy, never more. Only use where the trigger is *real* (f
 | **Identity** | People act consistently with self-image | "For founders who...", "If you're the kind of person who..." |
 
 ### Ethical Usage
-These triggers work because they tap real human psychology. Use them to help people decide in ways that genuinely benefit them. Fake countdowns, manufactured scarcity, and identity traps destroy trust and frequently violate platform policies.
+These triggers work because they tap real human psychology. Use them to help people decide in ways that genuinely benefit them. Fake countdowns, manufactured scarcity, and identity traps destroy trust and frequently violate platform policies (and consumer-protection law — see the Dark Pattern Anti-Catalog in `references/psychology/mental-models-reference.md`).
 
 ---
 
@@ -140,14 +140,14 @@ These triggers work because they tap real human psychology. Use them to help peo
 Channel-specific skills apply these frameworks to their medium:
 
 - **ad-creative** — ad format templates (search, feed, video, carousel, display) per framework
-- **social-content** — hook structures + post-level applications (HSO, Hook-Retain-Reward are platform-native riffs on AIDA/PAS)
+- **social** (`references/social/`) — hook structures + post-level applications (HSO, Hook-Retain-Reward are platform-native riffs on AIDA/PAS)
 
-(email-marketing and cro defer copy to this skill but do not currently template these frameworks; marketing-psychology cross-references the triggers above.)
+(The email reference (`references/email/`) and the cro skill defer copy to this skill but do not currently template these frameworks; the psychology reference (`references/psychology/`) cross-references the triggers above.)
 
 When writing copy:
 1. Diagnose the audience's awareness level
 2. Pick the framework matching that level (see matrix above)
-3. If the deliverable is an ad, organic post, email, or landing page, hand off to the skill that owns that medium and apply its template — ad-creative (ads), social-content (organic posts), email-marketing (email), cro (landing pages/paywalls) — rather than producing it here
+3. If the deliverable is an ad, organic post, email, or landing page, apply the template of whatever owns that medium — organic posts and email are produced here from `references/social/` and `references/email/`; ads (ad-creative) and landing-page/paywall structure (cro) belong to separate skills, so hand off to them rather than producing it here
 4. Layer 1-2 psychological triggers
 5. Run the editing sweeps from `editing-sweeps.md`
 

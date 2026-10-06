@@ -127,11 +127,16 @@ know, dig deeper on what's vague.
 
 **If the user says "just write it" without context:**
 
-Offer the **Problem-User-Success** rapid discovery — just 3 questions:
+Write now — don't hold the draft hostage to an interview. Answer the
+**Problem-User-Success** core from whatever context exists:
 
 1. What specific problem are we solving, and for whom?
 2. How is this handled today?
 3. What does success look like?
+
+Label every inferred answer (and any invented number) as an assumption in the
+draft, and carry each unknown into the §9 Open Questions checkbox list so the
+user can correct it after reading.
 
 ### Phase 2: Write the PRD (`docs/prd/prd.md`)
 

@@ -97,7 +97,7 @@ Detailed character limits, image dimensions, and format variations for each ad p
 
 | Placement | Ratio | Length |
 |-----------|-------|--------|
-| Feed | 1:1 or 4:5 | Up to 240 min (15s recommended) |
+| Feed | 1:1 or 4:5 | Up to 241 min (15s recommended) |
 | Stories | 9:16 | Up to 120 seconds |
 | Reels | 9:16 | Up to 90 seconds |
 | In-stream | 16:9 | 5-15 seconds |
@@ -293,14 +293,14 @@ Same specs as Feed, but test separately — performance varies significantly.
 - Unbranded UGC +19% better than branded UGC
 - Content without logos: +81% ROI vs branded content
 - 90% of ad recall happens in first 6 seconds
-- Refresh creative every 7 days (TikTok recommendation)
+- Refresh creative roughly every 7-14 days (third-party practitioner guidance, not a TikTok rule)
 - Test 10-20 creative variations per campaign
 
 ### Google Ads
 
 **Key 2025-2026 insights**:
 - PMax with at least one video: ~+12% more conversions on average (up to ~+20% on YouTube with all orientations) — Google internal data
-- Asset Studio (genAI tools) now free for all advertisers
+- Asset Studio (genAI tools, Tools > Asset Studio) rolled out to Google Ads accounts globally at no separate charge; some features (e.g. video dubbing) remain limited — check availability in your account
 - Brand guidelines let you control colors/fonts for AI-generated ads
 - Asset-level reporting now shows impressions, clicks, cost (not just conversions)
 - Replace low-rated assets every 4-6 weeks

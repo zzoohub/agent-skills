@@ -53,7 +53,7 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Desktop | Tauri |
 | CLI | Rust |
 | Game | Godot, Bevy **(pre-1.0)** |
-| Data Pipeline | Cloudflare Pipelines **(beta)**, Cloud Dataflow, dbt (Core v2 / Fusion engine) |
+| Data Pipeline | Basin Pipelines (formerly Cloudflare Pipelines), Cloud Dataflow, dbt (Core v2 / Fusion engine) |
 
 **TanStack Start house taste** (explicit over magic, end-to-end types):
 - **FSD layering** — route files are thin routing glue (loader, guard, head); page UI lives in `views/`; server functions live in the owning slice's `api/`; layers import only downward (`views` → `widgets` → `features` → `entities` → `shared`).
@@ -90,10 +90,10 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Cache (eventual) | KV |
 | Cache (strong) | Upstash Redis (Valkey if self-managed) |
 | Queue | CF Queues, Cloud Tasks |
-| Streaming | Cloudflare Pipelines **(beta)** (-> R2 / Iceberg), Cloud Pub/Sub |
+| Streaming | Basin Pipelines (formerly Cloudflare Pipelines; -> R2 / Iceberg), Cloud Pub/Sub |
 | Objects | R2 |
-| Analytics / DW | BigQuery, Pipelines + R2 SQL (ClickHouse if self-hosted / cost-controlled) |
-| Vector | Vectorize **(beta — no BM25/keyword; small corpora only)**, pgvector |
+| Analytics / DW | BigQuery, Basin (Pipelines + Basin SQL, formerly R2 SQL) (ClickHouse if self-hosted / cost-controlled) |
+| Vector | Vectorize (vector-only — no BM25/keyword; ≤20M vectors/index as of 2026-10), pgvector |
 | Search (full-text / hybrid) | Postgres FTS, Typesense, Meilisearch |
 | Images | CF Images |
 | Video | CF Stream + Media Transformations |
@@ -106,7 +106,7 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 |---|---|
 | LLM inference | Workers AI, Gemini Enterprise Agent Platform (formerly Vertex AI); frontier via AI Gateway (Claude, OpenAI) |
 | Gateway | AI Gateway |
-| RAG | AI Search (formerly AutoRAG) — hybrid vector + BM25 + rerank; Vectorize **(beta)** as the raw vector primitive |
+| RAG | AI Search (formerly AutoRAG) — hybrid vector + BM25 + rerank; Vectorize as the raw vector primitive |
 | Eval / observability | Langfuse (OSS), Braintrust, PostHog LLM analytics |
 | Security | AI Security for Apps (formerly Firewall for AI), AI Gateway DLP |
 | Crawlers | AI Crawl Control, Firecrawl |

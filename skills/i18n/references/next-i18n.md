@@ -68,7 +68,7 @@ export const routing = defineRouting({
 
 ### 4. Proxy (Middleware)
 
-On **Next.js 16+** this file must be named `proxy.ts` (`middleware.ts` is deprecated). The `next-intl/middleware` import path and `createMiddleware` API are unchanged.
+On **Next.js 16+** name this file `proxy.ts` (`middleware.ts` is deprecated but still runs in 16.x — rename it, e.g. with the `middleware-to-proxy` codemod). The `next-intl/middleware` import path and `createMiddleware` API are unchanged.
 
 ```typescript
 // src/proxy.ts  (was src/middleware.ts before Next.js 16)
@@ -103,7 +103,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
 });
 ```
 
-**v4 change:** The old `locale` argument was removed. Use `requestLocale` (async) and explicitly return `locale`. Use `hasLocale()` for type-safe locale validation instead of `.includes()`.
+**v4 change:** Read the segment locale from `requestLocale` (async) and explicitly return `locale`. The `locale` argument is only set when a call site passes one explicitly (e.g. `getTranslations({locale})`), so don't rely on it for routing. Use `hasLocale()` for type-safe locale validation instead of `.includes()`.
 
 **Missing-key fallback:** A missing message logs an error and renders the key path (`Namespace.key`) — next-intl does *not* fall back to another locale. To degrade partial translations to the base locale instead, deep-merge the default-locale messages under the requested locale:
 

@@ -69,7 +69,7 @@ export const tokens = {
     toast:    { shadowColor: '#000', shadowOffset: { width: 0, height: 20 }, shadowOpacity: 0.1, shadowRadius: 25, elevation: 12 },
   },
   opacity: { disabled: 0.5, overlay: 0.5, hover: 0.8 },
-  zIndex: { base: 0, dropdown: 100, sticky: 200, overlay: 300, modal: 400, toast: 500 },
+  zIndex: { base: 0, dropdown: 100, sticky: 200, overlay: 300, modal: 400, popover: 450, toast: 500 },
   motion: {
     duration: { instant: 100, fast: 200, normal: 300, slow: 500 },
     easing: {
@@ -81,7 +81,7 @@ export const tokens = {
 } as const;
 ```
 
-> **Android shadow caveat:** On the legacy architecture, Android ignores `shadowColor`/`shadowOffset`/`shadowOpacity`/`shadowRadius` and renders only `elevation` (which is why both are defined above). On the New Architecture you can unify both platforms with the `boxShadow` style prop instead.
+> **Android shadow caveat:** `shadowOffset`/`shadowOpacity`/`shadowRadius` are iOS-only; Android renders `elevation` (which is why both are defined above), and `shadowColor` only tints that elevation shadow on Android API 28+. On the New Architecture you can unify both platforms with the `boxShadow` style prop instead (New-Architecture-only; outset shadows need Android 9+, inset shadows Android 10+).
 
 ## Dark Mode
 

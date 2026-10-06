@@ -93,7 +93,6 @@ function Avatar({ url }: { url: string }) {
       </Galeria.Image>
     )}
     numColumns={3}
-    estimatedItemSize={100}
   />
 </Galeria>
 ```

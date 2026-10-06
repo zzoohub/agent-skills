@@ -68,6 +68,7 @@ The response is sent immediately while logging happens in the background.
 **Important notes:**
 
 - `after()` runs even if the response fails or redirects
-- Works in Server Actions, Route Handlers, and Server Components
+- Works in Server Actions, Route Handlers, Server Components and Proxy (middleware); stable since Next.js 15.1
+- In Server Components, read `headers()`/`cookies()` before calling `after()` and pass the values in: calling them inside the callback throws
 
 Reference: [https://nextjs.org/docs/app/api-reference/functions/after](https://nextjs.org/docs/app/api-reference/functions/after)

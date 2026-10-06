@@ -109,6 +109,7 @@ Bounded palette of raw values. These exist so semantic tokens have something to 
     "sticky":   { "$value": "200", "$type": "number" },
     "overlay":  { "$value": "300", "$type": "number" },
     "modal":    { "$value": "400", "$type": "number" },
+    "popover":  { "$value": "450", "$type": "number" },
     "toast":    { "$value": "500", "$type": "number" }
   }
 }

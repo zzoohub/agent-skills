@@ -7,7 +7,7 @@ tags: advanced, hooks, useEffectEvent, dependencies, effects
 
 ## Do Not Put Effect Events in Dependency Arrays
 
-Effect Event functions do not have a stable identity. Their identity intentionally changes on every render. Do not include the function returned by `useEffectEvent` in a `useEffect` dependency array. Keep the actual reactive values as dependencies and call the Effect Event from inside the effect body or subscriptions created by that effect.
+`useEffectEvent` requires React 19.2+ (its first stable release); on older React use the ref pattern in [Store Event Handlers in Refs](./advanced-event-handler-refs.md). Effect Event functions do not have a stable identity. Their identity intentionally changes on every render. Do not include the function returned by `useEffectEvent` in a `useEffect` dependency array. Keep the actual reactive values as dependencies and call the Effect Event from inside the effect body or subscriptions created by that effect.
 
 **Incorrect (Effect Event added as a dependency):**
 

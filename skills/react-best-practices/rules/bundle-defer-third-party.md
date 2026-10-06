@@ -28,22 +28,34 @@ export default function RootLayout({ children }) {
 
 **Correct (loads after hydration):**
 
+In the App Router, `next/dynamic` with `{ ssr: false }` is not allowed in a Server Component (the root layout is one) and throws an error, so put the dynamic call in a small `'use client'` wrapper and render that from the layout:
+
 ```tsx
+// app/deferred-analytics.tsx
+'use client'
+
 import dynamic from 'next/dynamic'
 
-const Analytics = dynamic(
+export const DeferredAnalytics = dynamic(
   () => import('your-analytics-sdk/react').then(m => m.Analytics),
   { ssr: false }
 )
+```
+
+```tsx
+// app/layout.tsx (Server Component)
+import { DeferredAnalytics } from './deferred-analytics'
 
 export default function RootLayout({ children }) {
   return (
     <html>
       <body>
         {children}
-        <Analytics />
+        <DeferredAnalytics />
       </body>
     </html>
   )
 }
 ```
+
+Reference: [Next.js lazy loading — skipping SSR](https://nextjs.org/docs/app/guides/lazy-loading)

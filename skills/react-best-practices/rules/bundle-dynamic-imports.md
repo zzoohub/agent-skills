@@ -22,6 +22,8 @@ function CodePanel({ code }: { code: string }) {
 **Correct (Monaco loads on demand):**
 
 ```tsx
+'use client'
+
 import dynamic from 'next/dynamic'
 
 const MonacoEditor = dynamic(
@@ -33,3 +35,5 @@ function CodePanel({ code }: { code: string }) {
   return <MonacoEditor value={code} />
 }
 ```
+
+Call `next/dynamic` with `{ ssr: false }` only from a `'use client'` component: in an App Router Server Component it throws an error. Reference: [Next.js lazy loading](https://nextjs.org/docs/app/guides/lazy-loading)

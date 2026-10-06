@@ -63,3 +63,5 @@ function MyScreen() {
 ```
 
 The native approach handles dynamic safe areas (keyboard, toolbars) and allows content to scroll behind the status bar naturally.
+
+`contentInsetAdjustmentBehavior` is iOS-only; Android ignores it. Where Android content would otherwise sit under the system bars (e.g. a headerless edge-to-edge screen), apply insets from `react-native-safe-area-context` (`SafeAreaView` with `edges`, or `useSafeAreaInsets`) for Android.

@@ -1,6 +1,6 @@
 # Agent Architecture
 
-**Layer:** system-level (protocols, durable execution, multi-agent orchestration, state management, infrastructure). For agent **design** (when an agent is the right shape vs a pipeline, agent evaluation, context engineering at the prompt layer), see `llm-app-design/references/agents.md`.
+**Layer:** system-level (protocols, durable execution, multi-agent orchestration, state management, infrastructure). For agent **design** (when an agent is the right shape vs a pipeline, agent evaluation, context engineering at the prompt layer), see `references/llm-app/agents.md`.
 
 Architecture patterns, protocols, and infrastructure for LLM-powered autonomous agents. This reference is language-agnostic — it covers architectural decisions, not implementation details.
 
@@ -25,13 +25,13 @@ Architecture patterns, protocols, and infrastructure for LLM-powered autonomous 
 
 ## 1. When to Use Agents vs. Pipelines
 
-The workflow-vs-agent decision is **design discipline** — see `llm-app-design/references/agents.md` (and the shape table in `llm-app-design/SKILL.md`). The one-line rule: if you can draw the flowchart before running, build a workflow (cheaper, faster, debuggable); reach for an autonomous agent only when the *model* must choose the next step at runtime. Everything below assumes you've decided an agent is warranted and covers the **system-level** concerns of running one.
+The workflow-vs-agent decision is **design discipline** — see `references/llm-app/agents.md` (and the shape table in `references/llm-app/guide.md`). The one-line rule: if you can draw the flowchart before running, build a workflow (cheaper, faster, debuggable); reach for an autonomous agent only when the *model* must choose the next step at runtime. Everything below assumes you've decided an agent is warranted and covers the **system-level** concerns of running one.
 
 ---
 
 ## 2. Agent Patterns
 
-The pattern hierarchy — Augmented LLM → Prompt Chaining → Routing → Parallelization → Orchestrator-Workers → Evaluator-Optimizer → ReAct (plus Plan-and-Execute, Tool-Use-First, Agentic RAG, Sub-Agents) — is **design discipline**, owned by `llm-app-design/references/agents.md`. Start at the top of the ladder; move down only when a simpler pattern can't meet requirements. This file picks up at the infrastructure those patterns need: protocols (§3), durable state (§4-5), multi-agent orchestration (§6), and safety (§8).
+The pattern hierarchy — Augmented LLM → Prompt Chaining → Routing → Parallelization → Orchestrator-Workers → Evaluator-Optimizer → ReAct (plus Plan-and-Execute, Tool-Use-First, Agentic RAG, Sub-Agents) — is **design discipline**, owned by `references/llm-app/agents.md`. Start at the top of the ladder; move down only when a simpler pattern can't meet requirements. This file picks up at the infrastructure those patterns need: protocols (§3), durable state (§4-5), multi-agent orchestration (§6), and safety (§8).
 
 ---
 
@@ -147,7 +147,7 @@ Context engineering is the discipline of designing the full information environm
 
 ### Tool Schema Design
 
-Tool/function-schema design (naming, descriptions, input/output schemas, self-correcting error messages) is **design discipline** — see `llm-app-design/references/tool-use.md`. At the system level what matters is that tool schemas are validated at the trust boundary and scoped to the agent's permissions (§8).
+Tool/function-schema design (naming, descriptions, input/output schemas, self-correcting error messages) is **design discipline** — see `references/llm-app/tool-use.md`. At the system level what matters is that tool schemas are validated at the trust boundary and scoped to the agent's permissions (§8).
 
 ---
 
@@ -239,7 +239,7 @@ Separately, serial chains compound failure multiplicatively (90%-reliable steps:
 
 ### Evaluation (design — pointer)
 
-Agent eval **metrics** (task completion, step efficiency, pass^k, trajectory eval) and **approaches** (offline golden sets, LLM-as-judge calibration, online A/B) are eval design — see `llm-app-design/references/evaluation.md`. The system-level half — what to emit and watch in production — is below.
+Agent eval **metrics** (task completion, step efficiency, pass^k, trajectory eval) and **approaches** (offline golden sets, LLM-as-judge calibration, online A/B) are eval design — see `references/llm-app/evaluation.md`. The system-level half — what to emit and watch in production — is below.
 
 ### What to Trace
 
@@ -259,6 +259,8 @@ Agent eval **metrics** (task completion, step efficiency, pass^k, trajectory eva
 ---
 
 ## 8. Safety & Guardrails
+
+The design-level rails every agent loop needs (hard iteration cap, token and wall-clock budgets, scope checks) are in `references/llm-app/agents.md` § Safety rails, and the tool-authorization rules (authorize server-side from the authenticated context, confirm side-effecting tools, no arbitrary-query tool) in `references/llm-app/tool-use.md` § Security and § Common anti-patterns. This section covers the system-level controls around them.
 
 ### Human-in-the-Loop Spectrum
 
@@ -303,7 +305,7 @@ Same layered defense pattern as general LLM systems — see `references/ai-archi
 
 ```
 Does the task need adaptive, multi-step behavior?
-+-- NO -> Pipeline or prompt chaining (Section 2, patterns 1-4)
++-- NO -> Pipeline or prompt chaining (`references/llm-app/agents.md` § Workflows)
 +-- YES -> Continue below
 
 Can the steps be predetermined?

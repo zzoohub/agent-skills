@@ -128,7 +128,7 @@ Empty states are onboarding opportunities, not dead ends.
 - Drive back to product with specific CTA
 - Be personalized based on actions taken
 
-Specify only the in-app triggers and the in-product action each email should reinforce; for the sequence copy, cadence, and automation itself, use the `email-marketing` skill (it owns onboarding and re-engagement sequences).
+Specify only the in-app triggers and the in-product action each email should reinforce; for the sequence copy, cadence, and automation itself, use the `copywriting` skill's email section (it owns onboarding and re-engagement sequences).
 
 ---
 

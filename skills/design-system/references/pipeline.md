@@ -27,7 +27,7 @@ tokens/                          ← Source (JSON, W3C DTCG format)
          │
          ├──→  web/variables.css       (CSS custom properties)
          ├──→  rn/tokens.ts            (TypeScript const object)
-         ├──→  web/tailwind.config.js  (optional — legacy Tailwind v3 only; v4 reuses variables.css via @theme)
+         ├──→  web/tailwind.config.js  (optional — legacy JS config: Tailwind v3, or v4 via @config; v4 normally reuses variables.css via @theme)
          └──→  figma/tokens.json       (optional — Figma Variables import)
 ```
 
@@ -37,10 +37,12 @@ tokens/                          ← Source (JSON, W3C DTCG format)
 npm install -D style-dictionary
 ```
 
-### Config: `style-dictionary.config.js`
+### Config: `style-dictionary.config.mjs`
+
+Style Dictionary v4+ is ESM-only, so write the config as an ES module (`export default`, `.mjs`) and load the package with `import`, not `require()`. The CLI auto-loads only `./config.json` or `./config.js`; pass any other file name with `--config`.
 
 ```javascript
-module.exports = {
+export default {
   source: ['tokens/**/*.tokens.json'],
   platforms: {
     web: {
@@ -67,7 +69,7 @@ module.exports = {
 ### Build
 
 ```bash
-npx style-dictionary build
+npx style-dictionary build --config style-dictionary.config.mjs
 ```
 
 Run this after any token file change. Add to build script:
@@ -75,7 +77,7 @@ Run this after any token file change. Add to build script:
 ```json
 {
   "scripts": {
-    "tokens:build": "style-dictionary build",
+    "tokens:build": "style-dictionary build --config style-dictionary.config.mjs",
     "dev": "npm run tokens:build && next dev",
     "build": "npm run tokens:build && next build"
   }
@@ -126,12 +128,14 @@ If using Tailwind, add a pipeline output that generates Tailwind theme config fr
 
 For Tailwind v4 (CSS-based), the CSS custom properties output already works — just reference them in `@theme`. No extra pipeline step needed.
 
-For Tailwind v3 (JS config), register a custom format first — `tailwind/theme` is **not** a built-in Style Dictionary format, so referencing it without registering it fails the build with "format not found":
+For a JS Tailwind config (v3, or v4 loading it via `@config`), register a custom format first — `tailwind/theme` is **not** a built-in Style Dictionary format, so referencing it without registering it fails the build with "format not found":
 
 ```javascript
-const StyleDictionary = require('style-dictionary');
+// style-dictionary.config.mjs — ESM (v4+ has no CommonJS entry)
+import StyleDictionary from 'style-dictionary';
 
-// Register the custom format BEFORE building.
+// Register the custom format BEFORE building
+// (or declare it in the config under hooks: { formats: { 'tailwind/theme': fn } }).
 StyleDictionary.registerFormat({
   name: 'tailwind/theme',
   format: ({ dictionary }) => {

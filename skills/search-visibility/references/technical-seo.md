@@ -58,14 +58,14 @@ This is the canonical AI user-agent table for the skill (measurement.md and ai-p
 | Claude-SearchBot | Anthropic | Search indexing for Claude |
 | Claude-User | Anthropic | User-initiated live fetches |
 | ClaudeBot | Anthropic | Model training |
-| Google-Extended | Google | Opt-out *token* for Gemini training (not a fetcher; does NOT affect AI Overviews) |
+| Google-Extended | Google | Opt-out *token* for Gemini training and for grounding in Gemini Apps / Vertex AI (not a fetcher; does NOT affect Search, AI Overviews, or AI Mode) |
 | Applebot-Extended | Apple | Opt-out *token* for Apple Intelligence training |
 | Bytespider | ByteDance | Training |
 | CCBot | Common Crawl | Bulk crawl, commonly used as training data |
 
 Important:
 - For AI-search **citation** (usually the goal), the agents that matter are the search/retrieval bots — OAI-SearchBot, PerplexityBot, Claude-SearchBot, and Googlebot — not the training crawlers (GPTBot, ClaudeBot, CCBot, Bytespider). You can allow OAI-SearchBot for ChatGPT Search visibility while disallowing GPTBot for training.
-- Blocking Google-Extended blocks Gemini training data but does NOT block AI Overviews (those use Googlebot). Google-Extended and Applebot-Extended are opt-out tokens, not crawlers.
+- Blocking Google-Extended blocks Gemini training data and grounding in Gemini Apps / Vertex AI but does NOT block AI Overviews or AI Mode (those use Googlebot). Google-Extended and Applebot-Extended are opt-out tokens, not crawlers.
 - Check your CDN/bot settings as well as robots.txt: some CDNs (e.g., Cloudflare) block AI crawlers by default, so you may be blocking the search bots you want to be cited by (see `ai-platform-optimization.md`). Note also that robots.txt directives do not reliably control every vendor — PerplexityBot has been documented using undeclared stealth crawlers.
 
 **Cloudflare Content Signals Policy (Sept 24 2025)** — distinct from Content Independence Day. A new `Content-Signal:` robots.txt directive lets operators set yes/no per category — **search**, **ai-input** (real-time generative answers), **ai-train** — auto-applied to 3.8M+ managed domains with a recommended default of search=yes, ai-train=no, and **ai-input deliberately left unspecified**. The policy text is CC0 and references EU Directive 2019/790 Article 4 (potential EU legal weight). **Decision:** if you want AI-answer citations, verify `ai-input` is not set to `no` on your managed robots.txt — a managed default can silently opt you out of generative answer engines. Pair with **Pay Per Crawl** (HTTP 402, customers issuing 1B+/day): an engine that won't pay a charged crawler simply won't fetch and therefore can't cite, so decide which *citation* bots to grant free access to, separately from *training* bots you may monetize or block.

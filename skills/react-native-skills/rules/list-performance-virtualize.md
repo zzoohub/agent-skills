@@ -30,7 +30,7 @@ function Feed({ items }: { items: Item[] }) {
 **Correct (virtualizer renders only visible items):**
 
 ```tsx
-import { LegendList } from '@legendapp/list'
+import { LegendList } from '@legendapp/list/react-native' // v3; v2 used '@legendapp/list'
 
 function Feed({ items }: { items: Item[] }) {
   return (
@@ -39,7 +39,6 @@ function Feed({ items }: { items: Item[] }) {
       // if you aren't using React Compiler, wrap these with useCallback
       renderItem={({ item }) => <ItemCard item={item} />}
       keyExtractor={(item) => item.id}
-      estimatedItemSize={80}
     />
   )
 }
@@ -62,6 +61,10 @@ function Feed({ items }: { items: Item[] }) {
   )
 }
 ```
+
+Neither needs a size estimate: FlashList v2 removed `estimatedItemSize`, and in
+Legend List v3 it is only an optional initial-allocation hint (omit it for most
+dynamic-size lists).
 
 Benefits apply to any screen with scrollable content—profiles, settings, feeds,
 search results. Default to virtualization.

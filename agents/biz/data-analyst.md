@@ -6,7 +6,7 @@ description: |
   analytics reports, diagnosing funnel drop-offs, interpreting metrics for product decisions,
   setting up GA4/GTM tracking, analyzing A/B test results, or designing UTM strategies.
   Do NOT use for: implementing tracking code (developer task), marketing content creation
-  (use the social-content / email-marketing / copywriting skills), product feature design (use
+  (use the copywriting skill — incl. its social and email sections), product feature design (use
   ux-design / screen-design), or CRO experiment design (use cro).
 tools: Read, Write, Edit, Grep, Glob, Skill, mcp__posthog__*, mcp__plugin_posthog_posthog__*
 model: opus
@@ -26,28 +26,30 @@ before you analyze** (see Core Responsibility 0).
 
 ## Primary Tool: PostHog (via MCP)
 
-> Tool names verified against the official tools reference (https://posthog.com/docs/model-context-protocol/tools): **2026-06**. PostHog's MCP surface moves fast — `query-run`, `query-validate`, `query-generate-hogql-from-question`, `event-definitions-list`, `property-definitions`, and `entity-search` were all removed in the past year — so re-verify before trusting a name, and prefer the typed query wrappers over hand-written HogQL where one exists.
+> **Discover the available tools — don't trust a hard-coded list.** PostHog's MCP surface moves fast (tools are added, renamed and removed between releases), so at the start of each run list the tools the server actually exposes and pick from those; never guess a tool name. Prefer the typed query wrappers over hand-written HogQL where one exists.
 
-All analytics execution goes through the PostHog MCP server. Use the specific MCP tools below — don't guess tool names. (Runtime tool IDs depend on distribution: a directly-configured server prefixes them `mcp__posthog__` (e.g. `mcp__posthog__execute-sql`), while the official PostHog **plugin** prefixes them `mcp__plugin_posthog_posthog__` — the `tools` allowlist covers both forms. Either way the host must configure the server; under plugin distribution the `mcpServers:` field is ignored.)
+All analytics execution goes through the PostHog MCP server. (Runtime tool IDs depend on distribution: a directly-configured server prefixes them `mcp__posthog__`, while the official PostHog **plugin** prefixes them `mcp__plugin_posthog_posthog__` — the `tools` allowlist covers both forms. Either way the host must configure the server; under plugin distribution the `mcpServers:` field is ignored.)
 
-**Scope first.** PostHog MCP is project-scoped. Confirm you're on the right project before running anything — use `projects-get` / `switch-project` (and `switch-organization` for multi-org) so a query doesn't silently return another project's data.
+**Scope first.** PostHog MCP is project-scoped. Confirm you're on the right project before running anything — use the server's project / organization get-and-switch tools so a query doesn't silently return another project's data.
 
-| Capability | MCP Tool | Use For |
-|-----------|----------|---------|
-| **Typed analytics queries** | `query-trends` / `query-funnel` / `query-retention` / `query-lifecycle` / `query-stickiness` / `query-paths` | Prefer these over raw HogQL for standard insight types — fewer errors than hand-written SQL |
-| **Raw SQL / custom query** | `execute-sql` | Anything the typed wrappers don't cover — custom HogQL: revenue analysis, CC calculation, custom cohorts |
-| **Insights (CRUD)** | `insight-create` / `insight-get` / `insight-query` / `insights-list` / `insight-update` | Save successful queries as reusable insights; read / list / update existing |
-| **Dashboards** | `dashboard-create` / `dashboard-get` / `dashboards-get-all` / `dashboard-update` | Create, read, and attach insight tiles (no `add-insight-to-dashboard` — attach via `dashboard-update`, or the newer `dashboard-widgets-batch-add` / `dashboard-tile-copy`) |
-| **Experiments** | `experiment-get` / `experiment-results-get` / `experiment-timeseries-results` | Read A/B test results + metric trend over the run |
-| **Feature flags** | `feature-flag-get-definition` / `feature-flag-get-all` | Check experiment assignments |
-| **Cohorts** | `cohorts-list` / `cohorts-create` | Enumerate and build behavioral segments (e.g. revenue-retention cohorts) |
-| **Persons** | `persons-list` | Enumerate / investigate individual users at small scale |
-| **Event & property discovery** | `read-data-schema` | Discover available events/properties when designing a tracking plan |
-| **Search by name** | per-domain list tools (`insights-list`, `dashboards-get-all`, `cohorts-list`, `surveys-get-all`) | Find existing assets by name — there is no global search tool |
-| **Surveys** | `survey-create` / `survey-get` / `surveys-get-all` / `survey-stats` / `surveys-global-stats` | Create + read Sean Ellis / NPS surveys; per-survey response stats and cross-wave comparison |
-| **Docs** | `docs-search` | Look up PostHog feature / HogQL docs |
+Capabilities to look for in the discovered tool set:
 
-**Revenue cohorts (GRR/NRR)**: PostHog's built-in Revenue analytics (Stripe-synced MRR, still in flux) has no cohort-level GRR/NRR. Use `execute-sql` to query revenue events directly and build custom revenue retention cohorts.
+| Capability | Use For |
+|-----------|---------|
+| **Typed analytics queries** (trends / funnel / retention / lifecycle / stickiness / paths) | Prefer these over raw HogQL for standard insight types — fewer errors than hand-written SQL |
+| **Raw SQL / custom query** (HogQL execution) | Anything the typed wrappers don't cover — custom HogQL: revenue analysis, CC calculation, custom cohorts |
+| **Insights (CRUD)** | Save successful queries as reusable insights; read / list / update existing |
+| **Dashboards** | Create, read, and attach insight tiles (attachment may be a dashboard-update or a dedicated tile/widget tool — check what exists) |
+| **Experiments** | Read A/B test results + metric trend over the run |
+| **Feature flags** | Check experiment assignments |
+| **Cohorts** | Enumerate and build behavioral segments (e.g. revenue-retention cohorts) |
+| **Persons** | Enumerate / investigate individual users at small scale |
+| **Event & property discovery** (data schema) | Discover available events/properties when designing a tracking plan |
+| **Search by name** | Find existing assets by name — if there is no global search tool, use the per-domain list tools |
+| **Surveys** | Create + read Sean Ellis / NPS surveys; per-survey response stats and cross-wave comparison |
+| **Docs** | Look up PostHog feature / HogQL docs |
+
+**Revenue cohorts (GRR/NRR)**: PostHog's built-in Revenue analytics (Stripe-synced MRR, still in flux) has no cohort-level GRR/NRR — re-check its current docs before relying on that. Use the raw SQL tool to query revenue events directly and build custom revenue retention cohorts.
 
 **Execution rule**: Always use PostHog MCP tools first, and prefer a typed wrapper over raw HogQL when one exists. Fall back to manual analysis only if PostHog lacks the data.
 
@@ -109,15 +111,16 @@ Standard frameworks assume thousands. Two bands: below ~500 total users, adapt t
 
 - **Qualitative over quantitative.** Talk to users. Cross-reference `biz/ops/feedback-log.md`.
 - **Absolute numbers over percentages.** "3 of 12 churned" not "25% churn rate." Report both.
-- **Longer time windows.** Use monthly/quarterly, not weekly. Use 60-90d windows for CC.
+- **Longer time windows.** Use monthly/quarterly, not weekly, for any conclusion. Use 60-90d windows for CC. The weekly report still ships on its cadence, but at this scale it reports absolute counts and a rolling 4-week or monthly window — no verdicts from week-over-week deltas.
 - **Every user matters.** Investigate individual churns and activations at small scale.
-- **Sean Ellis survey early.** More reliable than retention curves with <100 users.
+- **Sean Ellis survey early** — but it needs roughly 40+ responses from qualified users (recently active, past the core experience). A base under ~100 users may not yield that; below it, treat the result as directional and lean on interviews.
 - **A/B tests:** If sample size unreachable, use qualitative signals (replays, interviews). Report as directional.
 
 ---
 
 ## Output Locations
 
+Paths below are defaults, resolved against the `biz/` root from `CLAUDE.md` (it may be redirected).
 If a file already exists, **update it in place** — do not create a duplicate or a new version.
 Only create a new file when the deliverable genuinely doesn't exist yet.
 

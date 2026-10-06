@@ -51,8 +51,9 @@ CREATE INDEX idx_user_email ON user_accounts (email);
 CREATE INDEX idx_orders_user_status ON orders (user_id, status);
 -- ✅ WHERE user_id = 1
 -- ✅ WHERE user_id = 1 AND status = 'pending'
--- ❌ WHERE status = 'pending' (without user_id, index is not used)
+-- ❌ WHERE status = 'pending' (without user_id: not usable as an index search on PG ≤17)
 ```
+PG18+ adds B-tree **skip scan**: the planner can use this index for `WHERE status = 'pending'` by probing each distinct leading `user_id` — worthwhile only when the skipped leading column has few distinct values. Design order for the real queries anyway; don't count on skip scan for a high-cardinality leading column.
 
 ### Hash (equality-only)
 Hash supports only equality (=). Crash-safe since PG10, but B-tree is still the default even for equality. Hash indexes cannot be UNIQUE, multicolumn, used for sorting/ranges, or used for index-only scans (they store only the hash, not the value). Consider hash only for very large keys where smaller index size matters; otherwise prefer B-tree.
@@ -169,15 +170,23 @@ CREATE INDEX idx_orders_user_date ON orders (user_id, created_at);
 ```sql
 -- Find unused indexes
 SELECT
-    schemaname, relname AS tablename, indexrelname AS indexname,
-    idx_scan AS times_used,
-    pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
-FROM pg_stat_user_indexes
-WHERE idx_scan = 0
-    AND indexrelid NOT IN (
+    s.schemaname, s.relname AS tablename, s.indexrelname AS indexname,
+    s.idx_scan AS times_used,
+    pg_size_pretty(pg_relation_size(s.indexrelid)) AS index_size
+FROM pg_stat_user_indexes s
+JOIN pg_index ix ON ix.indexrelid = s.indexrelid
+-- idx_scan is cumulative since the last stats reset — trust 0 only over a
+-- representative window (PG16+ has last_idx_scan for recency).
+WHERE s.idx_scan = 0
+    -- never drop what enforces uniqueness or feeds logical replication
+    -- (standalone UNIQUE indexes have no pg_constraint row):
+    AND NOT ix.indisunique
+    AND NOT ix.indisprimary
+    AND NOT ix.indisreplident
+    AND s.indexrelid NOT IN (
         SELECT conindid FROM pg_constraint WHERE contype IN ('p', 'u')
     )
-ORDER BY pg_relation_size(indexrelid) DESC;
+ORDER BY pg_relation_size(s.indexrelid) DESC;
 ```
 
 ### Rebuild bloated indexes
@@ -187,7 +196,7 @@ REINDEX INDEX CONCURRENTLY idx_orders_created_at;
 
 -- Or create new + swap
 CREATE INDEX CONCURRENTLY idx_orders_created_at_new ON orders (created_at);
-DROP INDEX CONCURRENTLY idx_orders_created_at;
+DROP INDEX CONCURRENTLY idx_orders_created_at;  -- plain DROP takes ACCESS EXCLUSIVE and queues traffic
 ALTER INDEX idx_orders_created_at_new RENAME TO idx_orders_created_at;
 -- REINDEX INDEX CONCURRENTLY (PG12+) is the preferred one-step path. All CONCURRENTLY index ops cannot run inside a transaction block, and a failed run can leave an INVALID index that must be dropped and recreated.
 ```
@@ -206,7 +215,7 @@ ORDER BY pg_relation_size(indexrelid) DESC;
 1. **Indexing every column** → degrades INSERT/UPDATE/DELETE, wastes storage
 2. **Regular index on low-selectivity columns** → use Partial Index for Boolean/status
 3. **Leaving unused indexes** → check `pg_stat_user_indexes` regularly
-4. **Ignoring composite index column order** → leftmost prefix rule violation
+4. **Ignoring composite index column order** → leftmost prefix rule violation (PG18 skip scan softens this only for a low-cardinality leading column)
 5. **Function in WHERE without Expression Index**
    ```sql
    -- Index is ignored

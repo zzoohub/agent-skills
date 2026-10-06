@@ -56,7 +56,7 @@ This is a fast-moving domain. The architectural patterns and principles in this 
 
 ## WebGPU-First Setup
 
-Import from `three/webgpu` instead of `three`. This gives WebGPU rendering with automatic WebGL 2 fallback. WebGPU has shipped in every major engine (Chromium, Safari, and — as of early 2026 — Firefox on Windows and macOS (Apple Silicon)), but real-world coverage is still partial: Firefox on Linux/Android and older mobile devices have not caught up. Treat the **WebGL 2 fallback path as the actual guarantee**, not a coverage percentage — design and test for both backends, and feature-detect before assuming WebGPU (see below).
+Import from `three/webgpu` instead of `three`. This gives WebGPU rendering with automatic WebGL 2 fallback. WebGPU has shipped in every major engine (Chromium, Safari 26, and Firefox — Windows since 141, all macOS since 147), but real-world coverage is still partial (as of 2026-10): Firefox on Linux is Nightly-only, Firefox on Android is behind a flag, and older/low-end mobile GPUs have not caught up. Treat the **WebGL 2 fallback path as the actual guarantee**, not a coverage percentage — design and test for both backends, and feature-detect before assuming WebGPU (see below).
 
 ```typescript
 import * as THREE from 'three/webgpu'

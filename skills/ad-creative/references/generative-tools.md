@@ -25,10 +25,11 @@ AI tools for generating ad images, videos, and audio at scale.
 | **Flux (Black Forest Labs)** | Photorealistic, text-in-image | Very High | Medium |
 | **Ideogram** | Text rendering, logos | High (text) | Medium |
 | **Midjourney** | Artistic, lifestyle imagery | Very High | $10-120/mo (Basic→Mega) |
-| **GPT Image** (OpenAI, `gpt-image-1`) | Conceptual, illustrative, strong in-image text | High | API pricing |
+| **GPT Image** (OpenAI, `gpt-image-2` or newer) | Conceptual, illustrative, strong in-image text | High | API pricing |
 
-> Note: DALL·E 3 was removed from the OpenAI API on **May 12, 2026** — use GPT Image
-> (`gpt-image-1` / GPT Image 1.5) instead.
+> Note: DALL·E 3 was removed from the OpenAI API on **May 12, 2026**, and `gpt-image-1.5` /
+> `gpt-image-1-mini` shut down on **Dec 1, 2026** — use `gpt-image-2` or a newer GPT Image
+> model (check OpenAI's deprecations page for the current recommended ID).
 
 ### Image Generation Workflow
 
@@ -70,12 +71,12 @@ AI tools for generating ad images, videos, and audio at scale.
 | **Veo (Google)** | Realistic scenes, product demos | Up to 8s/clip | Very High |
 | **Kling 3.0** | Motion, action sequences | Up to 15s native (longer via Extend) | Very High |
 | **Runway Gen-4 / Gen-4.5** | Creative control, world/character consistency | ~10s/clip | High |
-| **Sora 2 (OpenAI)** | Complex scenes, narrative | ~15-25s native (extendable) | Very High |
 | **Seedance 2.0** (ByteDance) | Narrative/cinematic video + synced audio | Up to 15s | Very High |
 | **Higgsfield** | Character-driven, social style | Up to 10s | Medium-High |
 
 > Durations are single-clip native limits as of mid-2026 and move fast — verify against
-> the vendor before quoting to a client. Sora's Videos API is scheduled to sunset Sep 2026.
+> the vendor before quoting to a client. OpenAI's Videos API and all Sora 2 models were shut
+> down on Sep 24, 2026, with no API replacement named (as of 2026-10).
 
 ### Video Ad Workflow
 
@@ -103,7 +104,7 @@ AI tools for generating ad images, videos, and audio at scale.
 | Tool | Best For | Features |
 |------|----------|----------|
 | **ElevenLabs** | Most natural TTS, voice cloning | 70+ languages (Eleven v3), cloning, dubbing |
-| **OpenAI TTS** | Simple voiceover, API integration | 11+ steerable voices (`gpt-4o-mini-tts`), streaming, affordable |
+| **OpenAI TTS** | Simple voiceover, API integration | 13 built-in steerable voices (`gpt-4o-mini-tts`), streaming, affordable |
 | **Cartesia** | Low-latency, real-time | Fast generation, emotion control |
 | **Murf** | Commercial voiceover | Brand voice consistency |
 

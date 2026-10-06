@@ -352,7 +352,7 @@ For multi-threaded WASM via Web Workers + SharedArrayBuffer:
 
 ```toml
 [dependencies]
-wasm-bindgen-rayon = "1.2"
+wasm-bindgen-rayon = "1.3"
 rayon = "1.10"
 ```
 
@@ -381,7 +381,7 @@ Build with nightly + atomics. This needs the `rust-src` component, and the exact
 ```bash
 rustup component add rust-src --toolchain nightly
 
-RUSTFLAGS='-C target-feature=+atomics,+bulk-memory,+mutable-globals' \
+RUSTFLAGS='-C target-feature=+atomics,+bulk-memory' \
   rustup run nightly wasm-pack build --target web -- -Z build-std=panic_abort,std
 ```
 

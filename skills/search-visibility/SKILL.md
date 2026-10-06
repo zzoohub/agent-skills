@@ -11,8 +11,8 @@ description: |
   "People Also Ask", "zero-click", "FAQ schema", "direct answers", "schema
   markup", "structured data", "llms.txt", "AI Overviews", "AI Mode", "ChatGPT
   citations", "Perplexity", "Core Web Vitals", "hreflang".
-  Do NOT use for: social media content (use social-content), email content (use
-  email-marketing), ad copy (use ad-creative), UX copy or microcopy (use
+  Do NOT use for: social media content (use copywriting — social), email content
+  (use copywriting — email), ad copy (use ad-creative), UX copy or microcopy (use
   copywriting), or competitor comparison page formats (use competitor-pages).
   This skill only adds the SEO/AEO/GEO layer on top of those.
 ---
@@ -84,7 +84,7 @@ Key focus areas:
 2. **Citation Triggers**: Patterns that increase the probability of being cited in AI-generated answers (citing sources and adding statistics are the highest-leverage — see the GEO study in the reference)
 3. **Monitoring & Measurement**: Tracking brand mentions and citations across AI platforms (Profound, Otterly, Peec AI, ZipTie)
 4. **Content Structure for AI**: Beyond extractability — how to format content that AI systems prefer to reference
-5. **Agentic Commerce**: For transactable brands, being *purchasable* by AI shopping agents (machine-readable product feeds + agentic-checkout protocols — OpenAI/Stripe ACP, Google UCP) is a workstream distinct from citation GEO
+5. **Agentic Commerce**: For transactable brands, being *purchasable* by AI shopping agents (machine-readable product feeds + agentic-checkout protocols — e.g. Google UCP; ChatGPT's ACP-based Instant Checkout was discontinued in Mar 2026) is a workstream distinct from citation GEO
 6. **Non-English / Korea**: Naver's AI Briefing draws most citations from Naver's own walled-garden UGC, so Korean GEO needs an in-ecosystem playbook; machine-translated mirrors do not inherit citations
 
 ### Content Type Mapping (Detail: `references/content-type-mapping.md`)

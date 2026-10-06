@@ -55,7 +55,7 @@ Static schedule (**soft declines only** — hard declines skip retries and go st
 
 The terminal hard-cancel (day 10) lands **after** the final dunning email (day 10), so the retry track and the email track below stay on one clock. **Trigger dunning emails off retry/billing-state events** (e.g., "retry 3 failed", "entering grace", "grace expired → cancel"), not a fixed calendar, so the two never drift.
 
-**ML-driven retry (preferred for >$10k MRR):** Stripe Smart Retries (within Stripe Billing), Stripe Authorization Boost (across Stripe, which includes Adaptive Acceptance), Adyen Auto Rescue (part of RevenueAccelerate), or churn-recovery tools (Churnkey, Baremetrics Recover, Stunning) pick retry timing per card / per issuer / per failure code. Lifts recovery 10-30% over static schedules in industry benchmarks.
+**ML-driven retry (preferred for >$10k MRR):** Stripe Smart Retries (within Stripe Billing; Stripe's recommended default policy is 8 tries within 2 weeks, configurable from 1 week to 2 months), Stripe Authorization Boost (across Stripe, which includes Adaptive Acceptance), Adyen Auto Rescue (part of RevenueAccelerate), or churn-recovery tools (Churnkey, Baremetrics Recover, Stunning) pick retry timing per card / per issuer / per failure code. Lifts recovery 10-30% over static schedules in industry benchmarks. **The day-10 clock above is for the static schedule.** With ML retry, set the grace period and hard cancel to the end of the configured retry window (e.g. day 14 on Stripe's default) and stretch the email track to match — never hard-cancel while scheduled retries are still pending.
 
 ### SCA / 3DS notes (EU enforced end-2020 through 2021, phased by country; UK fully enforced from 14 March 2022)
 

@@ -376,7 +376,7 @@ Partitioning/sharding-key choice and read-replica execution are a *schema* conce
 
 | Concern | Guidance |
 |---|---|
-| Chunking | Semantic chunking with 10-20% overlap. Start at ~400-512 tokens; size up to 512-1024 for long-form. Architecture slice (storage sizing consequences) in `ai-architecture.md` §3; per-document-type sizing is retrieval design — see an LLM-app-design capability (e.g. the `llm-app-design` skill's RAG reference), if available. |
+| Chunking | Semantic chunking with 10-20% overlap. Start at ~400-512 tokens; size up to 512-1024 for long-form. Architecture slice (storage sizing consequences) in `ai-architecture.md` §3; per-document-type sizing is retrieval design — see `references/llm-app/rag.md` § Indexing: chunking. |
 | Search | Hybrid search (dense vectors + BM25 keyword) outperforms either alone. |
 | Context window | Budget tokens: system prompt + retrieved context + conversation history + output must fit model limit. Track and alert on overflow. |
 
@@ -412,9 +412,9 @@ How a release reaches production is an architectural decision with a deployabili
 - **Rollout shape**: rolling / blue-green / canary (progressive %). Default to canary for user-facing services with real traffic; blue-green when you need instant total rollback.
 - **Release ≠ deploy**: ship code dark and gate exposure with feature flags (see `system-architecture.md` § Feature Flags) so deploy risk and release risk decouple.
 - **Rollback / forward-fix trigger**: the SLO condition that auto-aborts a rollout, and whether recovery is rollback or roll-forward.
-- **Schema-during-deploy**: expand-contract ordering so a migration and the code needing it ship safely under live traffic (execution is owned by a migration capability such as the `postgresql` skill, if available).
+- **Schema-during-deploy**: expand-contract ordering so a migration and the code needing it ship safely under live traffic (execution is owned by a migration capability such as the `database-design` skill's PostgreSQL operations, if available).
 
-This stage decides the strategy and records the ADR; the lock-safe **execution** of a release and rollback is a release-time concern (the caller's deploy step; lock-safe migration execution via the postgresql skill, if available) — define the boundary, don't do its job here.
+This stage decides the strategy and records the ADR; the lock-safe **execution** of a release and rollback is a release-time concern (the caller's deploy step; lock-safe migration execution via the database-design skill's PostgreSQL operations, if available) — define the boundary, don't do its job here.
 
 ### Scaling Ladder
 
@@ -511,7 +511,7 @@ Read `references/reliability-patterns.md` for transaction boundaries, idempotenc
 
 ### Security
 
-**Surface the requirement first (threat modeling).** Before listing controls, run a lightweight **STRIDE** pass over the C4 boundary diagram and the Key Data Flows: for each trust-boundary-crossing flow, ask which of Spoofing / Tampering / Repudiation / Information disclosure / Denial-of-service / Elevation-of-privilege applies, and promote any material finding back into the Stage-2 utility tree as a security ASR (filter #8) so it hits the ATAM gate like every other driver. Canon: Shostack (STRIDE, DFD trust boundaries); Saltzer-Schroeder (fail-safe defaults, least privilege, complete mediation) as the generative lens the checklist below only echoes. Hand the per-diff vulnerability/OWASP list to a security-review capability (e.g. the `security-checklists` skill, if available) — don't inline it here.
+**Surface the requirement first (threat modeling).** Before listing controls, run a lightweight **STRIDE** pass over the C4 boundary diagram and the Key Data Flows: for each trust-boundary-crossing flow, ask which of Spoofing / Tampering / Repudiation / Information disclosure / Denial-of-service / Elevation-of-privilege applies, and promote any material finding back into the Stage-2 utility tree as a security ASR (filter #8) so it hits the ATAM gate like every other driver. Canon: Shostack (STRIDE, DFD trust boundaries); Saltzer-Schroeder (fail-safe defaults, least privilege, complete mediation) as the generative lens the checklist below only echoes. Hand the per-diff vulnerability/OWASP list to a security-review capability (e.g. the `review-checklists` skill's security pass, if available) — don't inline it here.
 
 Defense in depth — never rely on a single security control:
 
@@ -526,13 +526,13 @@ Principle of least privilege: each component gets only the permissions it needs.
 
 ### AI Security
 
-OWASP Top 10 for LLM Applications (2025, from the OWASP Gen AI Security Project) awareness. 3-layer defense:
+OWASP Top 10 for LLM Applications (2026 edition, Aug 2026, from the OWASP GenAI Security Project — Excessive Agency rose to LLM03) awareness. 3-layer defense:
 
 1. **Input classification**: Detect and reject prompt injection, PII in prompts
 2. **RAG trust boundary**: Treat retrieved context as untrusted — validate, sanitize, attribute
 3. **Output validation**: Schema validation, content filtering, hallucination detection
 
-Read `references/ai-architecture.md` guardrails section.
+Read `references/ai-architecture.md` guardrails section; for per-feature controls (tool authorization, untrusted-input handling), `references/llm-app/tool-use.md` § Security and `references/llm-app/production.md` § Security and privacy.
 
 ### Resilience
 

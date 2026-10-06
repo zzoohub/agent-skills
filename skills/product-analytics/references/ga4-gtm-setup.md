@@ -56,11 +56,14 @@ If you're not running Google Ads, the only reason to add GA4 is Search Console i
 4. **Mark key events** — toggle "Mark as key event" for `signup_completed`, `purchase` events (GA4 renamed "conversions" → "key events" in March 2024; "conversions" now means Google-Ads-side conversions only)
 5. **Link Search Console** — GA4 Admin > Product links > Search Console
 
-For SPAs (Next.js, React), track page views on route change:
+For SPAs (Next.js, React), the default is Enhanced Measurement's **"Page changes based on browser history events"** (on by default), which sends a `page_view` on each history change. Only if that misses your routing, turn it off and send the page view manually on route change (`page_path` in `config` is the Universal-Analytics-era pattern — GA4 reads `page_location`):
 ```ts
 export function trackPageView(url: string) {
   if (typeof window.gtag === 'function') {
-    window.gtag('config', process.env.NEXT_PUBLIC_GA4_ID!, { page_path: url });
+    window.gtag('event', 'page_view', {
+      page_location: new URL(url, window.location.origin).href,
+      page_title: document.title,
+    });
   }
 }
 ```
@@ -202,6 +205,6 @@ Implementation:
 
 Why: moves tag execution off the client (better Core Web Vitals), bypasses ITP/ETP cookie limits, and gives you a server-side data-layer you control before forwarding to GA4/Ads/Meta CAPI/etc.
 
-Setup: deploy a Server Container (App Engine, Cloud Run, or self-host) → point your subdomain (e.g., `gtm.yourapp.com`) at it → switch your client GTM to send to the server container instead of directly to Google.
+Setup: deploy a Server Container (Cloud Run — the default for GTM's automatic provisioning; App Engine is the legacy option; or self-host) → point your subdomain (e.g., `gtm.yourapp.com`) at it → switch your client GTM to send to the server container instead of directly to Google.
 
 Pairs naturally with **Meta Conversions API (CAPI)** for ad attribution recovery.

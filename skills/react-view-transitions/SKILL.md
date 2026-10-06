@@ -46,8 +46,8 @@ Reserve directional slides for hierarchical navigation (list → detail) and ord
 ## Availability
 
 - **Next.js:** Do **not** install `react@canary` — the App Router already bundles React canary internally. `ViewTransition` works out of the box. `npm ls react` may show a stable-looking version; this is expected.
-- **Without Next.js:** Install `react@canary react-dom@canary` (`ViewTransition` is not in stable React).
-- Browser support: Chromium 111+, Firefox 144+, Safari 18.2+. Graceful degradation on unsupported browsers.
+- **Without Next.js:** `<ViewTransition>` is stable since React 19.3 (released 2026-09-09) — install `react@^19.3 react-dom@^19.3` and `import { ViewTransition } from 'react'`. On React < 19.3 it exists only in `react@canary` / `react-dom@canary`.
+- Browser support: same-document view transitions ship in Chromium 111+, Firefox 144+, Safari 18.0+ (18.2 added cross-document). React's transition types and `view-transition-class` need Chromium 125+ and recent Safari/Firefox. Graceful degradation on unsupported browsers.
 
 ---
 
@@ -180,7 +180,7 @@ export function DirectionalTransition({ children }: { children: React.ReactNode 
 
 ### `router.back()` and Browser Back Button
 
-`router.back()` and the browser's back/forward buttons do **not** trigger view transitions (`popstate` is synchronous, incompatible with `startViewTransition`). Use `router.push()` with an explicit URL instead.
+React skips animations for transitions started from the legacy `popstate` event (it must finish synchronously for scroll/form restoration). Routers built on the Navigation API can animate back/forward — current Next.js App Router does — but `router.back()` and the browser's back/forward buttons carry **no transition types**, so type-keyed animations (directional slides) resolve to their `default` and don't play; untyped shared-element morphs still apply. For typed animations, use `router.push()` with an explicit URL.
 
 ### Types and Suspense
 
@@ -295,13 +295,13 @@ They coexist because they fire at different moments. `default="none"` on both pr
 
 ### Nested VT Limitation
 
-When a parent VT exits, nested VTs inside it do **not** fire their own enter/exit — only the outermost VT animates. Per-item staggered animations during page navigation are not possible today. See [react#36135](https://github.com/facebook/react/pull/36135) for an experimental opt-in fix.
+When a parent VT exits, nested VTs inside it do **not** fire their own enter/exit — only the outermost VT animates. Per-item staggered animations during page navigation are not possible in stable React. (The opt-in proposal [react#36135](https://github.com/facebook/react/pull/36135) was closed unmerged; its successor [react#36690](https://github.com/facebook/react/pull/36690) adds `parentEnter`/`parentExit` props behind an experimental flag only — as of 2026-10, verify against the current React release notes before relying on it.)
 
 ---
 
 ## Next.js Integration
 
-For Next.js setup (`experimental.viewTransition` flag, `transitionTypes` prop on `next/link`, App Router patterns, Server Components), see `references/nextjs.md`.
+For Next.js setup (no config flag needed in current versions, `transitionTypes` prop on `next/link` and `router.push`/`replace`, App Router patterns, Server Components), see `references/nextjs.md`.
 
 ---
 

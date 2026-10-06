@@ -1,28 +1,29 @@
 ---
 name: software-architecture
 description: |
-  Produce a full Software Architecture Design Document from a PRD: context, system
-  design, decision records, and D2 diagrams.
+  Produce a full Software Architecture Design Document from a PRD (context, system
+  design, ADRs, D2 diagrams), or design one AI/LLM feature on a new or existing
+  system (AI Feature Mode).
   Use when: "design doc", "software architecture", "system design", "architect
-  this", "tech spec", "how should I build this", "what's the right architecture
-  for", "help me plan the backend", "ASR", "utility tree", "domain model", "ATAM",
-  "event storming", or a PRD needs technical architecture for a NEW project. Also
-  trigger on AI/LLM features (RAG, agents, chat, copilot, semantic search). Also
-  use to "review", "audit", or "diagnose" an EXISTING architecture, read-only (see
-  Review / Diagnose Mode).
-  Do NOT use for: a single architectural decision on an existing system (use
-  arch-decision); table schemas, columns, indexes, or migrations (use
-  database-design); folder structure, code conventions, or linting (CLAUDE.md);
-  concrete UI component trees or page layouts (use ux-design + design-system);
-  implementation-level LLM details like prompts, tool schemas, or evals (use
-  llm-app-design).
+  this", "tech spec", "how should I build this", "help me plan the backend",
+  "ASR", "utility tree", "domain model", "ATAM", "event storming", or a PRD needs
+  architecture for a NEW project. Also AI/LLM features (RAG, agents, chat,
+  copilot, semantic search) and their design — prompt engineering, tool use,
+  agents vs workflows, evals, LLM-as-judge, LLM cost/latency. Also "review",
+  "audit", or "diagnose" an EXISTING architecture, read-only.
+  Do NOT use for: one decision on an existing system (use arch-decision); table
+  schemas, indexes, or migrations (use database-design); folder structure or
+  code conventions (CLAUDE.md); UI component trees or page layouts (use
+  ux-design + design-system); provider SDK mechanics (use claude-api for
+  Anthropic); or ML training.
 ---
 
 # Software Architecture — Full Design Pass
 
 Produces the **full architecture documents** for a new system from a PRD:
 context, system design, decision records, and risks. Use this skill at the start of a
-new project.
+new project — or, in AI Feature Mode, to design a single AI/LLM feature on a new or
+existing system.
 
 ## Premise
 
@@ -39,12 +40,13 @@ Great architecture documents are **decision records, not implementation manuals*
 
 ---
 
-## Two Modes
+## Three Modes
 
-- **Build Mode (default)** — produce or extend the full architecture from a PRD via the Design Flow below. This is everything in this file except the Review / Diagnose Mode section.
+- **Build Mode (default)** — produce or extend the full architecture from a PRD via the Design Flow below. This is everything in this file except the Review / Diagnose Mode and AI Feature Mode sections.
 - **Review / Diagnose Mode** — a **read-only** audit of an *existing* architecture. Triggered when the architecture context doc already exists (default `docs/arch/context.md`; caller may redirect) and the user asks to review / audit / diagnose rather than build. It critiques the docs and never regenerates the context or system doc. Jump to the [Review / Diagnose Mode](#review--diagnose-mode) section and follow it instead of the Design Flow.
+- **AI Feature Mode** — design **one** AI/LLM feature (chatbot, copilot, agent, RAG, classification, extraction): whether to use an LLM at all, the shape (single prompt / RAG / tool use / workflow / agent), prompt and output contract, failure path, eval set, and production envelope. Runs on a new **or existing** system and writes only that feature's doc. Jump to the [AI Feature Mode](#ai-feature-mode) section.
 
-**Route by file state.** The greenfield sentinel is the context doc (default `docs/arch/context.md`) — not the `docs/arch/` directory, which a database-design pass may have created on its own. No context doc → greenfield: Build Mode from the PRD. Context doc exists → a single decision goes to a standalone-ADR capability (the `arch-decision` skill, if available), schema / index / migration design to the `database-design` skill, an LLM/AI feature to the `llm-app-design` skill (fine on an existing system), and a review / audit to Review / Diagnose Mode. A request that spans scopes ("design the system **and** the database") runs in dependency order — this skill → `database-design` → `llm-app-design` — with one report at the end.
+**Route by file state.** The greenfield sentinel is the context doc (default `docs/arch/context.md`) — not the `docs/arch/` directory, which a database-design pass may have created on its own. No context doc → greenfield: Build Mode from the PRD. Context doc exists → a single decision goes to a standalone-ADR capability (the `arch-decision` skill, if available), schema / index / migration design to the `database-design` skill, an LLM/AI feature to AI Feature Mode (fine on an existing system), and a review / audit to Review / Diagnose Mode. A request that spans scopes ("design the system **and** the database") runs in dependency order — Build Mode → `database-design` → AI Feature Mode — with one report at the end.
 
 **Ownership.** This skill writes only under the architecture docs root (default `docs/arch/`). Read the PRD and brief; never edit them or any other owner's docs — a missing or wrong input becomes a gap in your summary.
 
@@ -144,6 +146,7 @@ The design flow produces these output files (default paths; the caller may redir
 | `docs/arch/system.md` | 4-8 | How — patterns, components, data, deployment, cross-cutting | `templates/system.md` |
 | `docs/arch/adr/ADR-NNN-{slug}.md` | All | One decision per file — context, options, decision, tradeoffs | `templates/adr.md` |
 | `docs/arch/risks.md` | 9 | Risk register, tech debt, open questions | `templates/risks.md` |
+| `docs/arch/ai-features/{feature}.md` | AI Feature Mode | One AI/LLM feature — task, shape, context, output contract, failure path, evals, envelope | [AI Feature Mode](#ai-feature-mode) § Output (≤200 lines) |
 
 Read the template files before writing output. Follow their structure.
 
@@ -267,21 +270,62 @@ Existing Schema" checklist, if available) rather than re-deriving criteria here.
 
 ---
 
+## AI Feature Mode
+
+Use this mode to design **one AI/LLM feature** — a chatbot, copilot, agent, RAG,
+classification, or extraction feature — or to decide whether to use an LLM at all,
+choose an agent vs a fixed workflow, or set up evals. It is provider-neutral design
+and operational planning, not SDK code.
+
+**Works on a new or existing system** — one feature per run, written to the AI feature
+doc (default `docs/arch/ai-features/{feature}.md`; caller may redirect). An existing
+context doc does **not** route this request to `arch-decision`. When the same request
+also needs a system design or schema, run those first (Build Mode, then the
+`database-design` skill, if available). Writes only that feature file; reads the PRD
+and other architecture docs but never edits them — a missing input becomes a gap in
+your summary.
+
+**Method**: follow `references/llm-app/guide.md` — the do-you-need-an-LLM test, the
+four layers, the shape table, and the 8-step design flow (inputs: the AI ASRs in
+`context.md` §3, or ask the caller for the cost ceiling and tolerated error rate). It
+links the shape-specific references under `references/llm-app/`; the system-level
+counterparts are `references/ai-architecture.md` and `references/ai-agents.md`.
+
+### Output
+
+Save the LLM feature design to `docs/arch/ai-features/{feature}.md` (default). Each file is one feature; reference the originating PRD feature in `docs/prd/features/{feature}.md` if applicable.
+
+Structure (≤200 lines):
+1. **Task** — one-sentence X → Y → Z
+2. **Shape** — single-prompt / RAG / tool use / agent / multi-agent (from the shape table in `references/llm-app/guide.md`)
+3. **Context** — system prompt outline, retrieval sources, tool list
+4. **Output contract** — structured (JSON schema) or free-form; validation strategy
+5. **Failure path** — wrong / unsure / down: validation depth, abstain & escalation thresholds, fallback (from design-flow step 5)
+6. **Eval set** — link to golden examples, metric, judging strategy, and baseline pass rate (record whether the hand-written examples currently pass — closes design-flow step 7)
+7. **Production envelope** — tokens/request and $/month vs the cost ceiling, latency target, caching, rate limits, observability
+8. **Open questions / risks**
+
+**Report back** files created/updated · the chosen shape and model tier · the
+envelope numbers vs the cost ceiling · open questions for the caller to relay.
+
+---
+
 ## Reference Files
 
 ### Reading Order
 
-**Always read**: `design-flow.md` + all four templates.
+**Always read** (Build and Review modes): `design-flow.md` + all four templates.
 
 **Read based on Stage 0 findings**:
 - Pattern selection -> `system-architecture.md`, `service-architecture.md`
 - Technology selection (Stage 5, Component Design) -> `house-stack.md` (opinionated house stack; deviations need an ADR)
 - AI features in PRD -> `ai-architecture.md` (+ `ai-agents.md` if agents needed)
+- AI Feature Mode -> `llm-app/guide.md`, then the `llm-app/` shape references it names
 - Cross-cutting -> `operational-patterns.md`
 - Writes that must not be lost / duplicated / interleaved -> `reliability-patterns.md`
 - Stage 8 (Cross-cutting Concerns) -> `observability.md`
 
-**Skip if PRD has no AI/LLM features**: `ai-architecture.md`, `ai-agents.md`
+**Skip if PRD has no AI/LLM features**: `ai-architecture.md`, `ai-agents.md`, `llm-app/`
 
 Every reference is linked directly from here, so read only what a stage needs.
 Cross-links between reference files are optional pointers for going deeper — not
@@ -297,6 +341,13 @@ a required reading chain.
 | `references/service-architecture.md` | Internal service structure: hexagonal (default), clean, vertical slice, FC/IS |
 | `references/ai-architecture.md` | LLM integration, RAG, streaming, vector storage, guardrails |
 | `references/ai-agents.md` | Agent patterns, protocols (MCP/A2A/AG-UI), durable execution, safety |
+| `references/llm-app/guide.md` | AI Feature Mode method: do-you-need-an-LLM test, four layers, shape table, 8-step design flow, anti-patterns |
+| `references/llm-app/prompting.md` | Prompt structure, output specification, few-shot, CoT, thinking modes, iteration loop |
+| `references/llm-app/tool-use.md` | Tool/function design, the tool-calling loop, structured output vs tool use, MCP, tool security |
+| `references/llm-app/rag.md` | Chunking, embedding-model choice, hybrid retrieval, reranking, augmentation, RAG evals |
+| `references/llm-app/agents.md` | Workflow vs agent, workflow patterns, agent loop, context & memory, safety rails, failure modes |
+| `references/llm-app/evaluation.md` | Golden sets, LLM-as-judge calibration, agent evals (pass^k, trajectory), eval workflow |
+| `references/llm-app/production.md` | Latency, cost, caching, reliability, observability, security, rollout, model updates |
 | `references/house-stack.md` | Opinionated, non-portable house stack (deviations need an ADR) — language/runtime, framework, infra, data, AI, services |
 | `references/operational-patterns.md` | Resilience, background jobs, caching, rate limiting |
 | `references/reliability-patterns.md` | Transaction boundaries, idempotency, outbox, concurrency control |

@@ -123,19 +123,26 @@ function CardRoot({
 
 // Sub-components read context via use() (React 19)
 function CardHeader({ children }: { children: React.ReactNode }) {
-  const { state, actions } = use(CardContext)!;
+  const { state, actions, meta } = use(CardContext)!;
+  // A real <button>, not a clickable <div>: keyboard-reachable and announces expanded state
   return (
-    <div className={styles.header} onClick={actions.toggleExpand}>
+    <button
+      type="button"
+      className={styles.header}
+      aria-expanded={state.expanded}
+      aria-controls={`${meta.id}-content`}
+      onClick={actions.toggleExpand}
+    >
       {children}
-      {state.expanded ? <ChevronUp /> : <ChevronDown />}
-    </div>
+      {state.expanded ? <ChevronUp aria-hidden /> : <ChevronDown aria-hidden />}
+    </button>
   );
 }
 
 function CardContent({ children }: { children: React.ReactNode }) {
-  const { state } = use(CardContext)!;
+  const { state, meta } = use(CardContext)!;
   if (!state.expanded) return null;
-  return <div className={styles.content}>{children}</div>;
+  return <div id={`${meta.id}-content`} className={styles.content}>{children}</div>;
 }
 
 function CardFooter({ children }: { children: React.ReactNode }) {

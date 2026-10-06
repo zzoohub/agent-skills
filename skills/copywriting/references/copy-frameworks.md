@@ -76,7 +76,7 @@ Examples:
 - "Create Your First Dashboard"
 - "Download the Free Template"
 
-**First-person CTAs** ("Get My Report") can outperform third-person ("Get Your Report") — test both. (A much-cited ContentVerve test found a first-person "Start my…" button beat "Start your…" by ~90% in one experiment — treat it as directional, not a guarantee.)
+**First-person CTAs** ("Get My Report") can outperform third-person ("Get Your Report") — test both. (A much-cited ContentVerve test found a first-person "Start my…" button beat "Start your…" by ~90% in one experiment, but the same tester saw the identical my/your swap lose ~25% on a payment page — treat it as a test idea, not a rule.)
 
 ---
 

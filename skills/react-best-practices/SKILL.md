@@ -1,7 +1,7 @@
 ---
 name: react-best-practices
 description: |
-  React and Next.js performance optimization guidelines. Use when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, re-render reduction, or load-time improvements.
+  React and Next.js performance optimization guidelines. Use when writing, reviewing, or refactoring React/Next.js code to ensure optimal performance patterns. Triggers on tasks involving React components, Next.js pages, data fetching, bundle optimization, re-render reduction, or load-time improvements. Also covers the server boundary of Next.js Server Actions and TanStack Start server functions (input validation, auth, tenant scoping, client-exposed env vars).
   Do not use for: design tokens / theming / motion (use design-system), React Native / Expo apps (use react-native-skills), or backend/API architecture.
 license: MIT
 source: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
@@ -10,7 +10,7 @@ source: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-
 # React Best Practices
 
 > **Cloned & internalized** from [`vercel-labs/agent-skills` → `react-best-practices`](https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices) (MIT), with Vercel-infrastructure-dependent content stripped and host-specific notes (Fluid Compute, `@vercel/analytics`, vercel.com citations) genericized for portability.
-> **To update this skill:** always pull the latest from the original above (or re-clone it), then remove *only* the parts that depend on Vercel infrastructure before applying changes — keep everything else host-agnostic.
+> **To update this skill:** always pull the latest from the original above (or re-clone it), then remove *only* the parts that depend on Vercel infrastructure before applying changes — keep everything else host-agnostic. Re-apply this repo's local additions and corrections on top of the pull: the **Server boundary** section below and the 2026-10 snippet fixes (`next/dynamic` `ssr: false` only in client components, SWR import shapes, `preinit` stylesheet `precedence`, `next/script` `beforeInteractive` in the root layout, Next's default `optimizePackageImports` list, React 19.2 floors for `useEffectEvent`/`<Activity>`).
 
 Comprehensive performance optimization guide for React and Next.js applications. Contains 70 rules across 8 categories, prioritized by impact to guide automated refactoring and code generation.
 
@@ -22,6 +22,19 @@ Reference these guidelines when:
 - Reviewing code for performance issues
 - Refactoring existing React/Next.js code
 - Optimizing bundle size or load times
+- Writing Next.js Server Actions or TanStack Start server functions (see **Server boundary**)
+
+## Server boundary (Next.js and TanStack Start)
+
+These rules are about security, not speed, and apply before any performance rule:
+
+- **Every server entry point is a public endpoint.** A Next.js Server Action (`'use server'`) is reachable by a direct POST, and a TanStack Start server function (`createServerFn`) is an HTTP-reachable RPC route, whether or not your UI calls it. Inside the handler: validate the input at runtime with a schema, authenticate, authorize (role and ownership, not just "has a session"), and tenant-scope the read or write (e.g. `where: { id, orgId }`, returning not-found across tenants). See `rules/server-auth-actions.md`.
+- **Middleware/proxy, route guards (`beforeLoad`), layout checks and hidden UI are UX only.** They decide what renders, not who may call the endpoint.
+- **Never keep request- or user-scoped data in mutable module scope.** On a long-lived server, module scope is shared by concurrent requests; pass such data through props, context or arguments. Immutable static I/O and config at module scope are fine (see `rules/server-no-shared-module-state.md`, `rules/server-hoist-static-io.md`).
+- **Only public-prefixed env vars reach the client** (`NEXT_PUBLIC_` in Next.js, `VITE_` in TanStack Start), and every one of them does, so keep secrets unprefixed and read them only in server-only code. TanStack Start route loaders are isomorphic (they also run in the browser on client navigation), so put DB access and secrets in a server function, not in a loader.
+- **Return only what the client renders.** RSC props and server action / server function return values are serialized to the client (see `rules/server-serialization.md`). TanStack Start also serializes thrown server-function errors to the client, so throw generic messages and log the details server-side.
+
+For TanStack Start project conventions (FSD layering, URL as first-class state), see the TanStack Start house taste in the software-architecture skill's `references/house-stack.md`, if available.
 
 ## Rule Categories by Priority
 
@@ -102,7 +115,7 @@ Reference these guidelines when:
 - `rendering-svg-precision` - Reduce SVG coordinate precision
 - `rendering-hydration-no-flicker` - Use inline script for client-only data
 - `rendering-hydration-suppress-warning` - Suppress expected mismatches
-- `rendering-activity` - Use Activity component for show/hide
+- `rendering-activity` - Use Activity component for show/hide (React 19.2+)
 - `rendering-conditional-render` - Use ternary, not && for conditionals
 - `rendering-usetransition-loading` - Prefer useTransition for loading state
 - `rendering-resource-hints` - Use React DOM resource hints for preloading
@@ -127,10 +140,10 @@ Reference these guidelines when:
 
 ### 8. Advanced Patterns (LOW)
 
-- `advanced-effect-event-deps` - Don't put `useEffectEvent` results in effect deps
+- `advanced-effect-event-deps` - Don't put `useEffectEvent` results in effect deps (React 19.2+)
 - `advanced-event-handler-refs` - Store event handlers in refs
 - `advanced-init-once` - Initialize app once per app load
-- `advanced-use-latest` - useLatest for stable callback refs
+- `advanced-use-latest` - `useEffectEvent` (React 19.2+) to read latest values without effect re-runs
 
 ## How to Use
 

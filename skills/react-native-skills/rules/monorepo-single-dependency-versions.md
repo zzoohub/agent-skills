@@ -20,14 +20,14 @@ or npm overrides.
 // packages/app/package.json
 {
   "dependencies": {
-    "react-native-reanimated": "^3.0.0"
+    "react-native-reanimated": "^4.0.0"
   }
 }
 
 // packages/ui/package.json
 {
   "dependencies": {
-    "react-native-reanimated": "^3.5.0"
+    "react-native-reanimated": "^4.1.0"
   }
 }
 ```
@@ -39,7 +39,7 @@ or npm overrides.
 {
   "pnpm": {
     "overrides": {
-      "react-native-reanimated": "3.16.1"
+      "react-native-reanimated": "4.1.0"
     }
   }
 }
@@ -47,14 +47,14 @@ or npm overrides.
 // packages/app/package.json
 {
   "dependencies": {
-    "react-native-reanimated": "3.16.1"
+    "react-native-reanimated": "4.1.0"
   }
 }
 
 // packages/ui/package.json
 {
   "dependencies": {
-    "react-native-reanimated": "3.16.1"
+    "react-native-reanimated": "4.1.0"
   }
 }
 ```

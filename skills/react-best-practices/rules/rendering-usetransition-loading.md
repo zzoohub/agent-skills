@@ -49,9 +49,13 @@ function SearchResults() {
     setQuery(value) // Update input immediately
     
     startTransition(async () => {
-      // Fetch and update results
+      // Fetch, then update results
       const data = await fetchResults(value)
-      setResults(data)
+      // State updates after an await must be wrapped in startTransition again
+      // (a known React limitation) to stay marked as a Transition
+      startTransition(() => {
+        setResults(data)
+      })
     })
   }
 
@@ -70,6 +74,6 @@ function SearchResults() {
 - **Automatic pending state**: No need to manually manage `setIsLoading(true/false)`
 - **Error resilience**: Pending state correctly resets even if the transition throws
 - **Better responsiveness**: Keeps the UI responsive during updates
-- **Interrupt handling**: New transitions automatically cancel pending ones
+- **Interruptible rendering**: Urgent updates (like typing) interrupt an in-progress Transition render. Async work is not cancelled, though: React batches overlapping Transitions and does not guarantee their order, so ignore or abort stale requests when results can arrive out of order
 
 Reference: [useTransition](https://react.dev/reference/react/useTransition)

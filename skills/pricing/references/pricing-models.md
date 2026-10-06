@@ -256,16 +256,15 @@ When adding AI capabilities to an existing product (a16z framework):
 |--------|------------|---------|
 | **Bundle into core** | All customers benefit; AI is mission-critical | Notion AI bundled into plans (raised base price $2.50-$5/user) |
 | **Premium tier upgrade** | AI differentiates premium segments | Move AI features to Pro/Business tier |
-| **Standalone add-on** | Small set of customers; need to manage margin impact | GitHub Copilot as $19/mo add-on |
+| **Standalone add-on** | Small set of customers; need to manage margin impact | GitHub Copilot sold separately from GitHub plans (e.g. Copilot Business at $19/user/mo), with consumption metered in AI Credits since June 1, 2026 |
 
 ### AI API Pricing
 
 Token-based pricing is standard for LLM APIs. Key dynamics:
 
-- **Massive price deflation**: frontier-class "mini" models keep getting cheaper each quarter (e.g., GPT-4o mini launched at $0.15/$0.60 per million tokens) — token costs have been dropping 50%+ annually, so re-check current provider pricing rather than anchoring on any one model
-- **Input vs. output tokens**: Most APIs price output tokens 3-4x higher than input tokens
-- **Caching discounts**: Cached/prompt tokens at 50-75% discount
-- **Cost may surpass performance as chief competitive factor** by 2026 (Gartner)
+- **Massive price deflation**: frontier-class "mini" models keep getting cheaper each quarter (e.g., GPT-4o mini launched at $0.15/$0.60 per million tokens in 2024; OpenAI's GPT-5.4-mini lists at $0.75/$4.50 as of Oct 2026 — a more capable tier, not a like-for-like price) — token costs have been dropping 50%+ annually, so re-check current provider pricing rather than anchoring on any one model
+- **Input vs. output tokens**: Output tokens cost several times more than input — about 5-6x on current frontier models (e.g., OpenAI GPT-5.4 at $2.50/$15 and GPT-5.5 at $5/$30 per 1M tokens, as of Oct 2026)
+- **Caching discounts**: Cached input tokens are billed at roughly 10% of the base input rate (~90% off) on current OpenAI GPT-5.x and Anthropic cache reads (as of Oct 2026); older models offered 50-75% — check each provider's current rate
 
 ### The Subscription Problem for AI
 
@@ -284,7 +283,7 @@ The biggest pricing failure mode of 2025 was unsustainable AI launch pricing →
 | Power users absorbing margin | Tiered credits with overage; transparent usage meter in product |
 | "Unlimited" feels generous but is fiction | Don't promise unlimited unless you have a real cap behind it |
 
-**Metering stack (2026):** **Stigg, Metronome, Orb, m3ter** (commercial), **Lago** (OSS). All handle usage event ingestion, tiered pricing, credits, overage, invoicing. Don't build your own — billing infra has subtle correctness traps (idempotency, late events, refunds).
+**Metering stack (2026):** **Stripe Billing** (usage meters; Stripe completed its Metronome acquisition in Jan 2026, and Metronome still also sells standalone), **Stigg, Orb, m3ter** (commercial), **Lago** (OSS). All handle usage event ingestion, tiered pricing, credits, overage, invoicing. Don't build your own — billing infra has subtle correctness traps (idempotency, late events, refunds).
 
 **Honest defaults:**
 - Publish realistic cost-per-action examples ("a typical workflow uses ~5 credits")
@@ -410,6 +409,6 @@ Charge separately for distinct modules or capabilities:
 
 Take a percentage of transactions processed through your platform:
 
-- Standard in marketplace platforms (Stripe: 2.9% + $0.30, Shopify: 2% on basic plan)
+- Standard in marketplace platforms (Stripe: 2.9% + $0.30; Shopify: 2% on the Basic plan, charged only when using a third-party payment gateway instead of Shopify Payments)
 - Aligns vendor success with customer success
 - Requires significant transaction volume to generate meaningful revenue

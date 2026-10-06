@@ -3,7 +3,7 @@ name: i18n
 description: |
   Internationalization (i18n) architecture and patterns for web and mobile apps.
   Use when: adding multi-language support, setting up translation structure, configuring locale routing, language switching, pluralization, date/number/currency formatting, translation key design. Also use when user says "translate my app", "make it multilingual", "add Korean/English support", "localize my app", or mentions hreflang, locale detection, or language picker.
-  Do not use for: general React/Next.js patterns (use composition-patterns / react-best-practices), general mobile patterns (use react-native-skills), UX copy decisions (use copywriting).
+  Do not use for: general React/Next.js patterns (use react-best-practices, or design-system for component composition), general mobile patterns (use react-native-skills), UX copy decisions (use copywriting).
 ---
 
 # i18n Architecture
@@ -145,8 +145,8 @@ For locales like ar, he, fa, ur:
 - React Native: `I18nManager.forceRTL(true)` + `I18nManager.allowRTL(true)`; requires app restart to apply
 
 ```ts
-// getTextInfo() is a method (the old `textInfo` accessor was removed) and needs lib "esnext" (drop the `as any` once that lib target is set).
-// Firefox doesn't implement it (any version), so fall back to a known-RTL language list.
+// getTextInfo() is a method (the `textInfo` accessor is the legacy form) and needs lib "esnext" (drop the `as any` once that lib target is set).
+// Baseline 2026: Chrome 130+, Safari 17+, Firefox 153+. Older browsers lack it, so keep the known-RTL language list as a fallback.
 const RTL_LANGS = new Set(['ar', 'he', 'fa', 'ur', 'ps', 'sd', 'ckb', 'yi']);
 function isRtl(locale: string): boolean {
   try {

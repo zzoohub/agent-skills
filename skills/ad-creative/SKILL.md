@@ -8,10 +8,10 @@ description: |
   "ad variations", "ad headline", "display ad", "social ad", "PPC", "paid media creative",
   "TikTok ads", "LinkedIn ads", "UGC ads", "video ads", "hook", "scroll-stopping",
   "ad angles", "creative testing", "ad fatigue", "creative refresh".
-  Do NOT use for: organic social content (use social-content skill), landing page copy
+  Do NOT use for: organic social content (use copywriting skill — social section), landing page copy
   (use copywriting skill), ad targeting/budget strategy (the caller's media plan, not creative),
   ad performance analysis (use product-analytics skill), or selecting/ethics-judging
-  psychological principles themselves (use marketing-psychology skill).
+  psychological principles themselves (use copywriting skill — persuasion psychology).
 ---
 
 # Ad Creative
@@ -94,7 +94,7 @@ structure, CTA intensity, and creative format.
 | **Problem-Aware** | Feels the pain, no solution yet | Empathy + agitation of the problem | "Tired of manually sorting 200 support tickets daily?" |
 | **Solution-Aware** | Knows solutions exist, hasn't chosen | Differentiation, mechanism, proof | "The only AI that reads context, not just keywords" |
 | **Product-Aware** | Knows your product, hasn't bought | Social proof, risk reversal, offer | "Join 12,000 teams already saving 15h/week" |
-| **Most Aware** | Ready to buy, needs a push | Price, urgency, direct CTA | "Annual plan: 40% off — ends Friday" |
+| **Most Aware** | Ready to buy, needs a push | Price, urgency, direct CTA | "Annual plan: 40% off — ends Friday" (only if the deadline is genuine) |
 
 The lower the awareness, the longer the copy and the more indirect the approach.
 The higher the awareness, the shorter and more direct.
@@ -236,7 +236,7 @@ those that don't — often dramatically. **Creative is the dominant lever in pai
 - **Native-first**: Ads must feel like organic FYP content, not commercials
 - **UGC ROI**: +55% ROI over non-UGC; unbranded UGC +19% better than branded (vendor figures, 2025-2026 — re-verify quarterly)
 - **Lo-fi wins**: +81% ROI for content without logos or heavy overlays (vendor figures, 2025-2026 — re-verify quarterly)
-- **Speed**: 90% of cumulative ad-recall impact lands in the first 6 seconds (TikTok Marketing Science); refresh every 7 days
+- **Speed**: 90% of cumulative ad-recall impact lands in the first 6 seconds (TikTok Marketing Science); refresh roughly every 7-14 days (third-party practitioner guidance, not a platform rule)
 - **Production**: Smartphone-shot, quick cuts every 2-3 seconds, TikTok-native editing (captions, green screen)
 
 ### Google Ads
@@ -291,11 +291,11 @@ These principles come from decades of tested advertising — Hopkins, Ogilvy, Sc
 and modern performance data all converge on the same truths:
 
 1. **Specificity beats generality** — "12,847 customers" not "thousands of customers"
-2. **Benefits beat features** — "Fall asleep in 8 minutes" not "Contains melatonin"
+2. **Benefits beat features** — "Sleep through the night" not "Contains melatonin" (any quantified outcome must be typical and substantiated)
 3. **One message per ad** — Trying to say two things means saying nothing
 4. **Message match is mandatory** — Ad headline must match landing page headline
 5. **Test, don't guess** — Write 15-25+ headlines before picking (a direct-response discipline; Ogilvy's point was to *test* them, not a fixed count)
-6. **Emotion drives action** — Losses feel roughly 2x heavier than gains in lab estimates (varies by context); use loss framing where it's real (for selecting which psychological principle to apply, see the marketing-psychology skill)
+6. **Emotion drives action** — Losses feel roughly 2x heavier than gains in lab estimates (varies by context); use loss framing where it's real (for selecting which psychological principle to apply, see the copywriting skill's persuasion-psychology section)
 7. **Hook earns attention, body earns the click** — Without the hook, nothing else matters
 8. **Platform-native beats platform-agnostic** — Reformat for each platform, don't just resize
 9. **Creative quality > budget or targeting** — ~47% of CPG sales lift (Nielsen Catalina, 2017); ~70% of campaign performance (Google). Invest in creative first.
@@ -322,7 +322,7 @@ Platform-reported ROAS lies post-iOS 14.5. Build a real measurement stack:
 - **Meta Advantage+ Creative** (auto-generates background variations, image expansion, video versions) — give it a strong source asset, not all the variations yourself
 - **TikTok Symphony** (TikTok's generative ad creative tool, 2024) — Creative Center + script generation
 - **Google Asset Studio** — automated asset generation for PMax campaigns
-- **Midjourney / Flux / Ideogram** for static creative; **Sora / Runway / Pika / Veo** for video shots
+- **Midjourney / Flux / Ideogram** for static creative; **Runway / Kling / Veo / Seedance** for video shots
 - **Foreplay / Motion App / Atria** for creative analytics + competitive ad library tracking
 
 Tradeoff: generative speeds up *iteration*, not *strategy*. Brief still has to be human; without an angle, generative just produces faster slop.

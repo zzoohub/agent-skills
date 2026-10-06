@@ -2,17 +2,7 @@
 
 ## Setup
 
-`<ViewTransition>` works out of the box for `startTransition`/`Suspense` updates. To also animate `<Link>` navigations:
-
-```js
-// next.config.js
-const nextConfig = {
-  experimental: { viewTransition: true },
-};
-module.exports = nextConfig;
-```
-
-This wraps every `<Link>` navigation in `document.startViewTransition`. Any VT with `default="auto"` fires on **every** link click — use `default="none"` to prevent competing animations.
+`<ViewTransition>` works in the App Router with no configuration: route navigations run as React Transitions, so `<Link>` navigations animate too. Do **not** add the old `experimental.viewTransition` flag — it was removed in Next.js 16.3 (on older Next.js versions, follow that version's docs). Any VT with `default="auto"` fires on **every** link click — use `default="none"` to prevent competing animations.
 
 Do **not** install `react@canary` — see SKILL.md "Availability" for details.
 
@@ -21,8 +11,6 @@ Do **not** install `react@canary` — see SKILL.md "Availability" for details.
 ## Next.js Implementation Additions
 
 When following `implementation.md`, apply these additions:
-
-**After Step 2:** Enable the experimental flag above.
 
 **Step 4:** Use `transitionTypes` on `<Link>` — see "The `transitionTypes` Prop" section below for usage and availability.
 
@@ -50,11 +38,13 @@ No wrapper component needed, works in Server Components:
 
 Replaces the manual pattern of `onNavigate` + `startTransition` + `addTransitionType` + `router.push()`. Reserve manual `startTransition` for non-link interactions (buttons, forms).
 
-**Availability:** `transitionTypes` requires `experimental.viewTransition: true` and is available in Next.js 15+ canary builds and Next.js 16+. If unavailable, use `startTransition` + `addTransitionType` + `router.push()` (see Programmatic Navigation below). To check: `grep -r "transitionTypes" node_modules/next/dist/` — if no results, fall back to programmatic navigation.
+**Availability:** `transitionTypes` on `<Link>` shipped in Next.js 16.2.0; since 16.3 (which removed `experimental.viewTransition`) it needs no config flag — on 16.2, keep that version's flag setup. `useRouter().push()` / `.replace()` accept a `transitionTypes` option too in current Next.js. If unavailable (older versions), use `startTransition` + `addTransitionType` + `router.push()` (see Programmatic Navigation below). To check: `grep -r "transitionTypes" node_modules/next/dist/` — if no results, fall back to programmatic navigation.
 
 ---
 
 ## Programmatic Navigation
+
+On current Next.js, pass the types directly: `router.push(href, { transitionTypes: ['nav-forward'] })`. On older versions, wrap the push yourself:
 
 ```tsx
 'use client';

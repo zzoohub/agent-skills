@@ -7,7 +7,7 @@ description: |
   designing A/B tests, or when user mentions "conversion", "CRO", "drop-off", "friction", "paywall",
   "popup", "improve my pricing page", "bounce rate", "cart abandonment", "funnel optimization".
   Do NOT use for: writing final copy (use copywriting skill — cro identifies copy problems/directions, copywriting produces variants),
-  psychological principles (use marketing-psychology skill), email optimization (use email-marketing skill),
+  psychological principles (use copywriting skill — persuasion psychology), email optimization (use copywriting skill — email),
   pricing strategy/tier design (use pricing skill — cro covers only paywall/pricing-page UI),
   referral/viral-loop design (use growth-loops skill), or A/B test analysis and Aha-Moment/retention analytics
   (use product-analytics skill — cro owns experiment design only).

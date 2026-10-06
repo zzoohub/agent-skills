@@ -242,7 +242,7 @@ End:    [CTA overlay]
 
 ## Psychological Triggers — Ad Applications
 
-The canonical *copy-application* table for these triggers is in `copywriting/references/persuasion-frameworks.md` (Loss Aversion, Social Proof, Scarcity, Urgency, Authority, Reciprocity, Curiosity Gap, Anchoring, Novelty, Identity); the underlying mechanisms and ethical guardrails live with the marketing-psychology skill. Stack 1-2 per ad, never more.
+The canonical *copy-application* table for these triggers is in `copywriting/references/persuasion-frameworks.md` (Loss Aversion, Social Proof, Scarcity, Urgency, Authority, Reciprocity, Curiosity Gap, Anchoring, Novelty, Identity); the underlying mechanisms and ethical guardrails live in the copywriting skill's persuasion-psychology section (`copywriting/references/psychology/guide.md`). Stack 1-2 per ad, never more.
 
 **Ad-format hooks per trigger:**
 - Loss Aversion → "Don't miss" framing in headline; what-they-lose visual

@@ -202,7 +202,7 @@ Book a 15-min demo tailored to your workflow.
 "We'll email you a calendar link within 1 hour."
 ⭐ "The demo sold us immediately." — VP Eng, Acme Corp
 ```
-Why it works: 3 fields (email + company is enough to enrich name, title, size via Clearbit/Apollo). Optional free-text shows interest without blocking. CTA sets expectation. Social proof and response time promise reduce uncertainty.
+Why it works: 3 fields (email + company is enough to enrich name, title, size via an enrichment tool such as Apollo, or HubSpot Breeze Intelligence — the former Clearbit, now a HubSpot add-on). Optional free-text shows interest without blocking. CTA sets expectation. Social proof and response time promise reduce uncertainty.
 
 ---
 

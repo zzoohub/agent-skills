@@ -9,17 +9,17 @@ description: |
   and prompt-injection / excessive-agency abuse of a running agent. Trigger on "adversarial
   test", "exploit the running app", "DAST", "abuse testing", "red-team this change", "prove the
   race", "reproduce the exploit", "jailbreak the running agent", "prove the SSRF".
-  Do NOT use for: the threat taxonomy itself (use security-checklists and correctness-checklists —
-  this skill EXECUTES their findings); static review with no running app; happy-path browser/E2E
+  Do NOT use for: the threat taxonomy itself (use review-checklists, security + correctness
+  sections — this skill EXECUTES their findings); static review with no running app; happy-path browser/E2E
   checks (use the qa capability); or implementing the fixes.
 compatibility: Host-coupled — requires a running app in a disposable, isolated environment (never prod) plus a way to drive concurrent, replayed, and multi-session traffic against it (a Bash/curl runtime, or a browser driver such as the Playwright MCP). With no live target it produces the attack plan and reports the missing environment as the blocker, rather than attacking a real one.
 ---
 
 # Adversarial Execution
 
-The **runtime arm of the static review.** The `security-checklists` and `correctness-checklists`
-capabilities *name* the ways a change breaks — and their own discipline stops at naming ("if you
-can't name the trigger, it isn't confirmed yet"). The attacker-view file `business-logic.md` even
+The **runtime arm of the static review.** The `review-checklists` capability's security and
+correctness sections *name* the ways a change breaks — and their own discipline stops at naming ("if you
+can't name the trigger, it isn't confirmed yet"). The attacker-view file `references/security/business-logic.md` even
 ends checks with a runtime instruction — *"send 10 identical requests simultaneously"* — that a
 static, read-only reviewer cannot run, and a black-box functional verifier is forbidden to form
 (it may not read the diff to build the hypothesis). This skill is where those stranded instructions
@@ -31,23 +31,28 @@ request sequence that broke the invariant.
 ## 1. Reuse the catalog — never reinvent the taxonomy
 
 You carry no list of your own. The catalog already exists; read the section that matches the change
-(via these capabilities, if available) and supply the verb it can't — **fire it**:
+(via the review-checklists capability, if available — skip its maintainability section; if it is
+absent, work from your own OWASP Top 10 / OWASP LLM Top 10 knowledge) and supply the verb it can't —
+**fire it**:
 
 - **Business-logic abuse** — race/double-spend, numeric manipulation, state-machine violations,
-  discount/refund/limit abuse, privilege boundaries → `security-checklists/references/business-logic.md`
+  discount/refund/limit abuse, privilege boundaries → `review-checklists/references/security/business-logic.md`
   (the *attacker* view, written to be executed).
 - **Auth / session / identity** — IDOR, session fixation, JWT alg/`none` confusion, OAuth
-  state+nonce+PKCE, SAML XSW/replay, WebAuthn → `security-checklists/references/auth.md`.
+  state+nonce+PKCE, SAML XSW/replay, WebAuthn → `review-checklists/references/security/auth.md`.
 - **Correctness under load** — idempotency, retries, partial failure, caching, boundaries →
-  `correctness-checklists`.
+  `review-checklists/references/correctness.md`.
 - **AI/LLM agent abuse** — prompt injection (direct + indirect via RAG-poisoned or fetched content),
   jailbreaks, excessive agency / unauthorized tool-calls, cross-user RAG retrieval, system-prompt /
-  secret extraction → `security-checklists/references/llm-security.md` (the OWASP LLM Top 10 — it even
-  names the runtime red-team tooling: Garak, PyRIT, Promptfoo).
+  hidden-context / secret extraction → `review-checklists/references/security/llm-security.md` (the
+  OWASP LLM Top 10 — it even names the runtime red-team tooling: Garak, PyRIT, Promptfoo). Label
+  findings with the current edition's IDs: the 2026 list (published Aug 2026) moved Excessive Agency
+  up to LLM03 and replaced System Prompt Leakage with the broader Hidden Context Exposure (LLM08).
 - **Server-side request forgery** — outbound fetch pushed to cloud-metadata / internal hosts, DNS
-  rebinding, IP-encoding bypass, webhook/callback abuse → `security-checklists/references/ssrf.md`.
+  rebinding, IP-encoding bypass, webhook/callback abuse → `review-checklists/references/security/ssrf.md`
+  (OWASP Top 10:2025 files SSRF under A01 Broken Access Control).
 - **Runtime injection & untrusted input** — stored XSS, path traversal, malicious file upload, unsafe
-  deserialization, request smuggling → `security-checklists/references/api.md`.
+  deserialization, request smuggling → `review-checklists/references/security/api.md`.
 
 ## 2. Safe target environment — NON-NEGOTIABLE
 
@@ -98,12 +103,13 @@ cannot create:
   *multi-turn* jailbreak (gradual escalation, many-shot) that single-turn filters miss; hold two users
   and see whether one's retrieval surfaces the other's documents. Target the invariant the tools are
   supposed to enforce — "the agent never refunds / deletes / sends outside the caller's own
-  authorization." Fire what `llm-security.md` names; don't restate it.
+  authorization." Fire what `references/security/llm-security.md` names; don't restate it.
 - **Migration dry-run** (schema changes). Run the migration against a prod-*census* clone and verify
   the named zero-downtime patterns actually hold — lock duration, the app working in the
   **intermediate state** (old code + new schema, *and* new code + old schema), backfill
-  idempotency/resumability, rollback. Don't invent the method — execute the patterns
-  `correctness-checklists` points to (the `database-design` / `postgresql` migration references),
+  idempotency/resumability, rollback. Don't invent the method — execute the patterns in the
+  `database-design` capability's migration reference (`references/migration-patterns.md`, its single
+  source for lock-safe execution),
   against a disposable DB.
 
 ## 4. Confirm, but never acquit
@@ -161,15 +167,16 @@ a muted gate protects nothing.
 
 ## Trigger → battery
 
-Run only the rows whose high-risk flag fired.
+Run only the rows whose high-risk flag fired. Catalog paths are relative to the review-checklists
+`references/` directory.
 
 | High-risk flag | Catalog section | Runtime techniques to fire |
 |---|---|---|
-| auth / session | `auth.md` | cross-tenant IDOR, session fixation, JWT alg/`none`, token+nonce replay, OAuth state/PKCE, rate-limit & enumeration |
-| payments | `business-logic.md` (Race, Numeric, Refund) + `correctness` (idempotency) | concurrent double-charge, idempotency-key replay, negative/overflow amount, client price tamper, over-refund |
-| credential / VC issuance | `auth.md` (nonce/replay/alg, WebAuthn/SAML) + `business-logic.md` (State Machine, single-use) | present-after-revoke, re-issue-then-use-old, signature/alg downgrade, nonce replay, holder ≠ subject |
-| irreversible data | `correctness` (idempotency, partial failure) + `business-logic.md` (limit/refund) | retry/replay for duplicate effect, race to bypass once-only, partial-failure double-write |
-| DB schema / migration | `correctness` (Schema & Migration Safety) → `database-design` / `postgresql` refs | migration dry-run on prod-census: lock time, intermediate-state app, backfill idempotency, rollback |
-| AI/LLM agent (tool-enabled) | `llm-security.md` (+ `correctness` for tool-output handling) | indirect injection via retrieved/RAG content → unauthorized tool-call, multi-turn jailbreak, cross-user RAG retrieval, system-prompt / secret extraction, model output consumed unsanitized |
-| server-side URL fetch / webhooks | `ssrf.md` | push outbound fetch to cloud-metadata (IMDSv1 chain) / internal host, DNS rebinding, decimal/hex/octal IP bypass, blind-vs-returned response |
-| file upload / deserialization | `api.md` | malicious upload (SVG→ImageMagick SSRF/RCE, polyglot, path traversal on filename), unsafe deserialization gadget, content-type confusion |
+| auth / session | `security/auth.md` | cross-tenant IDOR, session fixation, JWT alg/`none`, token+nonce replay, OAuth state/PKCE, rate-limit & enumeration |
+| payments | `security/business-logic.md` (Race, Numeric, Refund) + `correctness.md` (idempotency) | concurrent double-charge, idempotency-key replay, negative/overflow amount, client price tamper, over-refund |
+| credential / VC issuance | `security/auth.md` (nonce/replay/alg, WebAuthn/SAML) + `security/business-logic.md` (State Machine, single-use) | present-after-revoke, re-issue-then-use-old, signature/alg downgrade, nonce replay, holder ≠ subject |
+| irreversible data | `correctness.md` (idempotency, partial failure) + `security/business-logic.md` (limit/refund) | retry/replay for duplicate effect, race to bypass once-only, partial-failure double-write |
+| DB schema / migration | `correctness.md` (Schema & Migration Safety) → `database-design` migration refs (incl. its PostgreSQL operations ref) | migration dry-run on prod-census: lock time, intermediate-state app, backfill idempotency, rollback |
+| AI/LLM agent (tool-enabled) | `security/llm-security.md` (+ `correctness.md` for tool-output handling) | indirect injection via retrieved/RAG content → unauthorized tool-call, multi-turn jailbreak, cross-user RAG retrieval, system-prompt / hidden-context / secret extraction, model output consumed unsanitized |
+| server-side URL fetch / webhooks | `security/ssrf.md` | push outbound fetch to cloud-metadata (IMDSv1 chain — a no-op on IMDSv2-only hosts, which AWS now defaults for new instance types; that proves the host is hardened, not that the fetch is guarded) / internal host, DNS rebinding, decimal/hex/octal IP bypass, blind-vs-returned response |
+| file upload / deserialization | `security/api.md` | malicious upload (SVG→ImageMagick SSRF/RCE, polyglot, path traversal on filename), unsafe deserialization gadget, content-type confusion |

@@ -57,7 +57,7 @@ edit them or any other owner's docs.
 - Does not produce diagrams unless the decision adds a new container
 - Does not produce database schema changes
 
-## ADR Template (MADR/Nygard-style — extends the `software-architecture` ADR format)
+## ADR Template (house format — extends the `software-architecture` ADR format)
 
 ```markdown
 ## ADR-{NNN}: {Title} — YYYY-MM-DD
@@ -83,7 +83,9 @@ an explicit `Options` list, and **omits** `Stage` (a standalone decision has no
 design-flow stage). `Rejected` states why each *other* option lost the comparison —
 not a restatement of its cons. ADRs authored here sit in the same `docs/arch/adr/`
 directory as ones authored by `software-architecture`; that mixed field shape across
-files is expected.
+files is expected. The house format borrows Nygard's Status / Context / Decision core
+and a MADR-like considered-options list, but its fields are its own — it is not a
+MADR or Nygard template.
 
 **One-way doors** (analyze carefully): database choice, primary language, auth architecture, core domain model.
 **Two-way doors** (decide fast): library choice, caching strategy, log format, CI tool.

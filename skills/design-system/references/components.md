@@ -82,8 +82,8 @@ The root component creates and provides this context. Sub-components (Header, Co
 The provider is the **only** place that knows how state is managed. Sub-components and consumers interact through the context interface — they never know if state comes from a hook, store, or URL param. This makes the state implementation swappable without changing any consumers.
 
 - `state` — read-only current values
-- `actions` — functions to mutate state (the "how" is hidden)
-- `meta` — derived/stable values like IDs, computed labels
+- `actions` — functions to mutate state (the "how" is hidden); keep the set small and generic (`update`, `submit`, optional `cancel`) rather than per-feature actions
+- `meta` — derived/stable values like IDs, computed labels, refs (React 19: typed `RefObject<T | null>`)
 
 ### Children over render props
 

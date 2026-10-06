@@ -1,9 +1,9 @@
 ---
 name: design-system
 description: |
-  Design token architecture, component patterns, and cross-platform UI for web and React Native.
-  Use when: building UI components, defining design tokens, creating themed interfaces, setting up dark mode or theming, configuring Tailwind with design tokens, setting up typography or motion systems, choosing component API patterns (flat vs compound vs explicit variants), adding shadows or elevation, or any task involving consistent styling across components. Use this skill whenever the user mentions design tokens, theming, dark mode toggle, component variants, or cross-platform styling — even if they don't explicitly say "design system".
-  Do not use for: UX research or user journey decisions (use ux-design), single-screen specs (use screen-design), business logic, data fetching, API design.
+  Design token architecture, component patterns, React component composition, and cross-platform UI for web and React Native.
+  Use when: building UI components, defining design tokens, creating themed interfaces, setting up dark mode or theming, configuring Tailwind with design tokens, setting up typography or motion systems, choosing component API patterns (flat vs compound vs explicit variants), designing reusable component APIs, refactoring boolean-prop proliferation, building compound components, render props vs children, context providers, adding shadows or elevation, or any task involving consistent styling across components. Use this skill whenever the user mentions design tokens, theming, dark mode toggle, component variants, compound components, or cross-platform styling — even if they don't explicitly say "design system".
+  Do not use for: UX research or user journey decisions (use ux-design), single-screen specs (use screen-design), business logic, data fetching, backend/HTTP API design.
 ---
 
 # Design System
@@ -97,11 +97,14 @@ Layering tokens prevent z-index wars. Every layer has a named token.
 | Token | Value | Use |
 |-------|-------|-----|
 | `zIndex.base` | 0 | Default content |
-| `zIndex.dropdown` | 100 | Dropdowns, popovers |
+| `zIndex.dropdown` | 100 | In-flow dropdowns (not portaled) |
 | `zIndex.sticky` | 200 | Sticky headers, navbars |
 | `zIndex.overlay` | 300 | Overlay backdrops |
 | `zIndex.modal` | 400 | Modals, dialogs |
+| `zIndex.popover` | 450 | Portaled floating layers — menus, selects, popovers, tooltips |
 | `zIndex.toast` | 500 | Toast notifications |
+
+Floating layers portaled to the document root (Select, Menu, Popover, Tooltip) can open from inside a modal, so they need `zIndex.popover` above `zIndex.modal` — on `zIndex.dropdown` they would render underneath the modal. Keep `zIndex.dropdown` for in-flow dropdowns that never escape their stacking context.
 
 If you need a z-index not on this list, add a new token — don't use a magic number.
 
@@ -109,7 +112,7 @@ If you need a z-index not on this list, add a new token — don't use a magic nu
 
 ### Core Principle: Composition Over Boolean Props
 
-Never add boolean props to customize component behavior or appearance. Instead, use composition: children, compound sub-components, or explicit variant components. Boolean props create combinatorial explosions and ambiguous states.
+Never add boolean props to customize component behavior or appearance. Instead, use composition: children, compound sub-components, or explicit variant components. Boolean props create combinatorial explosions and ambiguous states. Never fork behavior with flags like `isReply`/`isEditing`/`showX`: each use case gets its own variant component that takes only domain ids/data and composes the shared compound parts.
 
 ```
 // ❌ Boolean prop proliferation
@@ -132,7 +135,7 @@ Pick the pattern based on how much the component's behavior and layout vary:
 | Flexible internal layout | **Compound** — sub-components + structured context | `<Card><Card.Header>…` |
 | Complex, reusable behavior | **Headless + Styled** | `useDialog()` hook + styled wrapper |
 
-When a component adds a prop that changes **behavior** (not just appearance), split into an explicit variant component. When a component grows past ~5 configuration props for **layout**, go compound.
+When a component adds a prop that changes **behavior** (not just appearance), split into an explicit variant component. When a component grows past ~5 configuration props for **layout**, go compound. Export compound parts in one namespace (`X.Frame`/`X.Input`/`X.Submit`); parts read state and actions from context, never from per-call-site props.
 
 ### Architecture
 
@@ -164,15 +167,31 @@ Headless hooks own behavior: ARIA, keyboard, focus, state. Styled components own
 → React implementations (JSX, hooks, Context): `references/react/components.md`
 → React 19 API changes: `references/react/react-19.md`
 → shadcn/ui + cva + Radix: `references/shadcn.md`
-→ Deep React composition refactors (boolean-prop elimination, compound
-  migration paths): the `composition-patterns` skill, if available — this
-  skill owns the API choice and tokens, that one the refactoring playbook.
+
+### Component Composition (React)
+
+The refactoring playbook for React component APIs (formerly the separate
+composition-patterns skill): avoiding boolean props, compound components,
+lifting state into providers, explicit variants, children over render props,
+and React 19 APIs. Two rules carry most of the weight:
+
+- **Provider ≠ Frame.** The Provider injects state; the Frame is only a layout
+  wrapper. Anything inside the provider — a preview or dialog button outside the
+  Frame — can read state and call `submit`, with no `useEffect` upward sync or
+  imperative refs.
+- **One generic contract.** Context is `{ state, actions, meta }` with a small
+  generic action set (`update`, `submit`, optional `cancel`); each state source
+  (local state, store, server sync) is its own provider implementing it, and the
+  provider is the only code that knows the source.
+
+→ Overview and rule index: `references/composition/guide.md`
+→ Rules with incorrect/correct examples: `references/composition/rules/`
 
 ## Icons
 
 Use one icon library per project and enforce it. Mixing libraries causes visual inconsistency (different stroke widths, sizing, metaphors) and bundle bloat.
 
-Recommended: `lucide` — available for all frameworks (`lucide-react`, `lucide-vue-next`, `lucide-svelte`, `lucide-solid`, `lucide-react-native`). These are lightweight and tree-shakeable. But if the project has an existing icon set, use that — the principle is consistency, not a specific library.
+Recommended: `lucide` — available for all frameworks (`lucide-react`, `@lucide/vue`, `@lucide/svelte`, `lucide-solid`, `lucide-react-native`; the older `lucide-vue-next` / `lucide-svelte` packages are deprecated). These are lightweight and tree-shakeable. But if the project has an existing icon set, use that — the principle is consistency, not a specific library.
 
 Decorative icons are hidden from the a11y tree. Meaningful icons get `aria-label` (web) or `accessibilityLabel` (RN).
 
@@ -203,7 +222,7 @@ Color is never the sole indicator of state. Error states use color + icon + text
 - **Need custom behavior?** → Headless hook first, styled wrapper on top.
 - **Passing content to a component?** → Use `children`. Avoid render props unless parent must pass computed data.
 - **Framework-specific patterns?** → See `references/react/` or `references/react-native/` for implementation details.
-- **Using Tailwind?** → For Tailwind v4, wire tokens via CSS `@theme` (the current default); for legacy v3, map them in `tailwind.config.js`. See `references/platform-web.md`.
+- **Using Tailwind?** → For Tailwind v4, wire tokens via CSS `@theme` (the current default); for legacy v3 (or a v4 project still loading a JS config via `@config`), map them in `tailwind.config.js`. See `references/platform-web.md`.
 - **Cross-platform?** → Tokens defined once, transformed per platform. See `references/pipeline.md`.
 
 ## Standing Guards (keep the system enforced)

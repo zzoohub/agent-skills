@@ -63,8 +63,14 @@ Candidates surfaced by the hang diagnosis, **resolved against a live upstream di
 (gstack **v1.58.5.0**, HEAD `11de390`; our fork base `4e2dde1`, 2026-03-16 — right *before*
 v0.11.1.0 where the lock fix landed). Re-confirm with `./vendor-sync.sh diff <file>` before porting.
 
-> **Scale check:** upstream `server.ts` is 145KB (ours 14KB), `browser-manager.ts` 75KB (ours 15KB),
-> `cli.ts` 56KB (ours 12KB) — gstack added headed mode, PTY agent, stealth, tunnels, a security
+> **Dated snapshot.** The matrix below records the 2026-06-26 diff. Upstream has moved on since
+> (as of 2026-10-06: gstack **v1.91.27.0**, HEAD `c285d88`) and has **not** been re-diffed here;
+> its upstream `file:line` citations refer to `11de390`, not current `main`. Known changes since:
+> the start-wait default (see the `MAX_START_WAIT` row) and file sizes (see the scale check).
+
+> **Scale check:** at `11de390` upstream `server.ts` was 145KB (ours 14KB), `browser-manager.ts` 75KB (ours 15KB),
+> `cli.ts` 56KB (ours 12KB); on upstream `main` as of 2026-10-06, after a refactor, they are ~104KB /
+> ~99KB / ~93KB — gstack added headed mode, PTY agent, stealth, tunnels, a security
 > sidecar, multi-agent tab ownership. So this is **cherry-pick, never file-copy**; the small
 > self-contained daemon fixes port cleanly, anything entangled with those features does not.
 
@@ -72,7 +78,7 @@ v0.11.1.0 where the lock fix landed). Re-confirm with `./vendor-sync.sh diff <fi
 |---|---|---|
 | **O(n²) whole-file log rewrite** every 1s `server.ts:107/118/129` | **FIXED** → `fs.appendFileSync` (gstack `server.ts:591/602/613`) | ✅ **APPLIED 2026-06-26** (delta #9). Safe: we truncate the 3 logs at startup, so append-only won't accrete across restarts |
 | **No single-instance lock** `cli.ts:136` → concurrent-spawn zombie daemons | **FIXED** → `acquireServerLock()` atomic `openSync(…,'wx')` + health-check-first `ensureServer` + loser-waits (gstack `cli.ts:379-502`; landed **v0.11.1.0, 2026-03-22 — 6 days after our fork**) | ✅ **APPLIED 2026-06-26** (deltas #10–11) + companion per-PID `tmpStatePath`. **Note:** verbatim upstream had a mid-init empty-lock race (reproduced 2 daemons); our port hardens the read side (empty lock = live holder→wait). Verified 1 daemon under concurrent cold-start ×4 |
-| **`MAX_START_WAIT`=8s** vs ~30s launch `cli.ts:17` | PARTIAL → `IS_WINDOWS?15000:(CI?30000:8000)`; **default still 8s** (gstack `cli.ts:24`) | **MAYBE** — trivial CI/Windows one-liner hedge; doesn't fix the normal-cold-start mismatch |
+| **`MAX_START_WAIT`=8s** vs ~30s launch `cli.ts:17` | PARTIAL → `IS_WINDOWS?15000:(CI?30000:8000)`; **default still 8s** (gstack `cli.ts:24`). **Since then** (upstream `main`, 2026-10): `resolveStartTimeout()` defaults to **15s** (30s in CI) and honors a `BROWSE_START_TIMEOUT` (ms) override | **MAYBE** — at `11de390` only a CI/Windows hedge; the newer 15s default + env override would address the normal-cold-start mismatch, so re-diff before porting |
 | **`chromium.launch` no `timeout`** `browser-manager.ts:45` | **NO upstream fix** — gstack also omits it (`browser-manager.ts:372-382`) | **LOCAL only if wanted** — our own improvement (add `timeout` + coordinate with `MAX_START_WAIT`); nothing to pull |
 | **CDP disconnect → `process.exit(1)`** `browser-manager.ts:48` | **NO re-attach for headless** — upstream is exit-code-aware but only to feed an external Go supervisor (`gbd`) we don't run; reconnect is headed-mode only | **SKIP** — our posture *matches* upstream; the CLI auto-restarts on next command regardless. (Earlier "pull WebSocket re-attach" assumption was wrong — it does not exist for headless.) |
 | **Idle-shutdown race** `server.ts:149` | **NO upstream fix** — and **ours is AHEAD**: our `shutdown()` wraps flush+close in `Promise.race(1500ms)` (`server.ts:278-284`); gstack's `await flushBuffers(); await close()` is **unbounded** and can stall exit | **KEEP OURS** — do not regress to upstream here |

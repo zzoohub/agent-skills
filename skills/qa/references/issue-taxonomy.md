@@ -34,7 +34,7 @@
 - Missing loading indicators (user doesn't know something is happening)
 - Slow interactions (>500ms with no feedback)
 - Unclear error messages ("Something went wrong" with no detail)
-- No confirmation before destructive actions
+- No confirmation before destructive actions (a UX issue in kind; rate it **critical** when it lets data be lost irreversibly — severity follows impact, category follows type)
 - Inconsistent interaction patterns across pages
 - Dead ends (no way back, no next action)
 

@@ -50,19 +50,33 @@ export default function Document() {
 }
 ```
 
-**Note:** In Next.js, prefer the `next/script` component with `strategy` prop instead of raw script tags:
+**Note:** In Next.js, prefer the `next/script` component with `strategy` prop instead of raw script tags. `afterInteractive` (the default) and `lazyOnload` scripts can go in any page or layout; in the App Router, `beforeInteractive` scripts must go in the root layout (e.g. `app/layout.tsx`) and should be reserved for critical, site-wide scripts:
 
 ```tsx
+// app/page.tsx
 import Script from 'next/script'
 
 export default function Page() {
+  return <Script src="https://example.com/analytics.js" strategy="afterInteractive" />
+}
+```
+
+```tsx
+// app/layout.tsx (root layout)
+import Script from 'next/script'
+
+export default function RootLayout({ children }) {
   return (
-    <>
-      <Script src="https://example.com/analytics.js" strategy="afterInteractive" />
-      <Script src="/scripts/utils.js" strategy="beforeInteractive" />
-    </>
+    <html>
+      <body>
+        {children}
+        <Script src="/scripts/utils.js" strategy="beforeInteractive" />
+      </body>
+    </html>
   )
 }
 ```
+
+Reference: [Next.js Script component](https://nextjs.org/docs/app/api-reference/components/script)
 
 Reference: [MDN - Script element](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/script#defer)

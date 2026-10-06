@@ -8,7 +8,7 @@ description: |
   "packaging", "value metric", "upgrade", "annual vs monthly", "ARPU", "NRR", "price localization",
   "PPP", "willingness to pay". Trigger broadly within Do NOT boundaries.
   Do NOT use for: paywall UI optimization (use cro), pricing-page copy (use copywriting),
-  psychology principles only (use marketing-psychology), revenue analytics (use product-analytics),
+  psychology principles only (use copywriting — persuasion psychology), revenue analytics (use product-analytics),
   or referral incentive structure (use growth-loops; pricing sets only the referral reward $).
 ---
 

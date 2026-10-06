@@ -73,24 +73,23 @@ function Feed({ items }: { items: FeedItem[] }) {
 - **Recycling efficiency**: Items with the same type share a recycling pool
 - **No layout thrashing**: A header never recycles into an image cell
 - **Type safety**: TypeScript can narrow the item type in each branch
-- **Better size estimation**: Use `getEstimatedItemSize` with `itemType` for
-  accurate estimates per type
+- **Fixed sizes per type**: When a type's size is known exactly, return it from
+  `getFixedItemSize` (receives `itemType`) to skip measuring; return `undefined`
+  for dynamic-size types. (Legend List v3 removed `getEstimatedItemSize`.)
 
 ```tsx
 <LegendList
   data={items}
   keyExtractor={(item) => item.id}
   getItemType={(item) => item.type}
-  getEstimatedItemSize={(index, item, itemType) => {
+  getFixedItemSize={(item, index, itemType) => {
     switch (itemType) {
       case 'header':
         return 48
-      case 'message':
-        return 72
       case 'image':
         return 300
       default:
-        return 72
+        return undefined // messages vary in height: measure them
     }
   }}
   renderItem={({ item }) => {
@@ -101,4 +100,4 @@ function Feed({ items }: { items: FeedItem[] }) {
 ```
 
 Reference:
-[LegendList getItemType](https://legendapp.com/open-source/list/api/props/#getitemtype-v2)
+[Legend List v3 API (getItemType, getFixedItemSize, recycleItems)](https://www.legendapp.com/open-source/list/v3/llms/api.md)

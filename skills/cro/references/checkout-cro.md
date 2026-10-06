@@ -78,7 +78,7 @@ Deferrable: Account creation, Marketing opt-in, Survey questions
 | **Phone** | Explain why ("For delivery updates only"), make optional if possible |
 | **Billing address** | Default "Same as shipping", only show if unchecked |
 
-**Accessibility (a real conversion segment):** keyboard-operable payment fields, sufficient CTA contrast (WCAG ~4.5:1 text, ~3:1 large/UI), a visible focus ring, and inline errors announced to screen readers (aria-live / role=alert). Inaccessible checkout silently loses conversions — and for EU commerce it's now legally required (European Accessibility Act).
+**Accessibility (a real conversion segment):** keyboard-operable payment fields, sufficient CTA contrast (WCAG ~4.5:1 text, ~3:1 large/UI), a visible focus ring, and inline errors announced to screen readers (aria-live / role=alert). Inaccessible checkout silently loses conversions — and for consumer (B2C) e-commerce in the EU it's legally required since June 28, 2025 (European Accessibility Act; microenterprises providing services are exempt).
 
 ### Guest vs. Account
 - Default to guest checkout. Always.

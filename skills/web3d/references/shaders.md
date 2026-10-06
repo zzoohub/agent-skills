@@ -13,7 +13,7 @@ TSL is a node-based, JavaScript-native shader system that replaces GLSL/WGSL str
 7. [Textures](#textures)
 8. [Noise & Oscillators](#noise--oscillators)
 9. [Practical Examples](#practical-examples)
-10. [Compute Shaders (WebGPU Only)](#compute-shaders-webgpu-only)
+10. [Compute Shaders](#compute-shaders)
 11. [Post-Processing](#post-processing)
 12. [Raw WGSL Escape Hatch](#raw-wgsl-escape-hatch)
 13. [Migration Notes (GLSL -> TSL)](#migration-notes-glsl---tsl)
@@ -293,9 +293,9 @@ material.metalnessNode = smoothstep(float(0), float(1),
   sin(uv().y.mul(6.28).add(time.mul(1.5))).mul(0.5).add(0.5))
 ```
 
-## Compute Shaders (WebGPU Only)
+## Compute Shaders
 
-Compute shaders run general-purpose GPU computation. Not available with WebGL fallback.
+Compute shaders run general-purpose GPU computation. Full compute is WebGPU-only: on the WebGL 2 fallback, `WebGPURenderer` emulates `compute()` with transform feedback, so each invocation can only write its own element of a buffer attribute (no random-access storage-buffer writes). Storage textures, atomics, workgroup/shared memory and indirect dispatch remain WebGPU-only — feature-detect and test compute on both backends.
 
 ```typescript
 const COUNT = 100000
@@ -343,7 +343,7 @@ renderer.setAnimationLoop(async () => {
 })
 ```
 
-### Storage Textures
+### Storage Textures (WebGPU only)
 
 ```typescript
 const storageTex = new THREE.StorageTexture(256, 256)
@@ -359,21 +359,21 @@ const computeTex = Fn(() => {
 
 ## Post-Processing
 
-The new system uses `PostProcessing` class with TSL node chains, replacing the old `EffectComposer`:
+The new system uses the `RenderPipeline` class (named `PostProcessing` before three.js r183, which still ships it as a deprecated wrapper) with TSL node chains, replacing the old `EffectComposer`:
 
 ```typescript
 import { pass, bloom, fxaa } from 'three/tsl'
 
-const postProcessing = new THREE.PostProcessing(renderer)
+const renderPipeline = new THREE.RenderPipeline(renderer)
 const scenePass = pass(scene, camera)
 
 // Effects are nodes you compose with node math — there is no `.pipe()`.
 // bloom(inputNode, strength = 1, radius = 0, threshold = 0): the input node is required.
 const bloomPass = bloom(scenePass, 1.5 /* strength */, 0 /* radius */, 0.8 /* threshold */)
-postProcessing.outputNode = fxaa(scenePass.add(bloomPass))
+renderPipeline.outputNode = fxaa(scenePass.add(bloomPass))
 
 renderer.setAnimationLoop(() => {
-  postProcessing.render()
+  renderPipeline.render()
 })
 ```
 
@@ -404,6 +404,6 @@ All inputs must be passed as parameters -- you cannot access Three.js uniforms f
 | `gl_Position = ...` | `material.positionNode = ...` |
 | `gl_FragColor = ...` | `material.colorNode = ...` or `material.outputNode = ...` |
 | `varying vec2 vUv` | `vertexStage()` / `varyingProperty()` |
-| `EffectComposer` | `PostProcessing` class with node composition (function nesting / `.add()`, no `.pipe()`) |
+| `EffectComposer` | `RenderPipeline` class (`PostProcessing` before r183) with node composition (function nesting / `.add()`, no `.pipe()`) |
 
 `ShaderMaterial`, `RawShaderMaterial`, and `onBeforeCompile()` are **not supported** in WebGPURenderer.

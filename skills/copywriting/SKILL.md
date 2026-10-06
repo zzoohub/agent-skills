@@ -1,33 +1,41 @@
 ---
 name: copywriting
 description: |
-  Create, refine, or optimize written content for digital products: marketing copy,
-  UX microcopy, brand messaging, landing pages, CTAs, and user-facing text.
-  Also the single source of truth for reusable persuasion frameworks (PAS, AIDA,
-  BAB, 4Ps, SSS) that channel-specific skills apply.
-  Use when: writing feature announcements, improving onboarding text, creating
-  headlines or CTAs, developing brand voice guidelines, defining tone of voice,
-  writing push notifications, writing landing page copy, applying persuasion
-  frameworks, or optimizing copy for conversion.
-  Do NOT use for: ad copy (use ad-creative — it applies these frameworks to ad
-  formats), organic social posts (use social-content), email sequences or
-  subject lines (use email-marketing), SEO on-page optimization
-  (use search-visibility), technical documentation, API docs, or code comments.
+  Hub for marketing and product copy: landing pages, headlines, CTAs, UX
+  microcopy, brand voice, push notifications; single source of truth for
+  persuasion frameworks (PAS, AIDA, BAB, 4Ps, SSS). Also email (welcome,
+  onboarding, nurture, win-back, cold sequences, drips, newsletters, subject
+  lines, deliverability, SPF/DKIM/DMARC), organic social (LinkedIn, X,
+  Instagram, TikTok, YouTube posts, threads, content calendars, pillars,
+  repurposing, build in public, Product Hunt / Hacker News / Reddit launch
+  posts), and persuasion psychology (mental models, cognitive biases,
+  anchoring, scarcity, loss aversion, ethical persuasion vs dark patterns).
+  Use when writing or improving any of these, picking a persuasion principle,
+  or optimizing copy for conversion.
+  Do NOT use for: ad copy (use ad-creative), dunning emails and cancel flows
+  (use churn-prevention), SEO (use search-visibility), page/flow CRO and
+  popups (use cro), pricing tiers (use pricing), analytics (use
+  product-analytics), technical/API docs, or code comments.
 ---
 
 # Copywriting & Content Strategy Guide
 
 Guidelines for creating high-converting digital product copy, UX microcopy, brand messaging, and user-facing text. Apply these principles and processes whenever writing or reviewing marketing copy, onboarding text, CTAs, push notifications, or landing pages.
 
+This skill is also the hub for written marketing: email, organic social, and persuasion psychology each have their own guide under `references/` (see the table below). Load the guide for the channel before writing for it; the core principles, process, and quality checklist here still apply.
+
 ## References
 
 | File | When to Use |
 |------|------------|
-| `references/persuasion-frameworks.md` | Choosing and applying PAS / AIDA / BAB / 4Ps / SSS + psychological triggers (single source of truth — templated by ad-creative and social-content; cross-referenced by email-marketing and marketing-psychology) |
+| `references/persuasion-frameworks.md` | Choosing and applying PAS / AIDA / BAB / 4Ps / SSS + psychological triggers (single source of truth — templated by ad-creative and the social reference; cross-referenced by the email and psychology references) |
 | `references/copy-frameworks.md` | Writing new pages, restructuring copy, CTA optimization |
 | `references/editing-sweeps.md` | Reviewing/editing existing copy, quality improvement |
 | `references/plain-english.md` | Simplifying language, removing jargon, tone checks |
 | `references/transitions.md` | Improving flow, connecting sections, long-form content |
+| `references/email/guide.md` | **Email** — sequences (welcome, nurture, onboarding, re-engagement, win-back), newsletters, cold outreach, subject lines, measurement (never judge on opens), output format. Routes to `references/email/` `sequence-templates.md` (flows, branching), `copy-guidelines.md` (subject/preview, A/B design), `email-types.md` (catalog), `cold-outreach.md` (cold law + copy), `deliverability.md` (SPF/DKIM/DMARC, bulk-sender rules, consent, suppression) |
+| `references/social/guide.md` | **Social** — posts, threads, carousels, scripts, content pillars and calendars, repurposing, build in public, HN / Product Hunt / Reddit launch posts. Routes to `references/social/` `platforms.md` (per-platform mechanics, launch-platform rules incl. the vote-solicitation ban), `post-templates.md` (hooks, templates), `reverse-engineering.md` (why content spreads), `topic-clusters.md` (pillars, calendars, waterfall), `metrics-benchmarks.md` (benchmarks, denominators) |
+| `references/psychology/guide.md` | **Persuasion psychology** — diagnose the barrier, pick 2-3 principles, ethical guardrails. Routes to `references/psychology/mental-models-reference.md` (~70 mental models, pricing psychology, the Dark Pattern Anti-Catalog with regulatory hooks) |
 
 ## Task Routing
 
@@ -43,10 +51,19 @@ Match the task to the right workflow:
 | **Develop brand voice** | Define traits → Set tone spectrum → Create do's/don'ts | Brand Voice section below |
 | **Write long-form content** (blog, narrative, long-form email body — flow only) | Build narrative arc → Use transitions → Maintain scannable flow | `references/transitions.md` |
 | **Simplify/clarify copy** | Cut jargon → Use plain alternatives → Read aloud test | `references/plain-english.md` |
+| **Email sequence or campaign** (welcome, onboarding, nurture, re-engagement, win-back, newsletter) | Assess → One email, one job → Branch on behavior → Sequence Overview + Per-Email output | `references/email/guide.md` |
+| **Cold email / outreach** | Check the law per region → Peer voice, 50-100 words → Interest CTA → Separate warmed domain | `references/email/cold-outreach.md` |
+| **Deliverability / sender compliance** | Authentication → One-click unsubscribe → Complaint-rate caps → Consent + suppression | `references/email/deliverability.md` |
+| **Social post, thread, carousel, script** | Pick 2-3 platforms → Hook first → Platform-native format → Specific closing question | `references/social/guide.md` |
+| **Content calendar / pillars / repurposing** | 3-5 pillars → Hub-and-waterfall → Batch weekly → Measure on one denominator | `references/social/topic-clusters.md` |
+| **Launch posts** (Hacker News, Product Hunt, Reddit) and **build in public** | Platform rules first → Announce, never solicit votes → Named reply owners in the early window | `references/social/platforms.md` + `references/social/guide.md` |
+| **Choose a persuasion principle** / **judge persuasion vs dark pattern** | Diagnose the barrier from data → Pick 2-3 principles → Treat each as a test hypothesis → Run the dark-pattern test | `references/psychology/guide.md` |
+
+Boundaries: dunning / payment-failure emails and cancel flows belong to the churn-prevention skill; ad copy to ad-creative; SEO on-page optimization to search-visibility; page/flow conversion design to cro.
 
 ## 8 Principles for High-Converting Copy
 
-Apply these as a mandatory checklist for all marketing copy, banners, CTAs, and user-facing promotional text.
+Apply these as a checklist for promotional copy — banners, CTAs, push and in-app messages, and other user-facing promotional text. Principles 3 and 5 come from consumer-app banner tests; on B2B landing pages and long-form copy, treat them as test ideas rather than rules.
 
 ### Principle 1: One Message Only
 
@@ -68,7 +85,7 @@ Why: "Up to" feels like a gamble. Certainty removes hesitation. Even a tiny conf
 
 ### Principle 3: Novelty Is Enough
 
-Simply telling users something is new can outperform detailed benefit explanations. In one fintech's A/B tests (Toss), leading with "new" beat benefit-focused copy by 6x in click-through rate — treat it as a strong signal, not a universal constant.
+Simply telling users something is new can outperform detailed benefit explanations. This is an anecdotal finding from a consumer fintech's (Toss) in-app banner tests, with no public data on the size of the effect — treat it as a test idea, not a universal constant.
 
 - Bad: "Save up to 10% at convenience stores with this membership"
 - Good: "There's a new convenience store benefit for you"
@@ -182,7 +199,11 @@ For every copy deliverable, provide:
 
 For page-level copy, follow the section structure in `references/copy-frameworks.md`.
 
-**Drafts only.** Produce copy as drafts for the caller; never publish, ship, send, or schedule it anywhere (CMS, app store listing, live site, ESP) without the caller's explicit approval.
+**Drafts only.** Produce copy as drafts for the caller; never publish, ship, send, schedule, or post it anywhere (CMS, app store listing, live site, ESP, social account, launch platform) without the caller's explicit approval.
+
+**Output paths.** Email deliverables default to `biz/marketing/content/email/` and social deliverables to `biz/marketing/content/social/` (caller may redirect the `biz/<area>/` root); with no file-write capability, return them inline. See the email and social guides.
+
+**Persuade, never manipulate.** Never fabricate scarcity, urgency, reference prices, testimonials, quotes, or metrics; never pre-select a subscription, paid add-on, upgrade, or marketing consent; never ask anyone to upvote on Hacker News, Product Hunt, or Reddit. Test: if a tactic only works when the user doesn't notice it, it is a dark pattern — see `references/psychology/guide.md` and its anti-catalog.
 
 ### 6. Quality Checklist
 

@@ -22,15 +22,16 @@ chain and owns the handoffs.
 product-brief         → product brief (the why)
 prd-craft             → docs/prd/prd.md (+ feature specs)
 software-architecture → docs/arch/system.md (+ arch-decision ADRs, database-design schema,
-                        llm-app-design for LLM/AI features, as needed)
+                        its AI Feature Mode for LLM/AI features — docs/arch/ai-features/, as needed)
 ux-design             → docs/ux/ux-design.md (+ screen-design screen specs)
 implement             → main session / general-purpose subagents loading the stack skills
-                        (e.g. axum-hexagonal, react-best-practices, react-native-skills, design-system)
-reviewer              → security + correctness + maintainability (blocking gate)
+                        (e.g. hexagonal-backend, react-best-practices, react-native-skills, design-system)
+reviewer              → security + correctness (blocking gate) + maintainability (informational)
 verifier              → real-browser / API verification (behavior gate)
 adversary             → runtime exploit reproduction, isolated env (high-risk changes only)
 ship                  → main session with the deploy platform's skills/CLI: preview → smoke check
-                        → promote, then a post-deploy health check (postgresql for lock-safe migrations)
+                        → promote, then a post-deploy health check (database-design's PostgreSQL
+                        operations for lock-safe migrations)
 ```
 
 **Gates return verdicts; the main session decides done.** `reviewer`, `verifier`, and (on
@@ -38,9 +39,10 @@ high-risk changes) `adversary` each return a verdict to the main session, which 
 change is done. The implementer never self-certifies its own work — `verifier` proves behavior and
 `adversary` reproduces exploits, but the call to ship rests with the main session.
 
-Optionally insert a plan review: `plan-ceo-review` (scope/vision) after prd-craft, while scope is
-still negotiable; `plan-eng-review` (execution rigor) after software-architecture, once the design
-doc locks scope and before implementation starts. Each returns its findings to the main session.
+Optionally insert a plan review: `plan-review` in scope mode (scope/vision) after prd-craft, while
+scope is still negotiable; `plan-review` in execution mode (execution rigor) after
+software-architecture, once the design doc locks scope and before implementation starts. Each run
+returns its findings to the main session.
 
 ## 2. Feature on an existing product
 ```
@@ -61,7 +63,7 @@ data-analyst (find the drop-off / Aha / retention gap)
 ## 4. Go-to-market / launch
 ```
 pricing / competitor-pages / ad-creative / copywriting (positioning, launch, pricing)
-→ social-content / email-marketing / search-visibility (social, email, blog/SEO, launch content)
+→ copywriting (social, email) / search-visibility (blog/SEO) — launch and ongoing content
 → data-analyst (instrument + track launch)
 ```
 
@@ -88,6 +90,6 @@ product-brief → prd-craft → software-architecture → ux-design
 ```
 
 Defer until you actually need them: mobile (`react-native-skills`) on a web-only start, the
-biz/GTM skills until you have something to launch, `plan-*-review` skills until scope feels
+biz/GTM skills until you have something to launch, `plan-review` until scope feels
 risky. Add the GTM chain (#4) once the product is verifiable, then the growth cycle (#3) once
 you have users and tracking.

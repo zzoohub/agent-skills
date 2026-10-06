@@ -116,7 +116,7 @@ This is the **primary mode** for developers verifying their work. When the user 
    - Static pages (markdown, HTML) → navigate to them directly
 
 3. **Detect the running app** — probe common dev ports with an HTTP status check. Any non-`000`
-   response means a server is listening. Do **not** use `$B goto` to probe: `goto` "succeeds" on
+   response means *a* server is listening — not necessarily the app under test. Do **not** use `$B goto` to probe: `goto` "succeeds" on
    404, blank, and error pages, so it can pick a port the app isn't actually on.
    ```bash
    APP_URL=""
@@ -126,6 +126,9 @@ This is the **primary mode** for developers verifying their work. When the user 
        && echo "Found app on :$port (HTTP $code)" && break
    done
    ```
+   Then confirm identity before testing: fetch the page and check that its `<title>` or a route the
+   diff touches belongs to the app under test. In a monorepo the first listening port can be a
+   sibling app (e.g. a marketing site on :3000); if it doesn't match, keep probing the remaining ports.
    If no local app is found (`APP_URL` empty), check for a staging/preview URL in the PR or environment. If nothing works, ask the user for the URL.
 
 4. **Test each affected page/route:**
@@ -202,8 +205,8 @@ $B console --errors               # any errors on landing?
 ```
 
 **Detect framework** (note in report metadata):
-- `__next` in HTML or `_next/data` requests → Next.js
-- `csrf-token` meta tag → Rails
+- `__next` in HTML, `/_next/` asset paths, `_next/data` requests (Pages Router) or `?_rsc=` requests (App Router) → Next.js
+- `csrf-param` + `csrf-token` meta tags → Rails (a lone `csrf-token` meta tag is also Laravel's convention — an `XSRF-TOKEN` / `laravel_session` cookie points to Laravel)
 - `wp-content` in URLs → WordPress
 - Client-side routing with no page reloads → SPA
 
@@ -338,7 +341,7 @@ Minimum 0 per category.
 Two categories are unreliable when scored by human eyeballing — automate them:
 
 - **Accessibility (15%)**: run **axe-core** via `npx @axe-core/cli <url>` or `@axe-core/playwright` inline. Use the issue count + severity to compute the category score (0 violations = 100; downgrade per critical/serious).
-- **Performance (10%)**: run **Lighthouse CI** via `npx @lhci/cli@latest autorun` against the page. Use Core Web Vitals (LCP, INP, CLS) + Lighthouse Performance score for the category score.
+- **Performance (10%)**: run **Lighthouse CI** via `npx @lhci/cli@latest autorun` against the page. Use LCP, CLS and TBT + the Lighthouse Performance score for the category score. A lab run has no real user interactions, so it cannot measure INP — TBT is its lab proxy; report INP only from field data (CrUX / RUM) when available, and say so in the report.
 
 Falling back to manual screenshot inspection is OK for one-off / no-tooling environments; flag the report mode as "manual" so reviewers know.
 
@@ -360,8 +363,8 @@ Include the trace zip in the QA report for any bug filed.
 ## Framework-Specific Guidance
 
 ### Next.js
-- Check console for hydration errors (`Hydration failed`, `Text content did not match`)
-- Monitor `_next/data` requests in network — 404s indicate broken data fetching
+- Check console for hydration errors — React 19 / Next 15+ report `Hydration failed because the server rendered HTML didn't match the client` (or `...rendered text...`) followed by a diff, and `A tree hydrated but some attributes of the server rendered HTML didn't match the client properties`; React 18 apps show `Text content did not match`
+- Monitor data requests in network: App Router fetches RSC payloads (`?_rsc=` requests) on navigation/prefetch; Pages Router fetches `_next/data/*.json` (`getServerSideProps` / `getStaticProps`). 404s or 5xx on either indicate broken data fetching
 - Test client-side navigation (click links, don't just `goto`) — catches routing issues
 - Check for CLS (Cumulative Layout Shift) on pages with dynamic content
 

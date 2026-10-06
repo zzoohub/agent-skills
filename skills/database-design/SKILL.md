@@ -1,25 +1,27 @@
 ---
 name: database-design
 description: |
-  Expert guide for PostgreSQL database design, modeling, and optimization:
-  table design, schema modeling, index strategy, normalization/denormalization,
+  PostgreSQL database guide in two parts. Design (WHAT to build): table
+  design, schema modeling, index strategy, normalization/denormalization,
   ACID transaction design, partitioning, multi-tenancy/RLS, isolation levels,
-  migration planning, and schema-level performance tuning.
+  migration planning, schema review. PostgreSQL operations (HOW to run it):
+  writing and EXPLAIN-tuning queries (pagination, UPSERT, window functions,
+  full-text search), lock-safe migration execution against live traffic
+  (lock_timeout, CONCURRENTLY, NOT VALID/VALIDATE, batched backfills,
+  expand-contract under load), connection pooling, VACUUM, pg_stat_statements.
   Use when user asks to "design a database", "create tables", "model data",
-  "add indexes", "normalize", "denormalize", "partition", "multi-tenant/RLS",
-  "isolation level", "plan migration", "review schema", "design ERD", or
-  discusses data modeling or PostgreSQL performance.
-  Do NOT use for simple SELECT queries, SQL syntax questions, non-database
-  application logic, writing/EXPLAIN-tuning queries, or the lock-safe
-  EXECUTION of a migration against live traffic — CONCURRENTLY vs NOT VALID,
-  batching a live backfill, expand-contract under load (use postgresql skill).
-  This skill decides WHAT schema change to make and how to structure migration
-  files; postgresql decides HOW to run it safely in production.
+  "add indexes", "normalize", "partition", "multi-tenant/RLS",
+  "isolation level", "plan migration", "review schema", "design ERD",
+  "optimize this query", "read this EXPLAIN", "run this migration safely",
+  "backfill a column", or discusses data modeling or PostgreSQL performance.
+  Do NOT use for basic SQL syntax lookups or non-database application logic.
 ---
 
-# PostgreSQL Database Design Skill
+# PostgreSQL Database Design & Operations Skill
 
 PostgreSQL-specific database design skill. Provides systematic guidance from schema design through performance optimization.
+
+**Two parts, one skill.** Part 1 — **Design** (the workflow below) decides WHAT schema change to make and how to structure the migration files. Part 2 — **PostgreSQL Operations** (its own section below) decides HOW to query the result and run each change safely against live traffic.
 
 Owns schema, index, and migration design on a new or existing system. When the same request also needs a full system design, run that first (the `software-architecture` skill, if available) — the schema follows its data architecture. Writes only its own outputs (see Output); reads the PRD and other architecture docs but never edits them — a missing input becomes a gap in your summary.
 
@@ -193,7 +195,7 @@ COMMENT ON COLUMN schema_name.table_name.column IS 'Column description';
 
 ### Step 6: Performance Review
 → consult `references/performance-patterns.md`
-- Verify execution plans with EXPLAIN ANALYZE
+- Verify execution plans with EXPLAIN ANALYZE (how to read them: `references/postgresql/explain-guide.md`)
 - Consider connection pooling (PgBouncer)
 - Evaluate partitioning needs (hundreds of millions of rows+)
 - Suggest PostgreSQL configuration tuning
@@ -205,6 +207,7 @@ COMMENT ON COLUMN schema_name.table_name.column IS 'Column description';
 - Rollback scripts are mandatory — and **tested** (run forward → rollback → forward on a production-scale snapshot in CI), not merely written. An untested rollback fails at 3am, which is the only time you need it
 - Zero-downtime migration strategies
 - **Schema is a contract**: before any rename/retype/drop, inventory who else reads the table beyond the deploying app (read-replica→warehouse, CDC/ETL, sibling services, materialized views, API serializers) and expand-contract across that whole set
+- Executing each step against live traffic (session preamble, `CONCURRENTLY`, `NOT VALID` → `VALIDATE`, batched backfills) is Part 2 — see **PostgreSQL Operations**
 
 ### Step 8: Pre-Output Quality Gate
 
@@ -263,7 +266,7 @@ Use this checklist:
 10. **Storage**: Column ordering for alignment (large tables only) → `references/performance-patterns.md`
 11. **Lifecycle**: retention per large table is *executable* (partition drop, not mass DELETE); erasure obligations reconciled (crypto-shred / PII-free immutable payloads — `references/design-patterns.md` §2)
 
-For runnable diagnostic queries (unindexed FKs, unused indexes, oversized rows, missing constraints), see `scripts/schema_review.sql` — psql-ready queries you can execute directly against the target database.
+For runnable diagnostic queries (unindexed FKs, unused indexes, oversized rows, missing constraints), see `scripts/schema_review.sql` — psql-ready queries you can execute directly against the target database. Its operations companion, `scripts/query_diagnostics.sql`, covers slow queries, HOT-update ratio, invalid indexes, per-table cache hit, column selectivity, and long-running queries.
 
 When invoked from an architecture review, rank findings with the caller's severity rubric (e.g. the software-architecture skill's 🔴/🟠/🟡/🟢) so the two audits merge cleanly.
 
@@ -276,6 +279,22 @@ A schema review is a point-in-time audit; these keep it true continuously — th
 3. **Scheduled `scripts/schema_review.sql`** — monthly, and after every launch, against production: unindexed FKs, unused indexes, dead-tuple ratios, lock pile-ups. Keep `pg_stat_statements` enabled (Recommended Extensions) so query regressions between runs are attributable.
 
 Wire 1-2 into CI; 3 is a cron job plus a human reading the output.
+
+## PostgreSQL Operations (Part 2 — HOW)
+
+Design (Part 1) decides WHAT schema change to make; this part decides HOW to query the result and run each change safely in production. Load the reference that matches the task:
+
+| Task | Reference |
+|---|---|
+| Write or tune a query — workflow, quick decision table, critical rules, recent PG versions | `references/postgresql/guide.md` |
+| Query recipes — keyset pagination, full-text search, N+1, `SKIP LOCKED` queues, UPSERT, window functions, `DISTINCT ON`, gap-filling | `references/postgresql/query-patterns.md` |
+| Read an `EXPLAIN (ANALYZE, BUFFERS)` plan; find lock blockers | `references/postgresql/explain-guide.md` |
+| Index ignored or used inefficiently | `references/postgresql/indexing-pitfalls.md` |
+| Run a migration against live traffic — session preamble (`lock_timeout`, `statement_timeout`, retry on `55P03`), `CONCURRENTLY` + invalid-index check, `NOT VALID` → `VALIDATE` (CHECK / FK / NOT NULL), batched backfills | `references/migration-patterns.md` |
+| VACUUM/ANALYZE strategy, `pg_stat_statements` + `auto_explain`, monitoring thresholds | `references/postgresql/production-ops.md` |
+| Live diagnostics, weekly and during incidents | `scripts/query_diagnostics.sql` |
+
+Before any DDL on a live table: `SET lock_timeout`, one DDL step per short transaction, `CONCURRENTLY` index builds outside any transaction block, and backfills that commit per batch outside the migration tool's transaction.
 
 ## Key Design Patterns Summary
 

@@ -96,7 +96,7 @@ FROM pg_stat_database;
 ```sql
 -- Defaults are often too conservative for high-throughput writes
 -- Consider adjusting during heavy ingestion or backfill:
-wal_buffers = '64MB'          -- buffer WAL data in memory (default 16MB)
+wal_buffers = '64MB'          -- buffer WAL data in memory (default -1 = auto: 1/32 of shared_buffers, capped at one 16MB WAL segment)
 checkpoint_completion_target = 0.9  -- spread checkpoint writes
 max_wal_size = '4GB'          -- allow larger WAL before forced checkpoint
 commit_delay = 100            -- microseconds; general default is 0. Only takes effect when ≥ commit_siblings (default 5) other transactions are active at commit; mainly helps on slow-fsync storage during heavy concurrent ingestion, and is often a no-op or counterproductive on fast SSD/NVMe
@@ -127,7 +127,7 @@ reserve_pool_size = 5          # emergency extra connections
 | statement | Released after each statement | Forbids multi-statement transactions; niche (sharding/PL-proxy), rarely needed |
 
 ⚠️ **Transaction mode releases the backend between transactions, so anything session-scoped breaks:**
-- **Server-side/protocol-level prepared statements** fail (`prepared statement "S_1" already exists` / `does not exist`) unless PgBouncer ≥1.21 with `max_prepared_statements > 0`, or the driver disables them.
+- **Server-side/protocol-level prepared statements** fail (`prepared statement "S_1" already exists` / `does not exist`) unless PgBouncer ≥1.21 with `max_prepared_statements > 0` (on by default — 200 — since PgBouncer 1.24; 0/off by default on 1.21–1.23), or the driver disables them.
 - Use **`pg_advisory_xact_lock()`**, not session-level `pg_advisory_lock()` — the session variant can be acquired and released on different backends and leak. (The advisory-lock examples in `references/acid-transactions.md` use the session form; switch to `_xact` under transaction pooling.)
 - Use **`SET LOCAL`** (transaction-scoped), not `SET` — a session GUC leaks across reused backends (including the `work_mem` `SET` shown above).
 - Avoid session-lifetime **`LISTEN`/`NOTIFY`**, **`WITH HOLD`** cursors, and **temp tables**. Fall back to **session** pool mode if the app needs any of these.
@@ -276,9 +276,10 @@ CREATE INDEX idx_products_pagination ON products (created_at DESC, id DESC);
    );
    ```
 
-   Note: since PostgreSQL 12, CTEs are inlined by default and the planner
-   optimizes them like subqueries. Wrapping filters in CTEs does not help
-   the planner — proper indexes do.
+   Note: since PostgreSQL 12, a non-recursive, side-effect-free CTE (a plain
+   `SELECT` with no volatile functions) referenced once is inlined by default
+   and optimized like a subquery; others stay materialized. Wrapping filters
+   in CTEs does not help the planner — proper indexes do.
 
 3. **Cache computed data** — avoid recomputing expensive aggregations repeatedly.
    Use Materialized Views or dedicated summary tables refreshed on a schedule.
@@ -299,48 +300,11 @@ FOR UPDATE SKIP LOCKED;
 
 ## 6. Materialized Views
 
-```sql
-CREATE MATERIALIZED VIEW mv_daily_revenue AS
-SELECT
-    date_trunc('day', o.created_at) AS day,
-    SUM(oi.quantity * oi.unit_price) AS revenue,
-    COUNT(DISTINCT o.id) AS order_count
-FROM orders o
-JOIN order_items oi ON oi.order_id = o.id
-GROUP BY date_trunc('day', o.created_at);
-
--- Required for REFRESH CONCURRENTLY
-CREATE UNIQUE INDEX idx_mv_daily_revenue_day ON mv_daily_revenue (day);
-
--- Non-blocking refresh (requires the UNIQUE index above)
-REFRESH MATERIALIZED VIEW CONCURRENTLY mv_daily_revenue;
-```
+Definition, the UNIQUE index that `REFRESH MATERIALIZED VIEW CONCURRENTLY` requires, and the non-blocking refresh: see `references/postgresql/query-patterns.md` §9.
 
 ## 7. VACUUM Monitoring
 
-```sql
--- Check tables needing VACUUM
-SELECT
-    schemaname, relname,
-    n_live_tup,
-    n_dead_tup,
-    ROUND(n_dead_tup * 100.0 / NULLIF(n_live_tup + n_dead_tup, 0), 2) AS dead_pct,
-    last_vacuum,
-    last_autovacuum
-FROM pg_stat_user_tables
-WHERE n_dead_tup > 1000
-ORDER BY n_dead_tup DESC;
-```
-
-### Per-Table Autovacuum Tuning (for hot tables)
-```sql
--- Reduce autovacuum threshold for frequently updated tables
-ALTER TABLE orders SET (
-    autovacuum_vacuum_scale_factor = 0.05,   -- trigger at 5% dead tuples (default 20%)
-    autovacuum_analyze_scale_factor = 0.02,  -- re-analyze at 2% changes
-    autovacuum_vacuum_cost_delay = 2         -- less throttling = faster vacuum
-);
-```
+The dead-tuple query, per-table autovacuum tuning for hot tables, and when to run a manual `ANALYZE`: see `references/postgresql/production-ops.md` §3.
 
 ## 8. Backfill / Bulk Load Optimization
 

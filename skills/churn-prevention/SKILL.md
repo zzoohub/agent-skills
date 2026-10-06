@@ -2,13 +2,13 @@
 name: churn-prevention
 description: |
   Churn prevention, cancel flows, payment recovery, and customer health scoring.
-  Carve-out: dunning emails ARE owned here, not email-marketing.
+  Carve-out: dunning emails ARE owned here, not copywriting (email).
   Use when: designing cancel flows, creating save offers, implementing dunning sequences,
   building customer health scores, reducing involuntary churn, diagnosing churn patterns,
   or when user mentions "churn", "retention", "payment failed", "payment recovery",
   "downgrade", "at-risk customers", "subscription cancellation", "why are users leaving".
   Do NOT use for: onboarding optimization (use cro); marketing email sequences including
-  win-back (use email-marketing); pricing/tier design, including a downgrade tier's cost
+  win-back (use copywriting — email); pricing/tier design, including a downgrade tier's cost
   (use pricing; "downgrade" here means a save-offer lower tier); or deep retention analytics
   — cohort analysis, retention curves, segmentation, Carrying Capacity, PMF, Aha-Moment
   (use product-analytics). This skill owns intervention-tied churn diagnosis:
@@ -92,17 +92,18 @@ Payment failures are mechanical problems with mechanical solutions. Fix these fi
 - Signed 2025-05-09 as part of the state budget; **effective 2025-11-05**.
 - Simple cancellation mechanism **as easy as the one used to consent, in the same medium**. If consent was online, cancellation must be online; in-person consent must also offer online or phone cancellation.
 - Companies cannot impose unreasonable or unlawful conditions, refuse, obstruct, or unreasonably delay cancellation.
+- **New York City** layers a municipal Click-to-Cancel Rule (DCWP) on top, **effective 2026-10-01** for auto-renewal and continuous-service subscriptions offered to NYC consumers: cancellation at least as easy as signup and in the same medium, clear disclosure, affirmative consent, renewal notices; enforced as a deceptive trade practice with per-violation fines.
 
 ### Other US states with auto-renewal rules
-- **Colorado** (SB25-145): one-step online-cancellation duties effective 2025-08-06; coverage broadened to B2B from 2026-02-16.
+- **Colorado** (SB25-145): enacted 2025-08-06, but its requirements — including the one-step online cancellation link and the broadened coverage reaching B2B purchasers — apply from **2026-02-16**.
 - **Vermont** (9 V.S.A. § 2454a): a long-standing auto-renewal law (enacted 2017, effective 2019) that already requires online/same-medium cancellation — *not* a 2025 law.
-- **Illinois**: the current auto-renewal statute (815 ILCS 601, from 2000) does **not** mandate one-step online cancellation; a one-step online-cancel amendment (SB3562) was still pending in committee as of mid-2026 — confirm enactment status before relying on it.
+- **Illinois**: the current auto-renewal statute (815 ILCS 601, from 2000) does **not** mandate one-step online cancellation; a one-step online-cancel amendment (SB3562) cleared Senate committee and reached Senate 2nd Reading on 2026-03-12, with no enactment found as of 2026-10 — confirm enactment status before relying on it.
 
 Other states impose analogous requirements. Confirm the current rule and effective date in every state you serve.
 
 ### EU / UK
 - **EU:** The Unfair Commercial Practices Directive (2005/29/EC) and the Consumer Rights Directive (2011/83/EU), as implemented in national law, are the operative rules restricting deceptive cancellation "dark patterns" for ordinary subscription businesses today. The Digital Services Act additionally bans dark patterns but only for designated **online platforms** (Art. 25, which itself defers to the UCPD and GDPR where they already apply); the Digital Markets Act bans dark-pattern circumvention (Arts. 5(2), 13) only for designated **gatekeepers** (a handful of Big Tech firms) — neither reaches a typical SaaS seller. GDPR governs consent-specific dark patterns. A dedicated EU rule on subscription/cancellation dark patterns — the **Digital Fairness Act** — is planned (Commission proposal expected ~Q4 2026, may slip — confirm) but is NOT yet in force. Separately, Directive (EU) 2023/2673 adds a "withdrawal button" requirement to the Consumer Rights Directive for distance contracts concluded online, applying from 2026-06-19 (this concerns the statutory right of withdrawal, distinct from ongoing subscription cancellation). France's DGCCRF and other consumer-protection authorities (acting under national UCPD law) have stepped up enforcement on subscription-trap patterns since 2024-2025.
-- **UK:** The DSA and DMA do **not** apply in the UK post-Brexit (they reach UK firms only when serving EU users). UK subscription-trap and dark-pattern rules sit under the **Digital Markets, Competition and Consumers Act 2024 (DMCC Act)** — its consumer-protection / unfair-commercial-practices provisions are in force from 2025-04-06 (CMA direct enforcement), and a dedicated subscription-contracts regime (cancel as easily as you signed up, auto-renewal reminders, cooling-off) is expected around spring 2027 (may slip — secondary legislation pending). UK GDPR also applies. Confirm separately.
+- **UK:** The DSA and DMA do **not** apply in the UK post-Brexit (they reach UK firms only when serving EU users). UK subscription-trap and dark-pattern rules sit under the **Digital Markets, Competition and Consumers Act 2024 (DMCC Act)** — its consumer-protection / unfair-commercial-practices provisions are in force from 2025-04-06 (CMA direct enforcement), and a dedicated subscription-contracts regime (cancel as easily as you signed up, auto-renewal reminders, cooling-off) was brought forward (announced 2026-08-10) to go live in **January 2027**; secondary legislation and CMA guidance were still unpublished as of 2026-10 — confirm the commencement date. UK GDPR also applies. Confirm separately.
 
 ### Practical cancel-flow checklist (compliance-safe)
 - [ ] **Same-medium cancellation** — if signup was online, cancellation is online (no phone-only)

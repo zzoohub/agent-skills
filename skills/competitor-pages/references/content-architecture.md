@@ -128,7 +128,7 @@ Upside, not just risk: a visible, truthful "Last updated" date plus freshly re-v
 
 Comparison pages are among the formats generative engines cite most: a ranked list of options with per-option verdicts is the literal shape of a "best X for Y" answer, and a head-to-head table is the literal shape of an "is A or B better" answer. Extractability is worth more here than on almost any other page you own.
 
-The economics reinforce it. On queries where an AI answer appears, being *cited inside it* is worth roughly twice the clicks of appearing but going uncited (Seer Interactive, Apr 2026; 53 brands, 5.47M queries — directional, single-source, re-verify). Citation is the objective; ranking is one road to it, not the destination.
+The economics reinforce it. On queries where a Google AI Overview appears, being *cited inside it* is worth roughly twice the organic clicks of appearing on that page but going uncited (Seer Interactive, Apr 2026; 53 brands, 5.47M queries; Google AI Overviews only — directional, single-source, re-verify; other AI answer surfaces were not measured). Citation is the objective; ranking is one road to it, not the destination.
 
 Two mechanics drive every rule below.
 
@@ -162,7 +162,7 @@ Converging 2025-2026 citation analyses point at a consistent shape (each single-
 
 ### Put the answer in the top third
 
-Position analysis of published pages puts roughly **44% of AI citations in the first 30% of a page**, ~31% in the middle, ~25% at the end (single-source, directional). The TL;DR is therefore not a courtesy for scanners — it is the highest-value block on the page. It must carry the verdict *and* at least one hard number, with both products named.
+Position analysis of ChatGPT citations puts roughly **44% of them in the first 30% of a page**, ~31% in the middle, ~25% at the end (Kevin Indig, ChatGPT-only, ~18K verified citations — single-source, directional; other engines were not measured, though front-loading the answer is a safe default everywhere). The TL;DR is therefore not a courtesy for scanners — it is the highest-value block on the page. It must carry the verdict *and* at least one hard number, with both products named.
 
 ### Name entities; save pronouns for connective prose
 
@@ -186,11 +186,11 @@ Tables extract well on some engines and poorly on others, so the two or three de
 Two widely-repeated tactics do less than their reputation suggests, and over-investing in them displaces work that pays:
 
 - **Schema markup is extraction infrastructure, not a citation multiplier.** A controlled test adding JSON-LD to ~1,885 pages against ~4,000 controls found Google AI Overviews **−4.6%**, AI Mode **+2.4%**, ChatGPT **+2.2%** — the positives indistinguishable from noise (Ahrefs, May 2026); the popular "pages with schema get cited ~3x more" correlation is confounded with site quality. Independent retrieval tests suggest the major engines read visible HTML and ignore JSON-LD at retrieval time. Schema still earns its keep for Google/Bing parsing accuracy, entity clarity, and the rich results that *do* still exist — ship it correctly, then stop optimizing it.
-- **FAQ *format* alone does not lift citations.** A 602-prompt / 21,143-citation study found Q&A and FAQ pages had no higher answer-influence than non-Q&A pages. What did correlate was density of extractable **comparisons, statistics, definitions, and procedures** — comparisons alone carried roughly a +55% uplift. Q&A shape is a convenient container for those units, not a substitute for them. Add FAQ entries only where a real sub-question needs answering, and put a real number in each answer.
+- **Don't count on FAQ *format* alone to lift citations.** Published studies disagree on whether Q&A/FAQ pages earn more AI citations (single-source, unreplicated figures in both directions). What the wrapper should carry is the extractable substance — **comparisons, statistics, definitions, and procedures**. Q&A shape is a convenient container for those units, not a substitute for them. Add FAQ entries only where a real sub-question needs answering, and put a real number in each answer.
 
 ### The honest ceiling
 
-A perfect comparison page cannot win the category alone. Across brand citations, earned media runs roughly half and third-party/commercial sites about a third, leaving own-domain content near a quarter — and for *review-style* queries, which is exactly what "alternative" and "vs" queries are, the earned share runs far higher (Omniscient Digital, ~23K citations — directional). Source pools also diverge by engine; B2B comparison answers lean heavily on G2, Capterra, and Reddit.
+A perfect comparison page cannot win the category alone. On branded queries, a large majority of AI citations — roughly 68-85% — come from third-party sources rather than the brand's own domain, and *review-style* queries, which is exactly what "alternative" and "vs" queries are, lean on third-party sources hardest (Omniscient Digital, ~23K citations — directional). Source pools also diverge by engine; B2B comparison answers lean heavily on G2, Capterra, and Reddit.
 
 **So:** this page is the artifact you fully control and the one engines quote for concrete pricing, feature, and migration facts. Being listed and well-reviewed on the review sites your buyers use, and genuinely present in the relevant communities, is the larger half of the same job — route cross-engine citation measurement to the search-visibility capability, if available, and return the review-site and community work to the caller as off-site follow-ups.
 
@@ -230,7 +230,7 @@ Ship schema for parsing accuracy and for the rich results that still exist — b
 > **FAQ schema:** FAQ rich results were fully deprecated by Google on May 7, 2026 — they no longer appear in Search for any site (the 2023 health/gov carve-out is gone). FAQPage remains valid and Google still parses it to understand the page, so it is harmless to keep — but expect zero SERP rich result, and do not add it expecting an AI-citation lift. See `templates.md` → Schema Templates for the canonical caveat and JSON-LD.
 
 Higher-value schema for comparison pages:
-- **`Product`** + **`Offer`** (or **`SoftwareApplication`** for SaaS) on each product compared — makes pricing machine-readable and may aid AI-search eligibility. Note: Google AI Overview/AI Mode shopping cards and Perplexity Shopping are driven mainly by Merchant Center feeds + GTIN, so pure SaaS pages usually won't appear as shopping cards — treat this as machine-readability/AEO, not a guaranteed shopping placement.
+- **`Product`** + **`Offer`** (or **`SoftwareApplication`** for SaaS) on each product compared — makes pricing machine-readable and may aid AI-search eligibility. Note: Google AI Overview/AI Mode shopping cards are driven mainly by Google Merchant Center feeds + GTIN, and Perplexity Shopping by product feeds submitted through its own Merchant Program, so pure SaaS pages usually won't appear as shopping cards — treat this as machine-readability/AEO, not a guaranteed shopping placement.
 - **`ItemList`** for the ranked alternatives list
 - **`Review`** / **`AggregateRating`** only with genuine, on-page, third-party reviews — never self-controlled or markup-only ratings (manual-action risk; see the warning in `templates.md`)
 - **`Article`** / **`BreadcrumbList`** + **`dateModified`** for SEO hygiene and freshness

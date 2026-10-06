@@ -51,16 +51,23 @@ Expand-contract protects the *deploying application* during a rolling deploy. Bu
 
 So before any **rename / retype / drop**: *inventory who else reads this table*, apply expand-contract across that whole consumer set (not just the app), and treat the change as breaking until every consumer — including the nightly job nobody owns — has migrated. The phases below are the mechanism; the consumer inventory is what decides when each phase is actually safe.
 
-### Fail Fast on Locks
-Even 'safe' DDL (e.g. ADD COLUMN) briefly takes an ACCESS EXCLUSIVE lock; if it can't acquire it because of a long-running transaction, it waits AND every subsequent query on that table queues behind it (a leading cause of migration outages). Set a short lock_timeout so the migration fails fast and you retry, instead of stalling all traffic:
+### Fail Fast on Locks — the Migration Session Preamble (run first, every time)
+Even 'safe' DDL (e.g. ADD COLUMN, ADD CONSTRAINT ... NOT VALID) briefly takes an ACCESS EXCLUSIVE lock; if it can't acquire it because of a long-running transaction, it waits AND every subsequent query on that table queues behind it (a leading cause of migration outages). Set a short lock_timeout so the migration fails fast and you retry, instead of stalling all traffic:
 ```sql
-SET lock_timeout = '2s';  -- optionally also a bounded statement_timeout
+SET lock_timeout = '2s';         -- DDL gives up instead of stalling all traffic
+SET statement_timeout = '15min'; -- bound the whole step (size to the operation)
 ```
-(CREATE/DROP INDEX CONCURRENTLY can't run inside a transaction block, so set such timeouts at the session level rather than bundling them into one BEGIN...COMMIT with the concurrent build.)
+- **One DDL step per short transaction.** Never wrap a multi-step migration in one `BEGIN…COMMIT`: every lock it takes is held until the final COMMIT, so a later step's lock wait (or a long VALIDATE/backfill) keeps the earlier ACCESS EXCLUSIVE locks — and the traffic queued behind them — in place.
+- **On a lock_timeout failure** (SQLSTATE `55P03`, `lock_not_available`): wait and retry with backoff. If it keeps failing, find the blocker — usually a long-running or idle-in-transaction session — with `pg_blocking_pids()` or the long-running-transactions query (`references/postgresql/explain-guide.md` § Diagnostic Queries). Set `idle_in_transaction_session_timeout` as the standing backstop: idle-in-transaction sessions block `VALIDATE`, DDL, and VACUUM.
+
+(CREATE/DROP/REINDEX ... CONCURRENTLY can't run inside a transaction block, so set such timeouts at the session level rather than bundling them into one BEGIN...COMMIT with the concurrent build.)
+
+**Execution runbook**: backup/snapshot → session preamble → run the step → verify (invalid-index check, constraint validated) → `ANALYZE` affected tables → watch error rates and lock waits before the next step.
 
 ### Adding a Column (safe)
 ```sql
--- Forward: Adding a nullable column does NOT lock the table
+-- Forward: Adding a nullable column is metadata-only (no rewrite, no scan), but it still takes a
+-- brief ACCESS EXCLUSIVE lock — run it under the preamble above
 ALTER TABLE user_accounts ADD COLUMN phone TEXT;
 
 -- PostgreSQL 11+: adding with a CONSTANT/non-volatile DEFAULT is also safe (no table rewrite)
@@ -85,10 +92,19 @@ DROP INDEX CONCURRENTLY idx_user_email;
 ```
 
 ⚠️ `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block.
-If it fails partway through, clean up the invalid index:
+If it fails partway through, it leaves an INVALID index behind — find it, drop it, then retry the build:
 ```sql
-DROP INDEX IF EXISTS idx_user_email;
+-- OID join — robust across schemas; avoid casting an unqualified name to ::regclass,
+-- which resolves via search_path
+SELECT n.nspname AS schema, c.relname AS index_name, i.indisvalid
+FROM pg_index i
+JOIN pg_class c ON c.oid = i.indexrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE NOT i.indisvalid;
+
+DROP INDEX CONCURRENTLY IF EXISTS idx_user_email;  -- then retry
 ```
+To rebuild a bloated index, use `REINDEX INDEX CONCURRENTLY` (PG12+), never a plain `DROP` + `CREATE` — see `references/indexing-strategy.md` § Index Maintenance.
 
 ### Adding a NOT NULL Constraint (careful)
 ```sql
@@ -100,7 +116,8 @@ ALTER TABLE user_accounts ADD COLUMN phone TEXT;
 -- VACUUM, bloats the table, and holds locks for the duration
 UPDATE user_accounts SET phone = 'unknown' WHERE phone IS NULL;
 
--- Step 3: Add NOT NULL constraint with NOT VALID (no table scan)
+-- Step 3: Add NOT NULL constraint with NOT VALID (no table scan; brief ACCESS EXCLUSIVE —
+-- fails fast under the preamble's lock_timeout instead of queueing traffic)
 ALTER TABLE user_accounts ADD CONSTRAINT chk_phone_not_null CHECK (phone IS NOT NULL) NOT VALID;
 
 -- Step 4: Validate — takes only SHARE UPDATE EXCLUSIVE (reads and writes continue during the scan; never ACCESS EXCLUSIVE)
@@ -114,6 +131,18 @@ ALTER TABLE user_accounts DROP CONSTRAINT chk_phone_not_null;
 -- Rollback
 ALTER TABLE user_accounts ALTER COLUMN phone DROP NOT NULL;
 ALTER TABLE user_accounts DROP CONSTRAINT IF EXISTS chk_phone_not_null;
+```
+Under live writes — once the deployed code sets the column on every write — adding the `NOT VALID` constraint *before* the backfill (Step 3 ahead of Step 2) also stops new NULLs arriving while the backfill runs, so `VALIDATE` can't fail on rows written mid-backfill.
+
+The CHECK-helper path above works on every supported version. **PG18+** adds a shorter one — a `NOT NULL` constraint can itself be added `NOT VALID` (enforced for new and updated rows at once, existing rows not scanned) and validated later:
+```sql
+-- Brief ACCESS EXCLUSIVE, no scan (run under the preamble's lock_timeout)
+ALTER TABLE user_accounts ADD CONSTRAINT nn_user_accounts_phone NOT NULL phone NOT VALID;
+-- Backfill NULLs in batches, then validate (scans under SHARE UPDATE EXCLUSIVE; DML continues)
+ALTER TABLE user_accounts VALIDATE CONSTRAINT nn_user_accounts_phone;
+
+-- Rollback
+ALTER TABLE user_accounts DROP CONSTRAINT nn_user_accounts_phone;
 ```
 
 ### Adding a Foreign Key (large table)
@@ -238,13 +267,18 @@ DROP TABLE user_accounts;
 
 ## Large Table Migrations
 
-For tables with millions+ rows, batch all data modifications:
+For tables with millions+ rows, batch all data modifications: a single full-table `UPDATE` is one long transaction that holds row locks on every touched row for its whole duration, blocks VACUUM, and bloats the table and WAL.
 
-⚠️ **A `DO` block cannot `COMMIT`.** An anonymous `DO` block always runs in an atomic context, so a `COMMIT`/`ROLLBACK` inside one raises `ERROR: invalid transaction termination` (SQLSTATE 2D000) on **every** PostgreSQL version — unconditionally, whether or not a wrapping transaction exists. To commit per batch *inside the database* you must use a **`PROCEDURE` invoked via `CALL`** (and the `CALL` must not itself be inside an outer transaction — run it via `psql` **without** `-1`, not bundled into a `BEGIN…COMMIT`). Backfills should live in a separate idempotent script, not the transactional migration file.
+⚠️ **Commit per batch — outside any wrapping transaction.** In-database options are a **`PROCEDURE` invoked via `CALL`** or a **top-level `DO` block** — both may `COMMIT`/`ROLLBACK` between batches (PostgreSQL 11+). That works only when the `CALL`/`DO` is *not* itself inside an explicit transaction block: under `BEGIN…COMMIT`, `psql -1` / `--single-transaction`, or a migration tool that wraps each file in a transaction, a `COMMIT` inside raises `ERROR: invalid transaction termination` (SQLSTATE 2D000). It is also illegal inside a PL/pgSQL block that has an `EXCEPTION` clause (that block is a subtransaction). The out-of-database option is a script/app loop that runs each batch in its own transaction. Either way, backfills live in a separate idempotent script, not the transactional migration file.
+
+**No `FOR UPDATE`, no `SKIP LOCKED`** in the batch select: the `UPDATE` takes its own row locks, and the idempotent `IS NULL` recheck makes a concurrently-modified row safe to skip. `SKIP LOCKED` in particular is for competing-worker queues, never exhaustive backfills — it silently omits locked rows, and combined with an "exit when 0 rows" loop can end the backfill with rows still unprocessed.
+
+Walk the table by **primary-key keyset**, not by re-scanning a `WHERE new_column IS NULL` predicate (and never by `OFFSET`): the predicate scan re-reads already-processed (now dead) pages on every batch — quadratic page reads on a big table unless you add a partial index just for the backfill. The keyset cursor visits each page once.
 
 ```sql
 -- Batch update pattern (keyset walk by primary key) — a PROCEDURE, because it COMMITs per batch.
--- (A DO block here would fail: COMMIT inside DO raises ERROR: invalid transaction termination.)
+-- (A top-level DO block with the same body also works on PG11+; both must run outside any
+-- explicit transaction block.)
 CREATE PROCEDURE backfill_user_phone()
 LANGUAGE plpgsql AS $$
 DECLARE
@@ -287,11 +321,17 @@ CALL backfill_user_phone();
 DROP PROCEDURE backfill_user_phone();
 ```
 
+**Throttle against replication lag**: batch backfills are WAL storms — on a replicated setup, check `pg_stat_replication` (`replay_lag`) between batches and pause/raise the sleep when replicas fall behind, or read-after-write traffic on replicas starts failing while the backfill runs.
+
+**Alternative (simple loop from application code)** — if your migration framework doesn't support procedures, run the same keyset batch from the app, each iteration in its own transaction, carrying `last_id` forward and stopping when the batch comes back empty.
+
+Finish every backfill with `ANALYZE` on the table (Post-Migration Checklist below).
+
 ## Post-Migration Checklist
 
 1. ✅ Run `ANALYZE` on affected tables (refresh planner statistics)
 2. ✅ Verify index usage with `EXPLAIN ANALYZE` on key queries
-3. ✅ Check for invalid indexes: `SELECT * FROM pg_index WHERE NOT indisvalid;`
+3. ✅ Check for invalid indexes: `SELECT * FROM pg_index WHERE NOT indisvalid;` — drop any INVALID one (`DROP INDEX CONCURRENTLY`) before retrying its build (the OID-join query under "Creating an Index" names it with its schema)
 4. ✅ Monitor application error rates for 24-48 hours
 5. ✅ Verify constraint validity
 6. ✅ Update COMMENT ON TABLE / COLUMN if schema changed

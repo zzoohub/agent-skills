@@ -53,7 +53,10 @@ Produces one `docs/ux/screens/{screen}.md` covering:
 It updates `docs/ux/ux-design.md` ONLY if IA changes (e.g., new nav entry, new
 route); otherwise it leaves that file alone. A **brand-new screen is always an
 IA change** — at minimum its route and the ToC link to the new screen file
-(patch those entries, nothing else). A redesign of an existing screen touches
+(patch those entries, nothing else). The app-level ToC links each section and
+each screen file; if it currently lists sections only, add (or extend) a
+**Screens** group at the end of the ToC and link the new file there — don't
+add a numbered section or renumber existing ones. A redesign of an existing screen touches
 nothing app-level. See **Workflow** below for the procedure.
 
 ## What This Skill Does NOT Do
@@ -89,8 +92,8 @@ guidance, if available.
 
 ## Quality Bar
 
-`ux-design`'s Quick Checklist (its Screen Design, Interaction, Copy, and
-Platform sections) is canonical. The list below is a convenience copy of that
+`ux-design`'s Quick Checklist (its Screen Design, Interaction, Copy,
+Platform & Ergonomics, and Accessibility sections) is canonical. The list below is a convenience copy of that
 subset — if the two ever diverge, defer to `ux-design`.
 
 - [ ] User's ONE goal stated as JTBD
@@ -98,10 +101,13 @@ subset — if the two ever diverge, defer to `ux-design`.
 - [ ] All 7 states designed (empty, loading, loaded, error, partial, refreshing, offline)
 - [ ] Feedback exists for every user action
 - [ ] Destructive actions confirmed (stating what will happen); reversible actions offer undo
+- [ ] Loading pattern matches expected wait time
+- [ ] Gestures (swipe, pull-to-refresh, long-press) have visible alternatives
 - [ ] Button labels are specific verbs (not "OK", "Submit", "Yes")
 - [ ] Error messages: what happened + how to fix
 - [ ] Empty states: explanation + actionable CTA
 - [ ] Accessibility: contrast, focus, keyboard, screen reader labels
+- [ ] Color is not the sole indicator of state (pair it with text or an icon)
 - [ ] Mobile: primary actions in thumb zone, safe areas respected
 
 ## Output

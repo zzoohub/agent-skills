@@ -28,7 +28,7 @@ Create high-converting competitor comparison, alternative, and migration pages t
 - **The formats AI answers cite most** — "best [category]" roundups and "[A] vs [B]" comparisons sit at the top of the content types generative engines cite, because a comparison page's sections map directly onto the sub-questions AI search decomposes a query into. Write these pages to be **lifted**, not only ranked
 - **Brand positioning** — Define how your product compares on your terms
 
-**Set expectations honestly, though: this page is necessary, not sufficient.** "Alternative" and "vs" queries are review-style queries, and for those, generative engines draw the majority of brand citations from *earned and third-party* sources (G2, Capterra, Reddit, press, roundups) rather than the brand's own domain — own-site content is roughly a quarter of brand citations overall, and less on review-style queries (directional, methodology-dependent). This page is the slice you fully control and the one AI engines quote for concrete pricing/feature facts; it does not substitute for off-site presence. Route that workstream to the search-visibility capability (site-wide/off-site/measurement), if available, and hand review-site and community presence back to the caller as off-site follow-ups.
+**Set expectations honestly, though: this page is necessary, not sufficient.** "Alternative" and "vs" queries are review-style queries, and for those, generative engines draw the majority of brand citations from *earned and third-party* sources (G2, Capterra, Reddit, press, roundups) rather than the brand's own domain — on branded queries a large majority of citations (roughly 68-85% in one ~23K-citation study) come from third-party sites, and review-style queries lean on them hardest (directional, methodology-dependent). This page is the slice you fully control and the one AI engines quote for concrete pricing/feature facts; it does not substitute for off-site presence. Route that workstream to the search-visibility capability (site-wide/off-site/measurement), if available, and hand review-site and community presence back to the caller as off-site follow-ups.
 
 ---
 
@@ -132,7 +132,7 @@ Generative engines retrieve *passages*, not pages, and then discard most of what
 
 - **Self-contained.** No "as shown above", no "this is why". A lifted sentence carries its own subject, number, and source.
 - **Named entities, not pronouns, near every key claim.** "[Your Product] includes SSO on the $12/seat plan" — not "we include it on our mid tier". Pronouns are fine in connective prose; they are not fine in the sentence you want quoted.
-- **Front-load the verdict and the numbers.** The opening third of the page carries a disproportionate share of AI citations, so the TL;DR must contain the actual answer and the headline figures — not a tease that pays off in section 6.
+- **Front-load the verdict and the numbers.** The opening third of the page carries a disproportionate share of AI citations (measured on ChatGPT; a safe default for other engines), so the TL;DR must contain the actual answer and the headline figures — not a tease that pays off in section 6.
 - **Definitive, evidenced statements.** Assertive declaratives outperform hedged prose ("may", "might", "could") — but confidence *with* the number or source attached, not bare confidence.
 - **Comparisons, definitions, and figures are the highest-value units.** They are exactly what this page type produces natively; the job is formatting them so they extract cleanly.
 

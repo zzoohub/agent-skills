@@ -13,7 +13,7 @@ Claude Code still auto-loads this file as project instructions.)
 
 > The planning skills are the conventional owners of their doc trees: `product-brief` / `prd-craft` /
 > `feature-spec` write `docs/prd/`, `software-architecture` / `arch-decision` (plus `database-design`
-> and `llm-app-design` for their own files) write `docs/arch/`, `ux-design` / `screen-design` write
+> for its own file) write `docs/arch/`, `ux-design` / `screen-design` write
 > `docs/ux/` (all caller-overridable defaults).
 
 ---
@@ -23,10 +23,12 @@ Claude Code still auto-loads this file as project instructions.)
 This repo is **not an application** — it is a **portable skill library + a Claude Code agent layer**.
 There is no product source code here. It ships three things:
 
-- **`skills/`** — **41** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 30 skills), `rules/` (per-rule guideline files —
-  `composition-patterns`, `react-best-practices`, `react-native-skills`), `templates/` (output scaffolds
-  — `qa`, `software-architecture`), and `scripts/` (helpers — `database-design`, `postgresql`; both `.sql`).
+- **`skills/`** — **29** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
+  `references/` (deep-dive docs loaded on demand — 21 skills), `rules/` (per-rule guideline files —
+  `react-best-practices`, `react-native-skills`), `templates/` (output scaffolds
+  — `qa`, `software-architecture`), `scripts/` (helpers — `database-design` only; two `.sql` files),
+  and `evals/` (`review-checklists` only). Not counted: the untracked `skills/synced/` folder, a
+  local sync cache that is not part of the library.
   A `SKILL.md` runs on any Agent-Skills-compatible runtime; only `name` + `description` frontmatter
   is load-bearing.
 - **`agents/`** — **4** Claude-Code-only subagent definitions, split `agents/dev/` (3: `reviewer`,
@@ -34,7 +36,7 @@ There is no product source code here. It ships three things:
   `name`, `description`, `tools`, `model`, `skills`, `color` frontmatter (+ an `mcpServers` array on the
   3 MCP-bound agents: `verifier`, `adversary`, `data-analyst`). `agents/` is the source of truth; Claude
   Code consumes agents from `.claude/agents/` — this repo does **not** vendor that mapping (deploy or
-  symlink per environment). The only `.claude/` content here is `settings.local.json`.
+  symlink per environment). The repo tracks no `.claude/` content (`.gitignore` does not whitelist it).
 - **`AGENTS.md`** + **`REFERENCE.md`** — this auto-loaded core map (imported by the one-line
   `CLAUDE.md` stub) and its on-demand reference companion.
 
@@ -42,12 +44,14 @@ There is no product source code here. It ships three things:
 consuming project a skill or agent operates on — never this library's own contents** (whose only top-level
 dirs are `agents/` and `skills/`). Don't look for app code or those doc trees here.
 
-**Internalized React/RN skills (formerly external symlinks).** Four skills here were vendored in
+**Internalized React/RN content (formerly external symlinks).** Four skills were vendored in
 from [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) (MIT) and scrubbed of
-Vercel-infrastructure coupling so they are self-contained and host-agnostic: `composition-patterns`,
+Vercel-infrastructure coupling so they are self-contained and host-agnostic. Three remain skills:
 `react-best-practices`, `react-native-skills` (each ships a `rules/` library) and
-`react-view-transitions` (ships `references/`). They replaced four dangling symlinks into an external
-Vercel/Expo store, so every entry under `skills/` is now a real, repo-owned directory — no symlinks.
+`react-view-transitions` (ships `references/`). The fourth, `composition-patterns`, is no longer a
+skill: its guide and `rules/` library now live in `design-system/references/composition/` (provenance
+note kept there). They replaced four dangling symlinks into an external Vercel/Expo store, so every
+skill under `skills/` is a real, repo-owned directory — no symlinks.
 (The Vercel-Labs `web-design-guidelines` / `writing-guidelines` skills were deliberately **not**
 internalized; `design-system` remains the UI-guidance authority — see **Known gaps** in `REFERENCE.md`.)
 
@@ -81,7 +85,7 @@ See `skills/browse/UPSTREAM.md` for its frozen-fork posture.
 script runner):
 
 ```bash
-psql <conn> -f skills/postgresql/scripts/query_diagnostics.sql   # slow queries/locks/bloat (needs pg_stat_statements)
+psql <conn> -f skills/database-design/scripts/query_diagnostics.sql  # slow queries/locks/bloat (needs pg_stat_statements)
 psql <conn> -f skills/database-design/scripts/schema_review.sql  # unindexed FKs, unused indexes, missing constraints
 ```
 
@@ -175,9 +179,10 @@ Claude Code, by design.
   additionally declare an `mcpServers:` array plus the matching `mcp__*` globs in `tools:`.
   "Agents never call other agents" is enforced *structurally* — no agent is granted a
   subagent-spawning tool (`Task`/`Agent`).
-  (Two *skills*, `plan-ceo-review` and
-  `plan-eng-review`, pin `allowed-tools` too, though they are not host-coupled — only `browse`/`qa`
-  and `adversarial-execution` carry `compatibility:`.)
+  (Among skills, only `browse` and `qa` declare `allowed-tools`; in Claude Code that field
+  pre-approves the listed tools — it does not restrict the skill to them. `plan-review` declares
+  none and relies on its prose read-only rule. Only `browse`/`qa` and `adversarial-execution` carry
+  `compatibility:`.)
 
 ### Why this lives here
 
@@ -201,28 +206,28 @@ call that agent.
 | Spec a single feature on an existing PRD | `feature-spec` | skill |
 | Design the system architecture | `software-architecture` | skill |
 | Record a single architecture decision (ADR) on an existing system | `arch-decision` | skill |
-| Design a DB schema | `database-design` (+ `postgresql` for lock-safe execution and query tuning) | skill |
-| Design an LLM/AI feature or app | `llm-app-design` | skill |
+| Design a DB schema | `database-design` (its PostgreSQL operations part covers lock-safe execution and query tuning) | skill |
+| Design an LLM/AI feature or app | `software-architecture` (AI Feature Mode) | skill |
 | Design app-wide UX/IA, or audit existing UX | `ux-design` | skill |
 | Design a single screen | `screen-design` | skill |
 | Implement 3D / XR on the web | `web3d` | skill |
-| Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | the hexagonal skill matching the stack — `axum-hexagonal` (default), `hono-hexagonal`, `fastapi-hexagonal`, `nestjs-hexagonal` — + `database-design` / `postgresql` | skill |
-| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-best-practices`, `composition-patterns`, `react-view-transitions`, `design-system`, `i18n` | skill |
+| Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge) + `database-design` (incl. PostgreSQL operations) | skill |
+| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-best-practices`, `react-view-transitions`, `design-system` (incl. component composition), `i18n` | skill |
 | Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | `react-native-skills` (+ `design-system`, `i18n`) | skill |
 | Pre-landing code review: security + correctness + maintainability | `reviewer` | agent |
 | Verify behavior in a real browser / smoke-test endpoints before merge | `verifier` | agent |
 | Red-team a high-risk change: reproduce exploits against a running app in an isolated env | `adversary` (method in `adversarial-execution`) | agent |
-| Ship to production: deploy, env/secrets, migrations, CI/CD, rollback | the deploy platform's own skills/CLI (e.g. `vercel:*`, `cloudflare:wrangler`, Supabase) + `postgresql` for lock-safe migration execution | platform skill |
-| Positioning, launch, pricing strategy, ad creative, competitor pages | `pricing`, `competitor-pages`, `ad-creative`, `copywriting`, `marketing-psychology` | skill |
-| Ongoing content: social, email sequences, blog/SEO, changelog, build-in-public | `copywriting`, `social-content`, `email-marketing`, `search-visibility` | skill |
+| Ship to production: deploy, env/secrets, migrations, CI/CD, rollback | the deploy platform's own skills/CLI (e.g. `vercel:*`, `cloudflare:wrangler`, Supabase) + `database-design` (PostgreSQL operations) for lock-safe migration execution | platform skill |
+| Positioning, launch, pricing strategy, ad creative, competitor pages | `pricing`, `competitor-pages`, `ad-creative`, `copywriting` (incl. persuasion psychology) | skill |
+| Ongoing content: social, email sequences, blog/SEO, changelog, build-in-public | `copywriting` (incl. its social and email sections), `search-visibility` | skill |
 | Conversion (CRO), referral/viral loops, churn/retention, paywall/upgrade | `cro`, `growth-loops`, `churn-prevention` | skill |
 | Analytics: tracking plan, funnels, retention/PMF, weekly reports, A/B analysis | `data-analyst` (method in `product-analytics`) | agent |
 
-For a plan review *before* writing code, the main agent can invoke the `plan-ceo-review`
-(scope/vision) or `plan-eng-review` (locked-scope execution rigor) skills directly — these are
-not owned by an agent. The review returns its structured issue list and proposed follow-ups to
-the main session, which renders them interactively (it is the runtime that supplies the question
-UI) and decides what to act on.
+For a plan review *before* writing code, the main agent can invoke the `plan-review` skill
+directly — in scope mode (scope/vision, while scope is negotiable) or execution mode (locked-scope
+execution rigor) — it is not owned by an agent. The review returns its structured issue list,
+proposed follow-ups and any unresolved decisions to the main session, which asks the user (with
+its question UI when it has one) and decides what to act on.
 
 ---
 

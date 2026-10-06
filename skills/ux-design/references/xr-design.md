@@ -475,10 +475,10 @@ XR devices collect unprecedented amounts of sensitive data. Design with privacy 
 - Material Design adapted for spatial — same components, spatial elevation added
 - Spatial Panels: primary container for UI, placed in user's space
 - Orbiters: floating controls anchored to panel edges (~20dp distance)
-- Content scales dynamically between 0.75m–1.75m (consistent size)
+- Panels launch 1.75m from the user (fixed in Home Space; the recommended default in Full Space) — size content for legibility at that distance
 - Font minimum: 14dp for legibility at distance
 - Eye tracking and hand tracking as primary input
-- Glasses form factor (lighter eyewear with AR overlays) expected across 2026
+- Glasses form factor (lighter eyewear with AR overlays): first Android XR glasses (Warby Parker) ship Oct 2026, other partners follow in 2027 (as of 2026-10)
 
 ---
 

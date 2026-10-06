@@ -81,6 +81,7 @@ Tokens compile to CSS variables. Components reference variables, never raw value
   --z-sticky: 200;
   --z-overlay: 300;
   --z-modal: 400;
+  --z-popover: 450;
   --z-toast: 500;
 
   /* Opacity */
@@ -196,7 +197,7 @@ If the project uses Tailwind, map design tokens to the Tailwind config so you ge
 
 ### Tailwind v4 (CSS-based config)
 
-Tailwind v4 uses CSS `@theme` to define tokens. Use `@theme inline` here: the `inline` keyword makes each generated utility emit `var(--color-x)` pointing at the `:root` value defined above, instead of re-declaring `--color-x` inside Tailwind's own `:root`. A plain (non-inline) `@theme { --color-x: var(--color-x); }` would be a circular self-reference — it resolves to the invalid (empty) value and breaks the dark-mode cascade. With `inline`, the `:root` / `[data-theme="dark"]` overrides flow straight through to the utilities:
+Tailwind v4 uses CSS `@theme` to define tokens. Use `@theme inline` here: the `inline` keyword makes each generated utility emit the referenced value (`var(--color-x)`) directly, so it resolves on the element that uses the utility. Without `inline`, the utility reads Tailwind's own theme variable, and a theme variable that aliases another variable (e.g. `--color-x: var(--x)`) is resolved where the theme variable is defined (`:root`) — a `[data-theme="dark"]` override scoped to a subtree would then not reach the utility. For same-name entries like the ones below, plain `@theme` usually also works, because the unlayered `:root` / dark declarations above beat Tailwind's `@layer theme` output; `inline` keeps it correct regardless of how the token CSS is layered. With `inline`, the `:root` / `[data-theme="dark"]` overrides flow straight through to the utilities:
 
 ```css
 /* globals.css */
@@ -240,6 +241,8 @@ Usage: `bg-bg-primary`, `text-text-secondary`, `shadow-card`, `p-component-md`.
 
 ### Tailwind v3 (JS config)
 
+Tailwind v4 no longer detects `tailwind.config.js` automatically, but still loads it for backward compatibility via an explicit `@config "./tailwind.config.js";` in the CSS entry (some options — `corePlugins`, `safelist`, `separator` — are unsupported). Prefer `@theme` for new v4 projects.
+
 ```javascript
 // tailwind.config.js
 module.exports = {
@@ -280,6 +283,7 @@ module.exports = {
         sticky: 'var(--z-sticky)',
         overlay: 'var(--z-overlay)',
         modal: 'var(--z-modal)',
+        popover: 'var(--z-popover)',
         toast: 'var(--z-toast)',
       },
     },

@@ -7,7 +7,7 @@ tags: advanced, hooks, useEffectEvent, refs, optimization
 
 ## useEffectEvent for Stable Callback Refs
 
-Access latest values in callbacks without adding them to dependency arrays. Prevents effect re-runs while avoiding stale closures.
+Access latest values in callbacks without adding them to dependency arrays. Prevents effect re-runs while avoiding stale closures. `useEffectEvent` requires React 19.2+ (its first stable release); on older React use a ref (see [Store Event Handlers in Refs](./advanced-event-handler-refs.md)).
 
 **Incorrect (effect re-runs on every callback change):**
 

@@ -20,7 +20,7 @@ shadcn isn't a library — it's a code-gen tool that copies components into your
 
 | Layer | Tool |
 |---|---|
-| Headless primitives | `@radix-ui/react-*` (Dialog, Popover, Select, etc.) |
+| Headless primitives | Radix via the unified `radix-ui` package (Dialog, Popover, Select, etc.; older projects import per-primitive `@radix-ui/react-*` packages) — or Base UI, chosen at `npx shadcn create` |
 | Variants | `class-variance-authority` (cva) |
 | Class merging | `tailwind-merge` + `clsx` (exposed as `cn()`) |
 | Tokens | Tailwind v4 `@theme` reading project CSS variables |
@@ -67,7 +67,7 @@ export function cn(...inputs: ClassValue[]) {
 ```tsx
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/shared/ui/lib/cn';
-import { Slot } from '@radix-ui/react-slot';
+import { Slot } from 'radix-ui'; // unified package; older projects: import { Slot } from '@radix-ui/react-slot'
 
 const buttonVariants = cva(
   'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50',
@@ -96,7 +96,7 @@ interface ButtonProps
 }
 
 export function Button({ className, variant, size, asChild, ...props }: ButtonProps) {
-  const Comp = asChild ? Slot : 'button';
+  const Comp = asChild ? Slot.Root : 'button'; // with @radix-ui/react-slot: `Slot`
   return <Comp className={cn(buttonVariants({ variant, size, className }))} {...props} />;
 }
 ```
@@ -105,9 +105,11 @@ export function Button({ className, variant, size, asChild, ...props }: ButtonPr
 
 `<Button asChild><Link to="/">Home</Link></Button>` — renders a real `<a>` (from your Link) but inherits Button's classes. Avoids div-in-link / link-in-button structural problems.
 
+Since February 2026 the shadcn new-york templates import Radix from the unified `radix-ui` package (`import { Slot } from 'radix-ui'`, used as `Slot.Root`) instead of the per-primitive `@radix-ui/react-*` packages. Migrate existing components with `npx shadcn@latest migrate radix`, then remove the unused `@radix-ui/react-*` dependencies.
+
 ## Token integration with Tailwind v4
 
-Tokens are defined as CSS custom properties in `:root` (see `platform-web.md`); an `@theme inline` block bridges them into Tailwind's utility generator so cva can consume `bg-*`/`text-*`/`hover:*` classes. The `inline` keyword is essential: it makes each generated utility emit `var(--color-x)` pointing at the `:root` value, instead of re-declaring `--color-x` in Tailwind's own `:root`. Without `inline`, a same-name entry like `--color-interactive-primary: var(--color-interactive-primary)` is a circular self-reference that resolves to the invalid (empty) value — and dark-mode `:root` overrides would not cascade. With `inline`, runtime overrides flow through correctly. Keep `:root` and utility names identical (both kebab-case):
+Tokens are defined as CSS custom properties in `:root` (see `platform-web.md`); an `@theme inline` block bridges them into Tailwind's utility generator so cva can consume `bg-*`/`text-*`/`hover:*` classes. Use the `inline` keyword: it makes each generated utility emit the referenced value (`var(--color-x)`) directly, so it resolves on the element that uses the utility. Without `inline`, a theme variable that aliases another variable is resolved where Tailwind defines it (`:root`), so a theme override scoped to a subtree would not reach the utility; for same-name entries the unlayered `:root` / dark declarations usually win over Tailwind's `@layer theme` output anyway, but `inline` keeps it correct regardless of layering. With `inline`, runtime overrides flow through correctly. Keep `:root` and utility names identical (both kebab-case):
 
 ```css
 @theme inline {
@@ -131,4 +133,4 @@ shadcn's `Form` component wraps react-hook-form with Radix's `Label` and a `Form
 
 - **Park UI / Ark UI** — same idea, multi-framework via Zag.js
 - **Headless UI** — Tailwind Labs' own headless library; smaller surface area
-- **base-ui** (MUI's new headless) — Radix-style but from MUI team
+- **Base UI** — unstyled React library (stable 1.x) from the creators of Radix, Material UI and Floating UI; shadcn can also generate its components on Base UI instead of Radix (pick it in `npx shadcn create`)

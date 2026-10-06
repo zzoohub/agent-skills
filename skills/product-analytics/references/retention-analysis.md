@@ -123,12 +123,12 @@ Plot cohort retention curves. The shape tells you everything:
 
 | Metric | Median | Top Quartile | Elite |
 |--------|--------|--------------|-------|
-| GRR (Gross Revenue Retention) | 88-90% | 95%+ | 97%+ |
-| NRR (Net Revenue Retention) | 101-106% (survey-dependent; medians have compressed since 2022) | 115%+ | 120%+ |
+| GRR (Gross Revenue Retention) | ~84% (2025 actuals; down from ~88% earlier) | 95%+ | 97%+ |
+| NRR (Net Revenue Retention) | ~102% (2025 actuals; survey-dependent — medians have compressed since 2022). By pricing model: usage-based ~108%, seat-based ~98% | 115%+ | 120%+ |
 
 **Warning**: High NRR can mask poor GRR. NRR of 130% with GRR of 70% = losing 30% of customers but making it up with upsells. That's fragile.
 
-By company scale:
+By company scale (earlier survey cut, before the 2025 compression — directional; the pattern of NRR/GRR rising with scale matters more than the exact figures):
 - **$1M-$10M ARR**: Median NRR ~98%, GRR ~85%
 - **$10M-$100M ARR**: Median NRR ~106%, GRR ~90%
 - **$100M+ ARR**: Median NRR ~115%, GRR ~94%

@@ -33,8 +33,9 @@ First read `CLAUDE.md` (project conventions may redirect the base branch, dev-se
 git diff --name-only HEAD
 git ls-files --others --exclude-standard
 
-# If empty, check last commit (caller may have already committed)
-git diff --name-only HEAD~1..HEAD
+# Committed branch changes since it forked from the base (from CLAUDE.md; default main) —
+# covers multi-commit feature branches, not just the last commit
+git diff --name-only <base>...HEAD
 ```
 
 - Identify changed files and their types (component, API route, config, style, model, schema, etc.)
@@ -46,14 +47,15 @@ git diff --name-only HEAD~1..HEAD
 | API routes, controllers, middleware, models, schemas, migrations | **E2E** (Phase 3) → **API fallback** (Phase 4) if uncovered |
 | Both UI and API files | **Web** (Phase 2) + **E2E** (Phase 3) → **API fallback** (Phase 4) |
 | Config or types that affect build/runtime | **E2E only** (Phase 3) |
-| Only docs, comments, copy, or CSS (no behavior change) | **Skip** — no verification needed (see Phase 3) |
+| Only styles (CSS/SCSS, styling classes) | **Web** (Phase 2) visual check of the affected pages — skip E2E |
+| Only docs, comments, or copy (no behavior or visual change) | **Skip** — no verification needed (see Phase 3) |
 
 File pattern hints for classification:
 
 - **Web**: `components/**`, `pages/**`, `app/**/page.*`, `app/**/layout.*`, `views/**`, `templates/**`, `*.css`, `*.scss`, `*.tsx` (without route/api in path), `*.jsx`
 - **API**: `app/**/route.*`, `api/**`, `routes/**`, `controllers/**`, `server/**`, `middleware.*`, `proxy.*`, `*.resolver.*`, `*.service.*`, `*.handler.*`, `models/**`, `schemas/**`, `prisma/**`, `drizzle/**`, `migrations/**`, `*.sql`
 
-Note: Server actions (`'use server'` in `.ts`/`.tsx`) are part of web — they're invoked through the UI, not standalone HTTP endpoints.
+Note: Server actions (`'use server'` in `.ts`/`.tsx`) belong to **both** paths. The UI invokes them (Web), but each one is also a publicly reachable POST endpoint that any client can call directly — Next.js says to treat them like public API endpoints. A UI check cannot show that an action lacks its own session/authorization check, so a changed action that mutates or reads protected data also gets the Phase 4c auth-enforcement reasoning (verify the action itself checks the session, not just the page or middleware).
 
 ---
 
@@ -72,7 +74,7 @@ Note: Server actions (`'use server'` in `.ts`/`.tsx`) are part of web — they'r
 
 **If the qa skill reports `NEEDS_SETUP` and a non-interactive build fails, or the browse binary is otherwise unavailable**, fall back per the bounded order in §2b: Playwright preferred; claude-in-chrome only if it responds unattended; otherwise E2E-only. **Never wait on a claude-in-chrome dialog or permission prompt** — a stall there is the most common cause of a hung verify.
 
-**If Playwright is available** (`mcp__plugin_playwright_playwright__*`), prefer it over claude-in-chrome as fallback — it's headless and doesn't require the Chrome extension to be active. Use `browser_navigate` → `browser_snapshot` → `browser_click`/`browser_fill_form` for the same verification steps.
+**If Playwright is available** (`mcp__plugin_playwright_playwright__*` — a standalone Playwright MCP install exposes `mcp__playwright__*` instead, usable only if the host grants it), prefer it over claude-in-chrome as fallback — it's headless and doesn't require the Chrome extension to be active. Use `browser_navigate` → `browser_snapshot` → `browser_click`/`browser_fill_form` for the same verification steps.
 
 ---
 
@@ -101,24 +103,24 @@ Note in report which tool was used: `[qa skill]`, `[playwright fallback]`, `[cla
 
 ### 3. Run E2E Tests (default: run)
 
-**Run E2E when** test files exist in the project. Skip only for purely non-behavioral changes (CSS-only, copy, comments, docs) — these match the **Skip** row in the classification table above and need no verification. Config or types that affect build/runtime still get E2E. When in doubt, run them.
+**Run E2E when** test files exist in the project. Skip only for purely non-behavioral changes (copy, comments, docs — the **Skip** row above — and style-only changes, which get the Phase 2 visual check instead). Config or types that affect build/runtime still get E2E. When in doubt, run them.
 
 Look for test files and configs:
 - **Web E2E**: `playwright.config.*`, `*.spec.ts` in project root, `e2e/`, `tests/`
 - **API E2E**: `*.test.ts` in `__tests__/api/`, `tests/api/`, `test/`, or co-located with routes
 - **Mobile E2E**: `detox`, `maestro`, `.maestro/`, `e2e/` with mobile test configs
 
-Find and run the project's E2E command. Check in order: `justfile` (`just e2e`, `just test`), `package.json` scripts (`test:e2e`, `e2e`, `test`), `turbo.json` tasks. On failure, rerun once to distinguish flaky from real — if it fails both times, it's real.
+Find and run the project's E2E command. Check in order: `justfile` (`just e2e`), `package.json` scripts (`test:e2e`, `e2e`), `turbo.json` tasks. Use a generic `test` script/recipe only after confirming it runs the E2E suite — it is usually the unit-test runner, which you do not run (Rule 2). On failure, rerun once to distinguish flaky from real — if it fails both times, it's real.
 
-**Determine API coverage for Phase 4:** Check whether test files exist co-located with or named after the changed API route files. If a changed route `app/api/users/route.ts` has a corresponding `app/api/users/route.test.ts` or is referenced in `tests/api/users.spec.ts`, consider it covered. No test file for a changed route → uncovered → Phase 4 candidate.
+**Determine API coverage for Phase 4:** Check whether test files exist co-located with or named after the changed API route files. If a changed route `app/api/users/route.ts` has a corresponding `app/api/users/route.test.ts` or is referenced in `tests/api/users.spec.ts`, consider it covered for smoke and error handling (4b, 4d). No test file for a changed route → uncovered → Phase 4 candidate. Auth is separate: a covered **protected** route still gets the 4c anonymous probe unless one of its tests asserts that an unauthenticated request is rejected — happy-path tests that only run logged in do not count.
 
 ---
 
 ### 4. API Verification (fallback — only for uncovered endpoints)
 
-**Run only when:** API route files changed AND no co-located or matching test files exist for those routes.
+**Run only when:** API route files changed AND no co-located or matching test files exist for those routes — except 4c, which also runs on covered protected routes whose tests never assert unauthenticated rejection (see Phase 3).
 
-**Skip entirely when:** E2E test files exist for all changed API routes, OR no API routes changed.
+**Skip entirely when:** E2E test files exist for all changed API routes and assert their auth rejection, OR no API routes (or server actions) changed.
 
 #### 4a. Discover Uncovered Endpoints + Dev Server
 

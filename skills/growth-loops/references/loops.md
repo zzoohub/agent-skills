@@ -61,7 +61,7 @@ The canonical framework for direct viral loops:
 - Great: repeatable trigger on every success event
 
 ### 2. Incentive
-**Why** would they invite? Two-sided incentives beat one-sided in almost every case (still worth A/B testing for your audience).
+**Why** would they invite? Two-sided incentives usually beat one-sided (still worth A/B testing for your audience).
 - One-sided (inviter gets reward): cheap but feels transactional
 - Two-sided (both get reward): aligned interests, higher conversion
 - No incentive (pure value share): works only when the product is genuinely better with friends (e.g., multiplayer, collaboration)
@@ -101,7 +101,7 @@ Pre-fill the message where possible. Never force the inviter to compose from scr
 Any incentive with cash value will be gamed — fraud risk scales directly with the dollar value of the reward. Design the guardrails *before* launching a paid referral program:
 
 - **Pay on a qualified action, not on signup.** Require the invitee to activate (hit the Aha Moment) or make a first payment before any reward is granted. This alone kills most fake-account farming — fake accounts don't complete real actions.
-- **Dedupe aggressively** — normalize email (strip `+tags` and dots), fingerprint payment method, and check device/IP. Referral rings reuse these.
+- **Dedupe aggressively** — normalize email provider-aware (strip `+tags` where the provider supports sub-addressing; drop dots only for providers that ignore them, such as Gmail — stripping dots everywhere merges distinct addresses and flags legitimate invitees), fingerprint payment method, and check device/IP. Referral rings reuse these.
 - **Per-inviter caps** — cap rewards per inviter per period. A sudden spike from one account is almost always abuse, not virality.
 - **Hold + clawback window** — delay payout and reverse the reward if the invitee charges back or churns inside the window.
 - **Self-referral block** — the same person can't be both sides.

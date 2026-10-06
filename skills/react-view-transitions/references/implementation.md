@@ -175,8 +175,8 @@ If any path produces no animation or competing animations, revisit the relevant 
 - **Raw `viewTransitionName` CSS to trigger animations** — React only calls `document.startViewTransition` when `<ViewTransition>` components are in the tree. A bare `viewTransitionName` style is for isolating elements from a parent's snapshot, not for triggering animations.
 - **`update` trigger for same-route navigations** — nested VTs inside the content steal the mutation from the parent, so `update` never fires on the outer VT. Use `key` + `name` + `share` instead.
 - **Named VT in a reusable component** — if a component with a named VT is rendered in both a modal/popover *and* a page, both mount simultaneously and break the morph. Make the name conditional or move it to the specific consumer.
-- **`router.back()` for back navigation** — `router.back()` triggers synchronous `popstate`, incompatible with view transitions. Use `router.push()` with an explicit URL.
+- **`router.back()` for typed back navigation** — legacy `popstate` back navigation is never animated by React, and even on Navigation-API routers (current Next.js) `router.back()` carries no transition types, so directional slides don't play. Use `router.push()` with an explicit URL (and a `nav-back` type).
 
 ---
 
-For Next.js-specific implementation steps (config flag, `transitionTypes` on `<Link>`, same-route dynamic segments), see `nextjs.md`.
+For Next.js-specific implementation steps (`transitionTypes` on `<Link>`, same-route dynamic segments), see `nextjs.md`.

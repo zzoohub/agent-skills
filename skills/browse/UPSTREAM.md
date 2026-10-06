@@ -7,7 +7,9 @@
 - **Fork point:** added to this repo on **2026-03-16** (commit `4e2dde1`,
   "add browse skill").
 - **Tracking policy:** this snapshot does **not** track upstream. There is no
-  git remote, no submodule, and no sync script.
+  git remote, no submodule, and no automatic sync — only the manual, read-only
+  `maintenance/vendor-sync.sh` diff/stage helper described below, which never
+  writes to `src/`.
 
 ## Why it doesn't auto-sync
 

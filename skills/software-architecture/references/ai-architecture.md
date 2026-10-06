@@ -1,6 +1,6 @@
 # AI/LLM Architecture Decision Framework
 
-**Layer:** system-level architecture (gateways, components, data flow, deployment). For LLM **design discipline** (when to use an agent at all, prompt structure, eval methodology, output contracts), see `llm-app-design` skill.
+**Layer:** system-level architecture (gateways, components, data flow, deployment). For LLM **design discipline** (when to use an agent at all, prompt structure, eval methodology, output contracts), see `references/llm-app/guide.md` (this skill's AI Feature Mode).
 
 Architecture patterns for systems that integrate Large Language Models. Use this reference when the PRD includes AI-powered features — generation, summarization, search, agents, or any LLM-driven capability.
 
@@ -112,19 +112,20 @@ Client --POST /chat--> API Server --SSE stream--> LLM Provider
 
 RAG connects the LLM to your data. Instead of relying on the model's training data alone, you retrieve relevant context from your own documents and include it in the prompt.
 
-**Altitude split**: this section owns the *system* slice of RAG — when retrieval is the right shape, the tier escalation as a topology decision, vector storage by scale, and the retrieval **latency budget**. The retrieval *mechanics* (chunking, hybrid weighting, reranker choice, embedding-model selection) are design discipline — see `llm-app-design/references/rag.md`.
+**Altitude split**: this section owns the *system* slice of RAG — when retrieval is the right shape, the tier escalation as a topology decision, vector storage by scale, and the retrieval **latency budget**. The retrieval *mechanics* (chunking, hybrid weighting, reranker choice, embedding-model selection) are design discipline — see `references/llm-app/rag.md`.
 
 ### When to Use RAG
 
-- The LLM needs access to **private or recent data** not in its training set
+- The LLM needs access to **private, recent, or user-specific data** not in its training set
 - Answers must be **grounded in source documents** (reducing hallucination)
-- The knowledge base is too large to fit in a single prompt
-- You need **attributable responses** with source citations
+- The knowledge base is too large to fit comfortably in context at query time (see the stuffing threshold below)
+- You need **attributable responses** with source citations, or answers must be auditable
 
 ### When NOT to Use RAG
 
 - The task is creative generation (writing, brainstorming) — retrieval adds noise
-- The knowledge fits comfortably in the system prompt (e.g. under ~100K tokens — model-dependent)
+- The knowledge fits comfortably in context and rarely changes — just include it. Rule of thumb: under ~200K tokens (about 500 pages, per Anthropic's contextual-retrieval guidance) — model-dependent. Context windows keep growing (1M tokens on several current models as of 2026-10), and prompt caching makes stuffing cheaper than standing up retrieval infrastructure. (Attention quality and per-call cost still favor retrieval as the corpus grows — recall degrades in long contexts and "lost in the middle" positional bias persists — so don't stuff just because you technically can.)
+- A direct database query would work (structured data, exact lookups)
 - Real-time data is needed — use tool calls to live APIs instead
 
 ### RAG Architecture Tiers
@@ -157,7 +158,7 @@ Choose based on your scale and existing infrastructure:
 
 | Scale | Approach | Rationale |
 |---|---|---|
-| < ~100M vectors | **pgvector on PostgreSQL** | Unified relational + vector queries, no separate database. Use HNSW index for production. |
+| < ~100M vectors | **pgvector on PostgreSQL** | Unified relational + vector queries, no separate database. Use HNSW index for production. HNSW wants its graph in RAM — tens of millions per node is the comfortable range; toward 100M budget hundreds of GB of RAM, or partition / quantize (`halfvec`) / use a disk-based index extension. |
 | > 100M vectors, cost-sensitive | **Object-storage-first vector DB** | Search for current options that use object storage as primary with SSD cache tier. |
 | > 100M vectors, query-intensive | **Dedicated vector database** | Search for current benchmarks comparing options. |
 | Need zero-ops | **Fully managed vector service** | Higher cost, lowest operational burden. |
@@ -166,7 +167,7 @@ Choose based on your scale and existing infrastructure:
 
 ### Chunking & Embedding (design — pointer)
 
-Chunk strategy/size/overlap and embedding-model selection (MTEB, multilingual, max input) are **retrieval-design** decisions — see `llm-app-design/references/rag.md`. Two consequences survive at architecture altitude:
+Chunk strategy/size/overlap and embedding-model selection (MTEB, multilingual, max input) are **retrieval-design** decisions — see `references/llm-app/rag.md`. Two consequences survive at architecture altitude:
 - **Chunking sizes the vector store**: chunk size sets your vector count (storage cost + index build time) and overlap multiplies it — size the store from the expected chunk count, not raw document size.
 - **Embedding dimensions size storage**: don't hardcode the model (the leaderboard shifts); lower output dimensions (or Matryoshka truncation) cut vector storage 50-75%.
 
@@ -287,11 +288,11 @@ Standard RED metrics (Rate, Errors, Duration) plus AI-specific metrics:
 - Cache hit rate (if using semantic caching)
 - Retrieval quality (if using RAG): precision@k, relevance score
 
-**OpenTelemetry**: The OpenLLMetry project extends OTel with GenAI semantic conventions — standardized spans for LLM calls, tool usage, and agent steps. Use this if you're already on OTel and want unified tracing.
+**OpenTelemetry**: OTel's GenAI semantic conventions standardize spans for LLM calls, tool usage, and agent steps; instrumentation libraries such as OpenLLMetry emit them. Use this if you're already on OTel and want unified tracing.
 
 ### Prompt Management
 
-*Where prompts live and how they version* is a system decision (below); *how to write them* is design — see `llm-app-design/references/prompting.md`.
+*Where prompts live and how they version* is a system decision (below); *how to write them* is design — see `references/llm-app/prompting.md`.
 
 For production systems with multiple prompts that evolve over time:
 
@@ -317,16 +318,11 @@ Inspired by TDD/BDD but reimagined for LLM systems:
 
 ### RAG Quality Evaluation
 
-Metric selection (precision@k, recall@k, faithfulness, answer-relevance), thresholds, and golden-set design are eval **design** — see `llm-app-design/references/evaluation.md`. The architecture concern is that RAG quality runs as a **CI fitness function**: a golden set scored by an LLM-as-judge, automated as a CI step, blocking merge below threshold, and traceable to the exact prompt/model/retrieval version (per EDD above).
+Metric selection (precision@k, recall@k, faithfulness, answer-relevance), thresholds, and golden-set design are eval **design** — see `references/llm-app/evaluation.md`. The architecture concern is that RAG quality runs as a **CI fitness function**: a golden set scored by an LLM-as-judge, automated as a CI step, blocking merge below threshold, and traceable to the exact prompt/model/retrieval version (per EDD above).
 
 ### Agent Reliability Testing
 
-- **Task completion rate**: % of test scenarios where the agent achieves the goal
-- **Tool call accuracy**: Does the agent call the right tools with correct parameters?
-- **Step efficiency**: How many steps to complete vs. optimal path?
-- **Recovery testing**: Does the agent recover gracefully from tool failures?
-
-**Approach**: Define 20-50 test scenarios covering common paths and edge cases. Run each 3 times (non-determinism). Track pass rate and step count.
+Agent metrics — task completion rate, tool-call accuracy and recovery from tool failures (trajectory eval), step efficiency, and pass^k over repeated runs — are eval **design**, defined in `references/llm-app/evaluation.md` § Agent evals. The architecture concern is the suite and its gate: 20-50 test scenarios covering common paths and edge cases, each run several times (non-determinism), with pass rate and step count tracked in CI like the RAG gate above.
 
 ### A/B Testing for AI Features
 
@@ -416,7 +412,7 @@ Does the user need real-time output?
 +-- NO -> Standard request-response, consider batch API for throughput
 |
 Is the agent long-running or failure-prone?
-|-- YES -> Durable execution + checkpointing (Section 4)
+|-- YES -> Durable execution + checkpointing (Section 4 -> `ai-agents.md` §5)
 +-- NO -> Stateless agent loop is fine
 |
 Has prompt engineering plateaued with enough training data available?
@@ -427,6 +423,8 @@ Has prompt engineering plateaued with enough training data available?
 ---
 
 ## 11. Anti-Patterns
+
+Design-level counterparts (prompt stuffing, no evals, over-agentifying, unvalidated structured output, logging nothing) are in `references/llm-app/guide.md` § Anti-patterns.
 
 **RAG Everything**: Shoving all data into a vector store when half of it would be better served by structured queries (SQL) or API calls. Vector search is for semantic similarity — use the right tool for each data type.
 

@@ -79,4 +79,4 @@ const min = Math.min(...numbers)
 const max = Math.max(...numbers)
 ```
 
-This works for small arrays, but can be slower or just throw an error for very large arrays due to spread operator limitations. Maximal array length is approximately 124000 in Chrome 143 and 638000 in Safari 18; exact numbers may vary - see [the fiddle](https://jsfiddle.net/qw1jabsx/4/). Use the loop approach for reliability.
+This works for small arrays, but can be slower or just throw an error (`RangeError`) for very large arrays: spreading passes every element as a function argument, and engines cap the argument count at an engine- and version-specific limit. Use the loop approach for reliability.

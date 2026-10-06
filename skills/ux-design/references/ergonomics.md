@@ -82,7 +82,7 @@ Rule: tap area size is measured in logical points, not visual pixels. A 24px ico
 #### iOS
 ```
 ┌─────────────────────────┐
-│░░░░ Status Bar ░░░░░░░░│  ← 54pt (Dynamic Island) / 47pt (notch) / 20pt (legacy)
+│░░░░ Status Bar ░░░░░░░░│  ← top inset 59–62pt (Dynamic Island) / ~44–50pt (notch) / 20pt (legacy)
 ├─────────────────────────┤
 │                         │
 │      Safe Content       │
@@ -94,7 +94,7 @@ Rule: tap area size is measured in logical points, not visual pixels. A 24px ico
 ```
 
 - Always respect `safeAreaInsets` — never place interactive elements behind system UI
-- Dynamic Island: 54pt top inset. Content must not overlap.
+- Dynamic Island: top safe-area inset is 59pt (iPhone 14/15 Pro) or 62pt (iPhone 16 Pro, all iPhone 17 models); iPhone Air is 68pt. 54pt is only the status bar height — read `safeAreaInsets` at runtime instead of hardcoding (values as of 2026-10). Content must not overlap.
 - Home indicator: 34pt bottom inset. Tab bars account for this automatically.
 - Landscape: additional insets on left/right for notch/island
 
@@ -149,7 +149,7 @@ Rule: tap area size is measured in logical points, not visual pixels. A 24px ico
 |-----------|-------|----------------|--------|
 | Mobile S | 320px | Small phones (iPhone SE/mini class) | Single column, stacked |
 | Mobile M | 375px | Compact phones (older/SE-class) | Single column |
-| Mobile L | 390–430px | Standard & Pro Max phones (current iPhone 16/17 base ≈ 390–393px) | Single column, wider margins |
+| Mobile L | 390–440px | Standard & Pro Max phones (iPhone 16 base 393px; iPhone 17 / 17 Pro 402px; Pro Max up to 440px — as of 2026-10) | Single column, wider margins |
 | Tablet | 768px | iPad Mini, small tablets | Two-column possible |
 | Tablet L | 1024px | iPad Air/Pro | Two-column, sidebar |
 | Desktop | 1280px | Laptops, small monitors | Multi-column, sidebar |
@@ -250,9 +250,9 @@ This is the canonical response-time ladder (aligned with the classic
 
 ### Baseline (WCAG 2.2 AA — design target)
 
-> **Status (2026-05):** WCAG 2.2 is W3C Recommendation (Oct 2023). EAA enforcement began **2025-06-28** but EN 301 549 currently still maps to **WCAG 2.1 AA**; WCAG 2.2 incorporation is expected during 2026. Design to 2.2 to be safe; 2.1 is the current legal floor in the EU.
+> **Status (2026-10):** WCAG 2.2 is W3C Recommendation (Oct 2023). EAA enforcement began **2025-06-28**. EN 301 549 **V4.1.1** (adopted Aug 2026, published 2 Sep 2026) aligns with **WCAG 2.2 A/AA**, but it becomes the legally binding EU reference only once the Commission cites it in the Official Journal (expected ~Dec 2026); until then the cited V3.2.1 maps to **WCAG 2.1 AA**. Design to 2.2 — it is the floor as soon as the citation lands.
 
-**WCAG 2.1 AA (current legal floor):**
+**WCAG 2.1 AA (EU legal floor until EN 301 549 V4.1.1 is cited in the OJEU):**
 
 | Requirement | Specification | Test Method |
 |-------------|---------------|-------------|
@@ -267,7 +267,7 @@ This is the canonical response-time ladder (aligned with the classic
 
 | Requirement | Specification |
 |---|---|
-| 2.4.11 / 2.4.12 — Focus appearance | Focus indicator ≥ 2px solid outline, 3:1 contrast against adjacent colors; not obscured by other content |
+| 2.4.11 — Focus not obscured (minimum) | A focused component is never entirely hidden by author-created content (sticky headers/footers, cookie banners, chat widgets). AAA extras: 2.4.12 Focus Not Obscured (Enhanced) — no part hidden; 2.4.13 Focus Appearance — indicator area ≥ a 2 CSS px perimeter of the component, 3:1 contrast between focused and unfocused states |
 | 2.5.7 — Dragging movements | Any drag interaction must have a single-point alternative (e.g., tap to reorder via buttons) |
 | 2.5.8 — Target size (minimum) | 24×24 CSS px for non-essential targets; 44×44 still recommended |
 | 3.2.6 — Consistent help | Help controls (contact link, FAQ) appear in the same relative location across pages |
