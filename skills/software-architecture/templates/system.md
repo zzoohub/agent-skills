@@ -1,7 +1,9 @@
 # Architecture
 
-**Date**: {date}
-**Context**: See `docs/arch/context.md` for problem definition, ASRs, and domain model.
+**Date**: {date} · **Context**: `docs/arch/context.md`
+**State**: greenfield | as-is recovered YYYY-MM-DD | target (transition: §4)
+
+<!-- Keep every numbered § (other skills read them by number); write `n/a — reason` where one does not apply. Subsections are a menu: write those a non-skipped perspective or one-way door needs and omit the rest, heading included; light perspectives get one line. -->
 
 ---
 
@@ -9,21 +11,22 @@
 
 ### System Pattern
 
-**Chosen**: [pattern] — [one-line why]
+**Chosen**: [pattern] — [why, citing QA ids]
 
-ATAM verification against [H,H] ASRs:
+**ATAM** ([H,H] drivers):
 
-| ASR (from utility tree) | How this pattern satisfies it | Sensitivity point | Trade-off |
-|---|---|---|---|
-| ... | ... | ... | ... |
+| QA id | Decisions / tactics (ADR) | Sensitivity / trade-off point | Evidence | Risk / non-risk |
+|---|---|---|---|---|
+| QA-01 | ... (ADR-NNN) | ... | analysis, measurement, spike, precedent (conditions) | non-risk because ...; breaks if ... |
 
 ### Service Pattern
 
-**Chosen**: [pattern] — [one-line why]
+**Per context class**: core [style]; supporting and generic [style]; exceptions [context → style].
 
-### AI Pattern
+### AI Platform
+<!-- If AI features exist. -->
 
-**Chosen**: [pattern] — [one-line why]
+**Model access**: [port, gateway?] · **Providers & exit path**: [...] · **AI cost ceiling**: [...] · **Feature docs**: `docs/arch/ai-features/{feature}.md`
 
 ---
 
@@ -31,169 +34,168 @@ ATAM verification against [H,H] ASRs:
 
 ### Core Technology
 
-<!-- Adapt rows based on software type. Not all systems have all layers. -->
-
-| Concern | Choice | Why | Rejected |
-|---|---|---|---|
-| Core runtime | ... | ... | ... |
-| Data store | ... | ... | ... |
-| Communication | ... | ... | ... |
-<!-- conditional: add rows as needed for the specific system type -->
+| Concern | Choice | Why | Rejected | Baseline (default / ADR) |
+|---|---|---|---|---|
 
 ### Container Diagram
 
-D2 diagram (C4 Level 2) showing major runtime containers, communication protocols, and external integrations.
+<!-- If Full rigor. AI containers: `references/ai/protocol.md` § Build-mode hooks. -->
+
+C4 Level 2 as code: containers, protocols, external integrations, trust boundaries.
 
 ### Key Modules
 
-| Module | Owns | Ports |
-|---|---|---|
-| ... | ... | ... |
+| Module | Owns | Owner | Hides |
+|---|---|---|---|
 
-### Interface Contract
-<!-- Include if the system has external consumers -->
+### Published Contracts
+<!-- If anything outside the deployable depends on it. -->
 
-- **Protocol style**: [REST / RPC / GraphQL / + MCP server] — [why]
-- **Versioning posture**: [additive-only / versioned]
-- **Error contract**: [RFC 9457 problem+json or equivalent]
-- **Pagination default**: [cursor / offset, per operational-patterns]
+| Surface | Consumers | Compatibility policy | Guard (CI check) |
+|---|---|---|---|
 
-### AI Components
-<!-- Include only if PRD involves AI/LLM features -->
-
-| Component | Responsibility | Key decisions |
-|---|---|---|
-| LLM Gateway | Model routing, caching, cost tracking | ... |
-| Embedding Pipeline | Chunking, embedding, vector store writes | ... |
-| Eval Pipeline | Quality measurement, regression detection | ... |
+**Error contract, pagination default**: [RFC 9457 or equivalent; cursor]
 
 ---
 
 ## 3. Data
 
-### Storage Strategy
+### Stores
 
-| Store | Holds | Why This Type | Consistency |
-|---|---|---|---|
-| ... | ... | ... | ... |
+| Store | Holds | Why | Consistency (per op) | Replication & read path | RPO/RTO, restore test |
+|---|---|---|---|---|---|
 
-**Durability** (per store holding the only copy of anything): RPO [...], RTO [...], backup mechanism [PITR / snapshots], restore-test cadence [...]
+### Data Inventory
 
-### Key Data Flows
+| Data set | Writer (single) | Class | Every copy (incl. backups, logs, caches, indexes, processors, non-prod) | Retention & erasure | Residency | Consumers & read boundary |
+|---|---|---|---|---|---|---|
 
-Trace 2-3 critical user journeys:
+### Tenancy
+<!-- If multi-tenant. -->
 
-**[Flow name]**: [step-by-step data path]
+**Isolation model per resource** · **enforcement points (≥ 2)** · **tenant lifecycle** · **cross-tenant tests**: [...]
 
-### Caching (if needed)
+### Partitioning
+<!-- If a partition key shapes the architecture. -->
 
-What's cached, why, invalidation approach, stampede prevention.
+**Key per scaling dimension** · **hot partitions** · **rebalancing**: [...]
 
-### AI Data
-<!-- Include only if PRD involves AI/LLM features -->
+### Key Scenarios
 
-| Concern | Strategy |
-|---|---|
-| Chunking | [approach, chunk size, overlap %] |
-| Search | [dense / BM25 / hybrid] |
-| Context window budget | System prompt: N tokens + Retrieved: N tokens + History: N tokens + Output: N tokens = Total |
+**[Scenario]** (QA-..):
+
+| Hop | Sync / async | Latency budget | Idempotency / ordering | On failure |
+|---|---|---|---|---|
+
+### Caching
+<!-- If anything is cached. -->
+
+**What · staleness bound · key (incl. tenant) · invalidation · sharing scope**: [...]
 
 ---
 
 ## 4. Deployment & Cost
 
-### CI/CD Pipeline
+### Deployment & Topology
 
-test -> lint -> security scan -> build -> smoke test -> deploy
+| Unit | Runs where (region, site, device, client) | Failure domain | Trust zone | Scaling |
+|---|---|---|---|---|
+
+**Partition contracts** (each partition-prone link, per design-flow § Deployment View & Topology): [... — or none]
+
+### Release Model
+
+- **Operated**: [rollout, abort condition, rollback or roll-forward, flags, expand-contract, config releases]
+- **Shipped / fleet**: [versioning, support and version-skew windows; rings, atomic update with fallback, kill switch]
+- **Pipeline**: [gates, provenance, signing, dependency policy]
 
 ### Scaling Model
 
-[Scale-to-zero / auto-scale / always-on / single-instance] — [rationale]
+[scale-to-zero, autoscale or fixed; why; cold start]
 
 ### Scaling Ladder
+<!-- If operated. -->
 
 | Load | First bottleneck | Trigger metric (on a §5 dashboard) | Planned response |
 |---|---|---|---|
 | 10x | ... | ... | ... |
 | 100x | ... | ... | One honest sentence is enough |
 
-### Cost Estimate
+### Cost & Unit Economics
 
-<!-- Use two traffic levels relevant to the system -->
-
-| Component | Baseline | Growth |
+| Item | Baseline | Growth |
 |---|---|---|
-| Compute | ... | ... |
-| Database | ... | ... |
-| Storage | ... | ... |
-| Third-party APIs | ... | ... |
-| **Total** | ... | ... |
+| Fixed floor | | |
+| Per [demand unit] | | |
+| At peak, incl. egress | | |
+| **Unit cost vs target** | | |
 
-Components that cost money while idle: [list or "none"]
+**Idle** (money or energy at zero traffic): [list or "none"] · **cost guard**: [alert]
+<!-- AI: one roll-up row per feature, its envelope vs the AI cost ceiling. -->
 
-### AI Ops
-<!-- Include only if PRD involves AI/LLM features -->
+### Transition Plan
+<!-- If re-architecture, modernization or system migration. -->
 
-| Model | Version (pinned) | Cost per 1K tokens | Fallback |
-|---|---|---|---|
-| ... | ... | ... | ... |
+**As-is**: `docs/arch/as-is.md` · **Live step**: [n]
 
-Cost alerting threshold: [80% of ceiling from ASR]
+| Step | Components & disposition | Coexistence seam | Data mechanics | Driver levels held | Exit fitness function | Rollback trigger | Dual-run cost |
+|---|---|---|---|---|---|---|---|
 
 ---
 
 ## 5. Cross-cutting
 
+### Perspective Coverage
+
+**Deep**: [perspective (QA ids); …] · **Light**: [perspective; …] · **Skipped**: [perspective (reason); …]
+
 ### Fitness Functions
 
-| Property | Check | CI Location |
-|---|---|---|
-| No circular deps | `madge --circular` | Pre-commit |
-| Domain independence | Import rules | CI |
-| Response time | Performance test | Post-deploy |
+| Property | QA id | Check | Cadence / where |
+|---|---|---|---|
+| Module boundaries | QA-.. | no access past a module's public interface or into its tables | per commit, CI |
 
-Every [H,H] ASR appears either here (CI guard) or in the SLO table below (runtime guard) — the §1 ATAM check proved the design once; guards keep it true.
+Every [H,·] QA id has a guard here or in the SLO table.
 
 ### SLOs & Error Budgets
+<!-- If operated. Burn-rate starting parameters: references/observability.md. AI: add the AI SLI set (references/ai/production.md), targets from the feature docs. -->
 
-| SLI | Target (from ASR) | Error budget | Page (fast burn) | Ticket (slow burn) |
+| SLI | QA id | Target | Budget | Page | Ticket | Owner | Runbook |
+|---|---|---|---|---|---|---|---|
+| `<from ASR>` | QA-.. | `<from ASR>` | `<1 − target>` | `<fast burn>` | `<slow burn>` | ... | ... |
+
+### Write-path Integrity
+<!-- If a write must not be lost, duplicated or interleaved. Binding on implementation. -->
+
+| Command / consumer | Tx boundary | Outbox? | Idempotency (key / event id) | Concurrency control |
 |---|---|---|---|---|
-| e.g., availability | 99.5% | 3.6h/month | 14.4x burn over 1h | 3x burn over 6h |
 
-### Auth & Security
-<!-- Include if users exist -->
+Rows answered "no" or "later" go to the Risk Register.
 
-- Auth flow: [how users authenticate]
-- Authorization: [RBAC / ABAC / etc.]
-- Security layers: Edge -> Transport -> Auth -> AuthZ -> Data -> Audit
+### Observability Contract
+<!-- If operated; binding on implementation; checklist: references/observability.md. Software others run: diagnosability instead (same file). -->
 
-### Observability — Day 1
+**Signal per question** · **sampling** · **cardinality budget** · **redaction rule** · **semantic conventions (pinned version)** · **day-1 basics**: [...]
 
-- **Error tracking**: [tool choice]
-- **Structured logging**: JSON to stdout with correlation IDs
-- **Health checks**: [endpoint or mechanism]
-- **Uptime monitoring**: [tool choice]
+### Security
+<!-- AI: include model-mediated flows. Deep: expand into the tables in references/security-privacy.md. -->
+
+| Boundary / flow | Threat (STRIDE / LINDDUN) | Control | Guard |
+|---|---|---|---|
+
+**Authn / authz model per principal type**: [source, model, enforcement point]
+
+**Secrets & keys**: [owner, rotation, revocation] · **compliance → evidence**: [if deep]
 
 ### Resilience
 
-| Service | Timeout | Retry | If Down |
-|---|---|---|---|
-| ... | ... | ... | ... |
+| Dependency | Deadline | Retry budget (one layer) | Isolation | If slow / down | Exercised |
+|---|---|---|---|---|---|
 
-### AI Security
-<!-- Include only if PRD involves AI/LLM features -->
+**Overload policy**: [admission, shedding order, buffer bounds, client retry and reconnect contract]
+<!-- Availability deep: add Detection and Blast radius columns and a DR posture line per tier. -->
 
-3-layer defense:
-1. **Input**: [classification, PII detection, injection detection]
-2. **RAG trust**: [source validation, content sanitization]
-3. **Output**: [schema validation, content filtering, hallucination detection]
+### AI Authority
+<!-- If AI takes actions. Cross-feature items only; per-action rows live in the feature docs. -->
 
-### AI Observability
-<!-- Include only if PRD involves AI/LLM features -->
-
-| Metric | Target | Alert |
-|---|---|---|
-| Time to first token (TTFT) | < 2s | > 5s |
-| Cost per request | < $X | Daily budget > 80% |
-| Guardrail trigger rate | < 5% | > 10% |
-| RAG relevance score | > 0.7 | < 0.5 |
+**Agent identities · policy-enforcement points · approval queue · kill switch**: [... → feature doc links]

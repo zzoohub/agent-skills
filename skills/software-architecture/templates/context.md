@@ -1,132 +1,106 @@
 # Context
 
-**Date**: {date}
-**PRD**: {link or title}
+**Date**: {date} · **PRD**: {link or title}
+**State**: greenfield | target | as-is recovered YYYY-MM-DD (claims tagged *observed* / *inferred*)
+**Rigor**: Lite | Full — {why} · **Units**: {deployable}: {type}, operated | shipped | fleet
+
+<!-- Keep every numbered § (other skills read them by number); write `n/a — reason` where one does not apply. Subsections are a menu: write those a non-skipped perspective or one-way door needs and omit the rest, heading included; light perspectives get one line. -->
 
 ---
 
 ## 1. Problem
 
-**What problem, for whom, why now** (one paragraph).
+**What problem, for whom, why now** (one paragraph). **Core behaviors**: [verbs from the PRD].
 
-### Core Behaviors
-
-Verb-centric list extracted from the PRD:
-- [Actor] **searches** for [thing]
-- [Actor] **creates** [thing]
-- [System] **processes** [thing]
+**Stakeholders & concerns**: [one line each: operators, compliance, integrators, ...]
 
 ### Success Criteria
 
 | Path | Target | Drives |
 |---|---|---|
-| e.g., API response (main flow) | p99 < 500ms | Caching? Query optimization? |
-| e.g., Uptime | 99.5% (3.6h downtime/month) | Health checks, alerting, redundancy |
-| e.g., Memory usage | < 50MB resident | Data structure choices, streaming |
+| e.g., main read path | p99 < 500 ms | caching? query shape? |
 
 ---
 
 ## 2. System Boundary
 
-What this system does and does not do.
-
-- **Does**: [core capabilities — verb-centric]
-- **Does not**: [explicit exclusions — prevents scope creep]
+- **Does**: [core capabilities — verbs]
+- **Does not**: [explicit exclusions]
 - **External connections**: [systems this integrates with]
 
-D2 system context diagram (C4 Level 1) — the system as a black box showing actors, external systems, and data flows.
+System context diagram (C4 Level 1) as code: actors, external systems, data flows, trust boundaries.
 
 ### Scale Envelope
 
-Back-of-envelope, derivation shown so the arithmetic is checkable:
+<!-- Existing system: measured from telemetry, source cited. -->
 
 | Metric | Value | Derivation |
 |---|---|---|
-| Peak RPS (read / write) | ... | DAU × actions/day ÷ 86,400 × peak factor |
-| Data growth | .../year | rows/day × bytes/row |
-| Working set | ... | hot data actually queried |
-| Largest payload | ... | ... |
-| **Scale class** | S / M / L | gates pattern legitimacy in Stage 4 |
+| Peak load, binding unit (read / write) | ... | Σ load sources × rate × peak factor |
+| Burst shape, hottest-partition share | ... | ramp vs scale-out lead time; largest tenant or key |
+| Provider quota headroom | ... | peak vs quota, in the provider's units |
+| Unit cost at the p95/p99 user (if usage-priced) | ... | price × calls per successful task |
+| Data growth, working set, largest payload | ... | ... |
+| **Scale class** | S / M / L | vs one node's measured capacity (anchor, source) |
+
+<!-- Software others run: rows become input size (typical / worst), start + process latency, memory / storage ceiling, platform matrix; no scale class. -->
+
+- **Placement constraints**: [residency, on-prem, edge / offline — or none]
+- **Top risks**: [three failure scenarios, with numbers]
+- **Lifespan & phase**: [prototype, product or platform; expected life]
+- **Calibration** (one line each; unknown → A-nn): exposure, criticality, data sensitivity, tenancy, run model, teams, external consumers, reach, hazard, usage-priced dependencies, AI
 
 ---
 
 ## 3. ASR & Utility Tree
 
-### Architecturally Significant Requirements
-
-| # | ASR | Filter | Rationale |
-|---|---|---|---|
-| 1 | ... | Business risk | ... |
-| 2 | ... | Unusual quality | ... |
-
-### Utility Tree
-
 ```
 System Utility
-+-- [Quality Attribute]
-|   +-- "[Scenario]" [Importance, Difficulty]
-|   +-- "[Scenario]" [Importance, Difficulty]
-+-- [Quality Attribute]
-    +-- "[Scenario]" [Importance, Difficulty]
++-- Performance
+|   +-- QA-01 "When 500 users search concurrently at peak, results return in < 1 s p99" [H,H] · filter: unusual quality · serves: {goal}
++-- Evolvability (change scenarios)
+    +-- QA-02 "When a second payment provider is added, at most one module changes" [H,M] · filter: cross-cutting
 ```
 
-**Architecture drivers** ([H,H] items):
-1. ...
-2. ...
+**Drivers** ([H,H]): QA-01, ... · **Top attributes, ranked**: [...] · **Conflicts**: [A vs B → ADR-NNN]
 
-### AI ASR
-<!-- Include only if PRD involves AI/LLM features -->
-
-| Question | Answer | Drives |
-|---|---|---|
-| Streaming required? | ... | ... |
-| RAG needed? | ... | ... |
-| Agent capabilities? | ... | ... |
-| Cost ceiling? | ... | ... |
-| Hallucination tolerance? | ... | ... |
+<!-- AI: write its drivers as scenarios here (tolerated error, cost per successful task, latency, authority), not mechanisms. -->
 
 ---
 
 ## 4. Domain Model
 
-### Domain Events
-
-Past-tense verbs extracted from PRD:
-- UserRegistered
-- [Event]
-- [Event]
-
 ### Bounded Contexts
 
-D2 context map showing bounded contexts and their relationships.
+| Context | Type | Owns | Owner | Hides | Sourcing |
+|---|---|---|---|---|---|
+| e.g., Matching | Core | Match, Score | team A | ranking rules | Build — invest |
+| e.g., Billing | Generic | Invoice | team B | provider | Buy — payment processor + webhook adapter (liability transfer; ADR-00N) |
 
-| Context | Type | Owns | Key Entities | Sourcing |
-|---|---|---|---|---|
-| e.g., Matching | Core | Ranking, recommendation rules | Match, Score | Build — invest (hexagonal rigor) |
-| e.g., Identity | Generic | Auth, sessions, profiles | User, Session | Self-host — audited auth library, our DB |
-| e.g., Notifications | Generic | In-app feed, preferences | Notification | Build — plain CRUD, in-repo |
-| e.g., Billing | Generic | Subscriptions, payments | Subscription, Invoice | Buy — Stripe + webhook adapter (PCI scope; ADR-00N) |
+<!-- Event-stormed contexts: events → aggregates → commands → external triggers, under the context map. -->
+
+Context map as code; label each edge with its relationship (`references/service-architecture.md` § Strategic Context Mapping) and sync / async.
 
 ### Ubiquitous Language
 
-| Term | Definition | Code Mapping |
-|---|---|---|
-| ... | ... | `EntityName`, `field_name` |
+| Context | Term | Definition | Code Mapping |
+|---|---|---|---|
 
 ---
 
 ## 5. Constraints
 
-- **Resource constraints**: [budget, infrastructure limits, team size]
-- **Regulatory requirements**: [compliance, data residency]
-- **Integration constraints**: [must integrate with X, must support protocol Y]
-- **Deployment constraints**: [target platform, distribution method]
+- **C-01 Technology baseline**: [mandate, incumbent stack, house profile (name, last verified) or none] + the adopted profile's context fields
+- **C-02 Team & resources**: [skills, on-call limits, budget, infrastructure]
+- **C-03 Regulatory**: [regimes the caller names, residency, audit duties]
+- **C-04 Integration**: [must integrate with X, support protocol Y]
+- **C-05 Deployment**: [target platforms, distribution channel]
+
+<!-- One C-nn per constraint; add C-06+ as needed. -->
 
 ---
 
 ## 6. Assumptions
 
-What the architecture depends on being true. If any assumption is invalidated, revisit the affected design decisions.
-
-- ...
-- ...
+| A-nn | Assumption | Confidence (H / M / L) | Validation (spike, measurement, ask) | Dependent ADRs | Decide-by |
+|---|---|---|---|---|---|

@@ -1,36 +1,36 @@
 # Pre-vetted House Stack
 
-This is not a neutral catalog of technology options — it is a **curated house stack** built around Cloudflare Workers/Containers, GCP (Cloud Run, Cloud SQL, BigQuery), Supabase for Postgres, and a short list of proven external services. Choices reflect operational familiarity, regional constraints (Korea), and cost discipline.
+A **swappable house profile**, not a neutral catalog of technology options: a **curated house stack** built around Cloudflare Workers/Containers, GCP (Cloud Run, Cloud SQL, BigQuery), Supabase for Postgres, and a short list of proven external services. Choices reflect operational familiarity, regional constraints (Korea), and cost discipline.
 
 This file is **opinionated and deliberately non-portable** — it encodes one shop's procurement, not universal guidance. On another runtime or org, treat it as a worked example, not a mandate.
 
-**When to use these**: Default to the options below. They require no additional justification.
+**Applies only when adopted**: a project opts in with one line in its project conventions file naming this path (e.g. `House profile: the software-architecture skill's references/house-stack.md`), or the caller names it. Once adopted and checked against the target environment, its defaults fill the choices that the caller's or the existing system's constraints leave open, and Profile Context is copied into `context.md` §5 (`design-flow.md` § Technology Baseline & Selection). To swap profiles, point that line at another file with the same sections; general files never name these rows.
 
-**When to deviate**: A choice outside this list requires an ADR in `docs/arch/adr/` that explicitly documents:
-1. Why the house option was insufficient (specific capability gap, not "I prefer X")
-2. What the deviation costs — operational burden, new runtime, extra billing surface
-3. Revisit condition — when should we reconsider going back to the house option?
+Last verified: 2026-10-06
 
-Deviation is fine when justified. Unjustified deviation is tech debt.
+**Maturity tags**: (beta)/(RC)/(WIP)/(pre-1.0) = pre-GA under design-flow Stage 5; 'fixed' = not open to deviation ADRs. Pre-GA rows are fine as defaults; where a row names an inline GA fallback, prefer it when the guarantee matters.
 
-**Maturity tags**: items tagged **(beta)** / **(RC)** are pre-GA — fine as defaults, but a production-critical dependency on one should be a conscious choice, not an accident. Prefer the inline GA fallback when the guarantee matters.
-
-**Agentic operability**: this stack is built and operated primarily by AI agents, so selections also weigh three properties — a first-class local dev loop (`wrangler dev`, emulators, `bun test`) an agent can iterate against; typed SDKs and declarative config an agent can read, edit, and diff (files, not dashboard clicks); and failures observable from the CLI (logs/errors reachable without a browser). The IaC-first rows (OpenTofu, Wrangler, GitHub Actions) are load-bearing for this, not conveniences — a dashboard-only service would need an ADR arguing why losing agent operability is worth it.
-
-**Cloud split — read first**: Cloudflare and GCP are *not* interchangeable co-equals; the relationship is **hub-and-spoke**. Default to **Cloudflare** for the edge / serverless / agent fabric and the global front door; reach for **GCP** for regional heavy compute (Cloud Run GPUs, Cloud SQL, BigQuery, Pub/Sub) and the **Korea data-residency anchor** (`asia-northeast3`). Workers VPC + Hyperdrive stitch the two into one private network (Workers in front, Cloud SQL behind). When a row lists both, the CF option is the primary and the GCP option is the heavy-or-Korea trigger.
-
-## Table of Contents
-
-1. [Language & Runtime](#language--runtime)
-2. [Framework](#framework)
-3. [Infrastructure](#infrastructure)
-4. [Data](#data)
-5. [AI](#ai)
-6. [External Services](#external-services)
+**Deviations** follow the general rule in design-flow Stage 5 plus this profile's extra criteria. 
 
 ---
 
-## Language & Runtime
+## Profile Context
+
+Copied into `context.md` §5 when adopted.
+
+- **Who builds and operates**: primarily AI agents; small team.
+- **Regions, residency & cloud split — read first**: Cloudflare and GCP are *not* interchangeable co-equals; the relationship is **hub-and-spoke**. Default to **Cloudflare** for the edge / serverless / agent fabric and the global front door; reach for **GCP** for regional heavy compute (Cloud Run GPUs, Cloud SQL, BigQuery, Pub/Sub) and the **Korea data-residency anchor** (`asia-northeast3`). Workers VPC + Hyperdrive stitch the two into one private network (Workers in front, Cloud SQL behind). When a row lists both, the CF option is the primary and the GCP option is the heavy-or-Korea trigger.
+- **Cost posture**: cost discipline — a short list of proven services, and nothing per-seat for what is just code (build-vs-buy posture below).
+- **Build-vs-buy posture**: **Build or self-host by default** — agentic dev collapsed the build cost, and generic subdomains are an agent's best-documented territory. **Buy only what you cannot write**; each vendor adopted carries an ADR. Agentic dev deflated one cost: writing and changing code. A vendor is worth a permanent dependency only when it sells something else — the test in `design-flow.md` § Subdomain Classification & Build-vs-Buy. House verdicts on that test: someone else's pager → buy when there's no rotation (an agent writes it once; a human still wakes at 3am); spec conformance under attack → audited library, self-hosted; just code → build (the agent can read and test the whole path). External Services below is the shortlist where buying still wins.
+- **Extra selection criteria — agentic operability**: this stack is built and operated primarily by AI agents, so selections also weigh three properties — a first-class local dev loop (`wrangler dev`, emulators, `bun test`) an agent can iterate against; typed SDKs and declarative config an agent can read, edit, and diff (files, not dashboard clicks); and failures observable from the CLI (logs/errors reachable without a browser). The IaC-first rows (OpenTofu, Wrangler, GitHub Actions) are load-bearing for this, not conveniences — a dashboard-only service would need an ADR arguing why losing agent operability is worth it.
+
+---
+
+## Role Defaults
+
+The house default (or ordered options) per role. A role with no row has no house technology default — select per ASR; its sourcing still follows the build-vs-buy posture above.
+
+### Language & Runtime
 
 | Role | Choice |
 |---|---|
@@ -40,9 +40,7 @@ Deviation is fine when justified. Unjustified deviation is tech debt.
 
 Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeScript covers services. Add Go only via an ADR if a team lacks the Rust depth for stateless Container/Cloud Run services.
 
----
-
-## Framework
+### Framework
 
 | Role | Options |
 |---|---|
@@ -55,14 +53,7 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Game | Godot, Bevy **(pre-1.0)** |
 | Data Pipeline | Basin Pipelines (formerly Cloudflare Pipelines), Cloud Dataflow, dbt (Core v2 / Fusion engine) |
 
-**TanStack Start house taste** (explicit over magic, end-to-end types):
-- **FSD layering** — route files are thin routing glue (loader, guard, head); page UI lives in `views/`; server functions live in the owning slice's `api/`; layers import only downward (`views` → `widgets` → `features` → `entities` → `shared`).
-- **URL is first-class state** — filters, tabs, and pagination live in validated, typed search params, not client state, so views stay shareable and bookmarkable.
-- **Every server function is a public endpoint** — the build exposes each as an HTTP-reachable RPC route, so validate input and authenticate, authorize (ownership, not just a session), and tenant-scope *inside* the function; route guards are navigation UX only. Only `VITE_`-prefixed env vars reach the client — all of them do — so secrets stay unprefixed and server-side.
-
----
-
-## Infrastructure
+### Infrastructure
 
 | Role | Options |
 |---|---|
@@ -78,9 +69,7 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Secrets | Worker Secrets (GA), Secrets Store **(beta)**, Secret Manager |
 | Zero Trust / private net | CF Zero Trust (GA), Workers VPC **(beta)** — fall back to Tunnel + Access if GA is required |
 
----
-
-## Data
+### Data
 
 | Role | Options |
 |---|---|
@@ -98,9 +87,7 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Images | CF Images |
 | Video | CF Stream + Media Transformations |
 
----
-
-## AI
+### AI
 
 | Role | Options |
 |---|---|
@@ -117,11 +104,9 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 | Agent (durable) | CF Workflows + (PydanticAI \| LangGraph); Temporal / Inngest off-edge |
 | Agent (protocol) | MCP on Workers; A2A (agent-to-agent); Claude Managed Agents (hosted) |
 
----
+### External Services
 
-## External Services
-
-Shortlist for the minority of generic subdomains where buying still wins (`design-flow.md` § Subdomain Classification). Not a default menu — anything outside these rows is built or self-hosted in-repo. "Auth" is the protocol, implemented with an audited library, not a hosted identity vendor.
+Shortlist for the minority of generic subdomains where buying still wins (`design-flow.md` § Subdomain Classification & Build-vs-Buy). Not a default menu — anything outside these rows is built or self-hosted in-repo. "Auth" is the protocol, implemented with an audited library, not a hosted identity vendor.
 
 | Role | Options |
 |---|---|
@@ -137,3 +122,29 @@ Shortlist for the minority of generic subdomains where buying still wins (`desig
 | Tracing + Logging | OTel, CF Workers Logpush |
 | Analytics | PostHog |
 | Feature flags | KV + PostHog |
+
+---
+
+## House Conventions
+
+House instances of rules that live in the general files; they apply wherever this profile is adopted.
+
+**Diagrams** — D2 in C4 notation, written as source directly in the doc; D2 classes give consistent styling (`person` for actors, `cylinder` for databases, `queue` for message brokers, dashed borders for system boundaries). If a D2 rendering tool/skill is installed, use it; otherwise leave the D2 source as-is, or fall back to Mermaid or ASCII. Which views to draw: `SKILL.md` § Writing Style.
+
+**Fitness-function tooling** — the tools behind the checks in `design-flow.md` § Fitness Functions, per house language:
+
+| Check | TypeScript | Rust | Python | Cadence |
+|---|---|---|---|---|
+| No circular dependencies | `madge --circular` | `cargo-modules` / `cargo-depgraph` | `pydeps --show-cycles` | Pre-commit + CI |
+| Domain independence (import rules) | `eslint-plugin-boundaries` | Workspace crate boundaries (domain crate has no infra deps in `Cargo.toml`) | `import-linter` contracts | CI |
+| Bundle / binary size | `size-limit`, `bundlesize` (frontend) | Binary size threshold (WASM) | — | CI |
+| Dependency drift | `bun audit` | `cargo-deny` | `pip-audit` | CI |
+
+Any language: response time — a k6 / autocannon / wrk smoke test with the p99 threshold from the ASR, post-deploy; dependency updates — Renovate/Dependabot policies.
+
+**Observability** — the house pick is OTel + CF Workers Logpush, with no third-party logging vendor by default (the Errors and Tracing + Logging rows). The architectural rules live in `observability.md`.
+
+**TanStack Start house taste** (explicit over magic, end-to-end types):
+- **FSD layering** — route files are thin routing glue (loader, guard, head); page UI lives in `views/`; server functions live in the owning slice's `api/`; layers import only downward (`views` → `widgets` → `features` → `entities` → `shared`).
+- **URL is first-class state** — filters, tabs, and pagination live in validated, typed search params, not client state, so views stay shareable and bookmarkable.
+- **Every server function is a public endpoint** — the build exposes each as an HTTP-reachable RPC route, so validate input and authenticate, authorize (ownership, not just a session), and tenant-scope *inside* the function; route guards are navigation UX only. Only `VITE_`-prefixed env vars reach the client — all of them do — so secrets stay unprefixed and server-side.

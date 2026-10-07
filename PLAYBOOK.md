@@ -46,7 +46,9 @@ returns its findings to the main session.
 
 ## 2. Feature on an existing product
 ```
-feature-spec → arch-decision (if it shifts architecture)
+feature-spec → arch-decision (if it shifts one architectural decision; a re-architecture,
+modernization, system migration or multi-decision change → software-architecture on the
+existing system)
 → screen-design → implement (main session / general-purpose subagents + stack skills)
 → reviewer → verifier → (adversary, if high-risk) → ship
 ```

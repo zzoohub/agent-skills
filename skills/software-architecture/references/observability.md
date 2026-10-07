@@ -1,54 +1,21 @@
 # Observability
 
-Observability is the property that lets you ask **new questions** about production behavior without shipping new code. The three signal types — traces, metrics, logs — are how that property is achieved. Treat observability as an architectural concern, not a "we'll add logging later" task.
-
-This file covers the architectural decisions. Vendor / SDK choice is in `house-stack.md`.
-
-## Table of Contents
-
-1. [The Three Signals](#the-three-signals)
-2. [OpenTelemetry as the Default](#opentelemetry-as-the-default)
-3. [Trace Architecture](#trace-architecture)
-4. [Metrics Architecture](#metrics-architecture)
-5. [Log Architecture](#log-architecture)
-6. [Correlation Across Signals](#correlation-across-signals)
-7. [Health Checks](#health-checks)
-8. [Observability as a Port (Hexagonal)](#observability-as-a-port-hexagonal)
-9. [What to Define in the Architecture Document](#what-to-define-in-the-architecture-document)
+Decisions for what you operate land in the Observability Contract of `system.md` §5 (default `docs/arch/system.md`; caller may redirect), binding on implementation; the backend is a Stage 5 technology choice. Software others run (a library, CLI or self-hosted product) needs diagnosability instead: structured, versioned logs or crash reports the operator can export, a verbosity switch, and no telemetry leaving their environment without consent.
 
 ---
 
-## The Three Signals
+## Signals and OpenTelemetry
 
-| Signal | Answers | Cardinality | Cost Model |
-|---|---|---|---|
-| **Traces** | "Where did this request spend its time? Which call failed?" | High (one trace per request) | Per-span; sample to control cost |
-| **Metrics** | "What is the rate / latency / saturation right now?" | Low (pre-aggregated) | Per active series; cardinality = pricing |
-| **Logs** | "What exactly happened in this one execution?" | Highest (one record per event) | Per byte ingested; structure to enable querying |
+**They are not interchangeable.** Logs cannot answer "p99 latency by endpoint" cheaply. Metrics cannot answer "show me this exact request's path." Traces cannot replace per-event detail, and neither traces nor diagnostic logs are an audit trail. Design which signal carries which question before instrumenting.
 
-**They are not interchangeable.** Logs cannot answer "p99 latency by endpoint" cheaply. Metrics cannot answer "show me this exact request's path." Traces cannot replace per-event audit detail. Design which signal carries which question before instrumenting.
+OpenTelemetry (OTel) is the vendor-neutral standard for emitting traces, metrics and logs. Instrument once with the OTel SDK and route through the Collector: application → OTel SDK → OTLP → Collector → whichever trace, metric and log backends the project chose.
 
----
-
-## OpenTelemetry as the Default
-
-OpenTelemetry (OTel) is the vendor-neutral standard for emitting traces, metrics, and (increasingly) logs. Instrument once with the OTel SDK; route to any backend via the **OTel Collector**.
-
-```
-Application -> OTel SDK -> OTLP -> OTel Collector -> [ Tempo | Jaeger | Datadog | Honeycomb | ... ]
-                                                  -> [ Prometheus | Mimir | Datadog | ...        ]
-                                                  -> [ Loki | Elastic | Datadog | ...            ]
-```
-
-The backend names above illustrate the vendor-neutral fan-out; the house pick is OTel + CF Workers Logpush per `house-stack.md` — no third-party logging vendor by default.
-
-**Why this matters architecturally**:
-
-- **Vendor lock-in is deferred** — the SDK and instrumentation libraries are stable, the backend is swappable.
+- **Vendor lock-in is deferred** — the backend is swappable; SDK and instrumentation-library stability varies by language and signal, so check it at design time beside the pinned convention version.
 - **Collector is the policy plane** — sampling, redaction, routing, batching all live there, not in app code.
 - **Context propagation is standardized** — W3C `traceparent` / `baggage` headers cross every service automatically.
+- **Semantic-convention names change between versions** — pin one version per service, emit through instrumentation libraries or one adapter, and record the pin in the contract.
 
-Avoid backend-specific SDKs (Datadog tracer, New Relic agent) in new services unless OTel coverage is genuinely missing. Migrating later is expensive.
+Avoid backend-proprietary tracers and agents in new services unless OTel coverage is genuinely missing. Model-call telemetry and the AI SLI set → `ai/production.md`.
 
 ---
 
@@ -56,67 +23,36 @@ Avoid backend-specific SDKs (Datadog tracer, New Relic agent) in new services un
 
 ### Span hygiene
 
-Every inbound request opens a root span; every outbound dependency opens a child span; the trace context (`traceparent`) propagates across HTTP, gRPC, and message brokers.
-
-| Layer | Span Behavior |
-|---|---|
-| **HTTP server** | Auto-instrumented. Span per request, with `http.method`, `http.route`, `http.status_code` |
-| **DB client** | Auto-instrumented. Span per query, with `db.system.name`, `db.query.text` (parameterized), `db.operation.name` (older `db.system`/`db.statement`/`db.operation` are deprecated aliases) |
-| **Outbound HTTP / gRPC** | Auto-instrumented. Inject `traceparent` header automatically |
-| **Message broker** | Inject `traceparent` into headers; consumer extracts and **links** (not parents) the consume span |
-| **Application logic** | Manual spans only at meaningful boundaries (use case, sub-operation), not every function |
-
-**Anti-pattern**: spans inside hot loops, spans for every domain method. Span creation is not free, and noise drowns the signal.
+Every inbound request opens a root span (method, route template — never the raw path — status); every outbound call opens a child span (store spans carry parameterized query text, never bound values); application code adds manual spans only at meaningful boundaries (use case, sub-operation). **Anti-pattern**: spans inside hot loops. `traceparent` propagates across HTTP and RPC; across a broker the producer injects it into message headers and the consumer connects with a **span link** (not span parent). Outbox relays propagate the `traceparent` they captured at insert time, not at relay time.
 
 ### Span attributes vs events
 
-| Use a **span attribute** for | Use a **span event** for |
-|---|---|
-| Identifiers needed for filtering (user_id, tenant_id, order_id) | Discrete things that happened during the span ("cache_miss", "rate_limited") |
-| Status, type, route | Errors with stack traces (`exception` event) |
+Attributes carry what you filter by: ids, status, type, route. Discrete occurrences inside a span (cache miss, rate-limited, exception) are emitted as event or log records correlated with the active span (`trace_id` / `span_id`), through whatever API the pinned convention version specifies.
 
-**Always** add: `tenant_id`, `user_id` (when authenticated), aggregate id of the primary entity touched. These make traces filterable in production.
+**Always** add: `tenant_id`, `user_id` (when authenticated), aggregate id of the primary entity touched. These make traces filterable in production. Identifiers in telemetry follow the data inventory (class, residency, retention): telemetry is a copy of what it names (design-flow Stage 6 § Data Inventory & Lifecycle).
 
 **Never** add: full request/response bodies, secrets, PII without redaction. The Collector's `redaction` processor catches escapes; do not rely on it as the only line of defense.
 
 ### Sampling strategy
 
-You cannot afford to keep every trace. Decide where the sampler lives:
+**Default — choose one coherent mode; never put a low head rate in front of a tail sampler** (whatever the head drops never reaches the tail tier).
 
-| Strategy | How | Trade-off |
-|---|---|---|
-| **Head sampling** (probabilistic) | Decide at root span — keep N% (e.g., 1%) | Cheap. Misses rare errors unless rate is high. |
-| **Tail sampling** (in Collector) | Buffer full traces, decide after seeing the outcome | Keep all errors + slow traces + sample of healthy. Expensive Collector tier. |
-| **Parent-based** | Honor upstream's decision | Required for consistency once a trace begins |
+- **Tail mode** (volume affordable at a gateway): SDKs are parent-based and always-on. A gateway Collector tier with trace-ID-affinity routing (all spans of a trace reach one instance) keeps every error trace, every trace over the latency-SLO threshold (a fixed duration — tail policies can't compute live percentiles), and N% of the rest.
+- **Head mode** (volume too high to buffer): parent-based + N% at the root. Rare failures are then caught by metrics and logs with exemplars, not by traces.
 
-**Default**: parent-based + head sample at 1-10% at the edge, with a Collector tail-sampling tier that always keeps `error=true` and `latency > p99`.
-
-### Distributed tracing crosses async boundaries
-
-Traces commonly break at message broker boundaries. Fix:
-
-1. Producer injects `traceparent` into message headers.
-2. Consumer extracts `traceparent` and uses **span link** (not span parent) to connect — because consume happens minutes/hours later and is not "caused by" the producer in real time.
-3. Outbox relays propagate the `traceparent` they captured at insert time, not at relay time.
-
-Without this, a single user action shatters into disconnected traces and root-causing failures across services becomes archaeology.
+If both are needed, head-sample only the traffic classes whose errors you can afford to lose. Metrics are never sampled: SLIs come from unsampled metrics, so sampling limits what you can inspect, never what you alert on.
 
 ---
 
 ## Metrics Architecture
 
-### What to measure: RED + USE
+### What to measure: RED, USE, freshness
 
-| Pillar | For | Metrics |
-|---|---|---|
-| **RED** (request-driven services) | APIs, handlers | **R**ate, **E**rrors, **D**uration (per endpoint) |
-| **USE** (resources) | DB, queues, caches | **U**tilization, **S**aturation, **E**rrors (per resource) |
-
-Every service produces RED metrics. Every shared resource produces USE metrics. Anything else is supplementary.
+Every service emits RED per endpoint or operation; every shared resource (store, pool, queue, cache) emits USE; every async path (outbox, queue, consumer, scheduled job) gets a freshness SLI — age of the oldest pending item (time since the last successful run, for a scheduled job), consumer lag, DLQ depth — and alerts on age, not count: a stuck relay or a dead consumer raises no request errors. Durations are histograms with a bucket boundary at each latency-SLO threshold (or high-resolution histograms), so the SLI is exact rather than interpolated.
 
 ### The cardinality cliff
 
-Time-series databases bill by **active series count**. A series is one unique combination of metric name + label values. Adding `user_id` as a label on a per-request metric in a 1M-user system creates 1M series. This is the most common observability cost incident.
+Metric cost scales with **active series** — one per metric × label-value combination: a `user_id` label on a per-request metric in a 1M-user system creates 1M series, the most common observability cost incident.
 
 | Safe label | Unsafe label |
 |---|---|
@@ -124,11 +60,31 @@ Time-series databases bill by **active series count**. A series is one unique co
 | `tenant_id` (bounded count) | `email`, `path` (unbounded) |
 | `region`, `version` | `query_string`, `error_message` |
 
-**Rule**: every label must have a small, bounded value space. Per-user / per-request data belongs in **traces** or **logs**, not metrics. If you find yourself wanting per-user metrics, you want exemplars (a metric value that links back to a trace).
+**Rule**: every label must have a small, bounded value space. Per-user / per-request data belongs in **traces** or **logs**, not metrics. If you find yourself wanting per-user metrics, you want exemplars (a metric value that links back to a trace). Give each service a series budget and alert when a deploy exceeds it.
 
-### Exemplars
+Enable exemplars by default.
 
-OTel metrics support exemplars: a metric data point can carry a `trace_id` pointer. When you see a latency spike on a dashboard, click → jump to a representative trace. This is the bridge between "something is wrong in aggregate" and "here is exactly what happened." Enable exemplars by default.
+---
+
+## SLOs and Burn-Rate Alerting
+
+design-flow Stage 8 § Observability & SLOs derives each SLO from its driver and sets the policy (page on fast burn, ticket on slow burn); the mechanics live here.
+
+- **SLI** = good events ÷ valid events, measured where users feel it (edge, gateway or client), not on internals. A latency SLI is the share of requests faster than its threshold.
+- **Burn rate** = observed error ratio ÷ (1 − SLO target). Burn rate 1 spends exactly the budget over the period; budget consumed in a window = burn rate × window ÷ period.
+- **Multiwindow, multi-burn-rate alerts** — starting parameters for a 30-day budget (after Beyer et al., the SRE workbook). An alert fires only while both windows exceed its burn rate; the short window (1/12 of the long) stops the alert soon after the burn does.
+
+| Action | Budget consumed | Long window | Short window | Burn rate |
+|---|---|---|---|---|
+| Page | 2% | 1 h | 5 min | 14.4 |
+| Page | 5% | 6 h | 30 min | 6 |
+| Ticket | 10% | 3 d | 6 h | 1 |
+
+For another budget period, keep the budget-consumed column and recompute: burn rate = budget consumed × period ÷ long window.
+
+- **Only SLO burn pages.** RED/USE signals, saturation and error logs describe causes: they feed dashboards and tickets and never page on their own. *Break when* a cause predicts certain user impact before any symptom shows (a disk, quota or certificate running out): page on time-to-exhaustion, not on level.
+- **Low traffic**: a few failures can burn hours of budget. Add synthetic probes, aggregate related SLIs, or lengthen the windows rather than page on single failures.
+- **Async freshness**: the SLO is on the age of the oldest pending item. Backlog drain time = backlog ÷ (processing rate − arrival rate); when it exceeds the freshness target, scale out or shed before the backlog ages out.
 
 ---
 
@@ -136,51 +92,23 @@ OTel metrics support exemplars: a metric data point can carry a `trace_id` point
 
 ### Structured by default
 
-Logs are JSON, not strings. Every log line carries:
+Logs are structured records (JSON or the platform's structured format), not strings. Every record carries `timestamp` (RFC 3339, UTC), `level`, `message` (the human-readable headline; everything else in fields), service identity (name, version) and deployment environment as resource attributes, `trace_id` / `span_id` for correlation, and context fields (`tenant_id`, `user_id`, etc.).
 
-- `timestamp` (RFC3339, UTC)
-- `level` (`debug`/`info`/`warn`/`error`)
-- `message` (the human-readable headline; everything else in fields)
-- `service.name`, `service.version`, `deployment.environment.name`
-- `trace_id`, `span_id` (for correlation)
-- Context fields (`tenant_id`, `user_id`, etc.)
+**Never** concatenate context into the message string; put it in a field.
 
-**Never** concatenate context into the message string (`"user 1234 failed"`). Put it in a field (`{ "user_id": 1234, "message": "user failed" }`). The first form is unqueryable; the second is.
+`debug` is off in production, toggleable per service or per request.
 
-### Log levels
-
-| Level | Use For |
-|---|---|
-| `error` | The system failed to do its job. Pageable. Always shipped. |
-| `warn` | The system handled a degraded path (retry succeeded, fallback triggered). Investigate trends. |
-| `info` | Significant state changes (request handled, job completed, user signed up). Default ship level. |
-| `debug` | Inner-loop detail. Off in production by default; toggleable per service or per request. |
-
-**Anti-pattern**: `info` for everything. The loudest logs become useless.
-
-### Logs vs traces
-
-If a log line describes work that happened inside a span, prefer adding a span event or attribute. Logs are for events that don't fit cleanly into the request lifecycle (startup, scheduled jobs, async errors with no parent span).
-
-### PII and redaction
+### PII, retention and audit
 
 Decide at design time what is *never* logged: passwords, tokens, full card numbers, raw request bodies on auth endpoints. Implement redaction at the **logger layer** (a hook that strips known fields) and at the **Collector layer** (a processor that scrubs known patterns). One layer of defense fails; two layers fail less often.
+
+Diagnostic logs get a retention period and a volume budget per service. **Audit events are not diagnostic logs** and never ride the log pipeline, which samples, drops under backpressure, rotates and is readable by engineers (`security-privacy.md` § Audit Trail).
 
 ---
 
 ## Correlation Across Signals
 
-The minimum viable observability stack lets a human pivot in seconds:
-
-```
-Dashboard alert (metric)
-    -> click exemplar
-       -> trace view (which span failed?)
-          -> jump to logs for that trace_id
-             -> see exact error and parameters
-```
-
-If any link in this chain is missing, root-causing in production takes hours instead of minutes. Architecturally, this means:
+A human must pivot in seconds: metric alert → exemplar → trace (which span failed?) → logs for that `trace_id` → the exact error and parameters. Architecturally:
 
 - Every metric should carry exemplars on critical paths.
 - Every log line touched by a request must carry `trace_id`.
@@ -190,15 +118,15 @@ If any link in this chain is missing, root-causing in production takes hours ins
 
 ## Health Checks
 
-Health endpoints are part of observability. Don't conflate liveness and readiness.
-
-| Endpoint | Returns OK when | Checked by |
+| Probe | OK when | Consumer |
 |---|---|---|
-| `/livez` | Process is running and responding. **No dependency checks.** | Container orchestrator — failures cause restart |
-| `/readyz` | Process is ready to serve traffic. Checks critical dependencies (primary DB, required cache). | Load balancer — failures cause traffic shift |
-| `/startupz` (optional) | Process has finished long-running init (cache warm, schema check). | Orchestrator before flipping to readyz |
+| **Liveness** | The process is responsive. **No dependency checks.** | The platform's restart mechanism |
+| **Readiness** | *This instance* can serve: initialized, not draining, its own pool and config healthy | The router — removes one bad instance |
+| **Startup** (optional) | Long-running init finished (cache warm, schema check) | Gates readiness |
 
-**Critical**: liveness must not call dependencies. A flaky DB will cascade-restart every replica and cause a full outage. Liveness only checks "am I alive."
+**Critical**: liveness must not call dependencies — a flaky store would cascade-restart every replica into a full outage.
+
+Readiness must not fail fleet-wide on a shared dependency either: when it blips, every replica goes unready at once and the system loses even its degraded modes (cached reads, clear 503s). Shared-dependency health drives degraded mode and alerts instead. If readiness does check a shared dependency, the routing layer must fail open when all targets are unready — state which, because platforms differ. Where there are no probes (serverless, edge), readiness becomes dependency health in metrics plus an external synthetic check.
 
 ---
 
@@ -207,28 +135,28 @@ Health endpoints are part of observability. Don't conflate liveness and readines
 Don't import OTel SDK types into the domain. Define ports:
 
 ```
-Tracer   -> startSpan(name, attrs) -> Span (with end(), addEvent(), recordError())
+Tracer   -> startSpan(name, attrs) -> Span (with end(), event(name, attrs), error(err))
 Meter    -> counter(name) / histogram(name) / gauge(name)
 Logger   -> info/warn/error with structured fields
 ```
 
-The OTel adapter implements them; tests use no-op or capturing fakes. The domain emits events ("PaymentAttempted") and the application service translates them to spans/metrics/logs in one place.
+The OTel adapter implements them (emitting events and errors the way the pinned convention version specifies); tests use no-op or capturing fakes. The domain emits events ("PaymentAttempted") and the application service translates them to spans/metrics/logs in one place.
 
-This is the same hexagonal discipline applied to a cross-cutting concern. It also means swapping vendors or removing observability for a CLI build is a config change, not a refactor.
+Swapping vendors, or removing observability for a CLI build, is then a config change, not a refactor.
 
 ---
 
 ## What to Define in the Architecture Document
 
-Before implementation:
+Before implementation, record in `system.md` — the Observability Contract (§5), alerting in the §5 SLO table, and the backend as a §2 Core Technology row:
 
-- [ ] Backend choice (vendor or self-hosted) and rationale
-- [ ] OTel Collector deployment topology (sidecar vs gateway vs both)
-- [ ] Sampling strategy and budget
-- [ ] Standard attributes every service must emit (`service.name`, `tenant_id`, etc.)
-- [ ] Cardinality budget for metrics (max series per service)
-- [ ] PII fields and redaction strategy
-- [ ] Alerting baseline (which RED/USE metrics page)
-- [ ] Correlation: how a log finds its trace, how a metric exemplar finds its trace
-
-If these are not decided up front, the system will accumulate inconsistent instrumentation and become un-debuggable around the time it starts to matter.
+- [ ] **Signal per question** — which questions traces, metrics and logs each answer; RED per service, USE per resource, freshness per async path
+- [ ] **Backend** (vendor or self-hosted) and rationale
+- [ ] **Collector topology** (agent/sidecar vs gateway) — for tail sampling, trace-ID-affinity routing to the sampling tier
+- [ ] **Sampling policy** — mode (tail or head), what is always kept, and the budget
+- [ ] **Standard attributes** every service must emit, and the **pinned semantic-convention version** (names change between versions)
+- [ ] **Cardinality budget** for metrics (max series per service)
+- [ ] **Redaction rule** — PII fields and redaction; diagnostic-log retention and volume budget; audit events kept out of the log pipeline
+- [ ] **Alerting** — which SLOs page on fast burn and which ticket on slow burn; RED/USE signals and error logs feed dashboards and tickets, never pages on their own; histograms resolve each latency-SLO threshold
+- [ ] **Correlation** — how a log finds its trace, how a metric exemplar finds its trace
+- [ ] **Day-1 basics**, even at Lite rigor — error tracking, structured logs with trace ids, liveness/readiness or the platform's equivalent, an external synthetic check on the main user journey

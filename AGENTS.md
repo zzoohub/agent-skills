@@ -205,6 +205,7 @@ call that agent.
 | Write a full PRD | `prd-craft` | skill |
 | Spec a single feature on an existing PRD | `feature-spec` | skill |
 | Design the system architecture | `software-architecture` | skill |
+| Modernize, re-architect or migrate an existing system (as-is recovery, transition plan) | `software-architecture` (Build Mode on an existing system) | skill |
 | Record a single architecture decision (ADR) on an existing system | `arch-decision` | skill |
 | Design a DB schema | `database-design` (its PostgreSQL operations part covers lock-safe execution and query tuning) | skill |
 | Design an LLM/AI feature or app | `software-architecture` (AI Feature Mode) | skill |

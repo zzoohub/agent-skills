@@ -1,51 +1,36 @@
 # Operational Patterns
 
-Practical architecture patterns that almost every production system needs. Reference this for common implementation decisions that sit between "architecture" and "code."
-
-## Table of Contents
-
-1. [Pagination Strategy](#pagination-strategy)
-2. [Resilience Patterns](#resilience-patterns)
-3. [File Upload Architecture](#file-upload-architecture)
-4. [Background Jobs](#background-jobs)
-5. [Durable Execution](#durable-execution)
-6. [Webhook Reliability](#webhook-reliability)
-7. [Caching Architecture](#caching-architecture)
-8. [Rate Limiting Architecture](#rate-limiting-architecture)
+Dependency decisions become rows of the Resilience table in `system.md` §5 (default `docs/arch/system.md`; caller may redirect); caching decisions go in its §3.
 
 ---
 
 ## Pagination Strategy
 
-**Default to cursor-based pagination.** Consistent performance and correct behavior for mutable data. Use offset only for admin panels and small/static datasets.
+**Default to cursor (keyset) pagination.** Offsets skip or duplicate rows when rows are inserted or deleted between requests, and deep pages get slower. *Break when* the set is small or static and the UI needs page numbers or a total — admin and back-office views may use offset.
 
-**Cursor** (default) — `WHERE (created_at, id) > (:cursor) ORDER BY created_at, id LIMIT :size`.
-Consistent performance regardless of dataset size. Ideal for feeds, timelines, infinite scroll, and large datasets. Always use a **composite cursor** `(sort_field, id)`. Cursor is an opaque base64-encoded string in the API; decode in the adapter only.
-
-**Offset** — `LIMIT / OFFSET` + `COUNT(*)`.
-Provides `total` count for page number UIs. Suited for admin dashboards, back-office tools, and small/static datasets. Downside: deeper pages get slower, and row mutations between requests cause duplicates or skips.
-
-Document your pagination choice per endpoint in the design doc.
+- Cursors are opaque to clients.
+- Every sort order offered to clients needs an index on (sort key, tiebreaker); physical design via the database-design capability, if available.
+- An exact total on a large set costs a full count: return "has more" or an estimate unless the product needs the number.
+- Record the default once, with the published-contract policy (design-flow Stage 5 § Published Contracts). Query and wire mechanics belong to the implementation guide, not the design doc.
 
 ---
 
-## Resilience Patterns
+## Dependency Protection & Overload
 
-### Timeout Budgets
+Every synchronous dependency on a critical path — store, internal service, third-party API, model provider — gets a **dependency protection contract**, recorded as one row of the `system.md` §5 Resilience table. Ask what happens when it is **slow**, not just down: slow is the common case and the more dangerous one.
 
-Every external call needs a timeout. Without one, a single slow dependency freezes the entire request.
+### Deadlines, top-down
 
-| Dependency Type | Typical Timeout | Rationale |
-|---|---|---|
-| Database | 5s | Longer means something is wrong |
-| Payment API | 10-15s | Processing can be slow; users will wait for payments |
-| LLM API | 60-120s | Long generations; use streaming to mask wait |
-| Email / notification | 5s | Fire-and-forget; queue if slow |
-| Object storage | 10s | Large file operations |
+Every external call gets a timeout, derived top-down:
 
-**Rule**: Total request timeout = sum of sequential dependency timeouts + processing. If the chain exceeds your SLO, make some calls async.
+1. Start from the user-facing deadline (the latency driver or a UX limit) and propagate the **remaining** budget on every hop, in the request context and outbound headers.
+2. Set each dependency's timeout just above its tail latency at the false-timeout rate you accept (0.1% false timeouts ⇒ its p99.9 under normal load; estimated until measured) and within the remaining budget.
+3. If the sequential chain cannot fit, parallelize, cache or move work async. Never derive the outer timeout by summing inner ones, and never compare summed worst-case bounds with a percentile SLO.
+4. Every hop drops work whose caller has already given up (deadline passed).
 
-### Retry Policy
+*Break when* no caller is waiting (offline batch): give the job a total budget instead. Model calls and streams follow the same contract; their timeout classes live in `ai/production.md` § Streaming & generation lifetime.
+
+### Retries: one layer, on a budget
 
 Only retry **idempotent** operations.
 
@@ -55,142 +40,123 @@ Only retry **idempotent** operations.
 | **Retry with backoff** | Reads, idempotent writes |
 | **Retry with idempotency key** | Critical writes (payment APIs, etc.) |
 
-Formula: `min(base * 2^attempt + jitter, max_delay)`. Base=100ms, max=5s, max 3 attempts.
+Retry at **exactly one layer** — the one that owns idempotency for the call, usually the dependency's direct client; every other layer fails fast. Independent retries multiply: three attempts at each of five layers is 3^5 = 243× load on a dependency that is already struggling. Retry only when all of these hold:
 
-### Graceful Degradation
+- the error is retryable (timeout, connection reset, throttled, unavailable), honoring `Retry-After`; validation, authorization, quota or spend-cap and payload-too-large errors go to handling, never to retry;
+- the operation is idempotent or carries an idempotency key (`reliability-patterns.md` §2);
+- backoff is exponential with full jitter;
+- the deadline still has room;
+- a **retry budget** allows it — a token bucket per client (successes refill a fraction of a token, each retry spends one), keeping retries under ~10% of calls and ~3 attempts per request (Beyer et al.).
 
-Decide at design time, not at 3 AM:
+Hedged requests (a second copy sent after the p95) cut tail latency only for short, idempotent, cheap calls, and spend the same budget. *Break when* many independent clients each back off politely: backoff bounds one client's work, not the population's — that is admission control's job (below). Offline idempotent batch jobs may retry throttling indefinitely within their own budget.
 
-| Dependency | Strategy |
-|---|---|
-| LLM API | "AI features temporarily unavailable" + cached responses if possible |
-| Payments | "Payments temporarily unavailable", user continues browsing |
-| Email | Queue for later, never block user action |
-| Analytics | Silent fail — never block for analytics |
-| Database | System offline — no degradation for primary data store |
+### Isolation and breakers
+
+- **Bulkheads**: a concurrency limit, and its own connection pool, per dependency, so one slow dependency cannot hold every worker. Size it with Little's law (in-flight = arrival rate × latency) at normal latency plus headroom; when the dependency slows, the cap, not the timeout, bounds what it can hold.
+- **Circuit breakers, with care**: a breaker fails fast to the named degraded mode, runs only on bad days and is hard to test — key it by failure domain (host, shard, cell) so one shard's failure doesn't make the whole dependency look down, and exercise the open state. To limit retries, prefer the retry budget; add a breaker only where failing fast unlocks a useful degraded mode.
+
+### Admission control, shedding and backpressure
+
+Protect goodput: under overload, a system that accepts everything completes nothing.
+
+- **Admission control**: reject excess work at the edge, early and cheaply — before parsing, identity lookups or queueing. Bound the work any single request can do (page size, fan-out, payload, query cost).
+- **Load shedding**: when saturated, reject the lowest-priority work first (prefetch, batch and retries before interactive first attempts) with a fast 429/503 and `Retry-After`, instead of queueing everything into timeouts. Keep a tested switch that sheds a whole traffic class.
+- **Backpressure**: every queue is bounded and has a maximum age; a full queue pushes back on its producer instead of growing. A queue absorbs bursts, not sustained overload — work older than its useful life is dropped, not served late.
+- **Reconnect contract**: long-lived clients (devices, sockets, mobile apps) reconnect with jittered exponential backoff and honor a server retry hint; the server admits reconnects at a bounded rate and is sized for the whole population returning after an outage or deploy (a Stage 1 load source). Session mechanics → `system-architecture.md`.
+
+*Break when* durable acceptance is the requirement (order intake, telemetry ingest): accept into a durable queue and process later rather than shed. Load-test past saturation with an open-loop generator (fixed arrival rate); closed-loop tests slow down with the system and hide overload.
+
+### Degradation and static stability
+
+**Decide at design time, not at 3 AM.** Each dependency's degraded mode — serve stale, queue for later, disable the feature, read-only — goes in the `If slow / down` column, written as what the user sees. The primary store's degraded mode (read-only, cached reads, or offline) is chosen against the availability driver, not assumed.
+
+**Static stability over fallback.** When a dependency or control plane is impaired, the data plane keeps serving last-known-good state (config, credentials, routes, cached reads), with capacity pre-provisioned so that losing one failure domain needs no reaction. Recovery never depends on the impaired component. A path that runs only on bad days is untested: a fallback is unqualified until it is exercised — continuously (a share of real traffic) or by scheduled drill — and the `Exercised` column says which and when ("never" is a finding); if it cannot be exercised, degrade instead. *Break when* the path is not foundational: spare capacity costs real money, so reserve it for paths whose loss stops the business. Bound staleness where stale data is unsafe (revocations, prices, entitlements).
+
+### Size for the bad mode
+
+The loop that keeps a system down after its trigger is gone — retry storms, cold-cache misses, backlog replay, reconnect storms — is the root cause of a metastable failure. Size backends to survive a full cache flush and a backlog drain at peak, keep error paths cheaper than success paths, and weaken the strongest loop (retry budget, shedding, rate-limited cache refill, capped drain rate, jittered reconnects). *Break when* the system runs far below capacity.
+
+**When Availability is deep**, add `Detection` (the signal or SLO alert that notices) and `Blast radius` (which users, tenants or cells) columns, then walk each failure domain — instance, zone, region, provider, control plane, bad deploy or config change. Each needs a recovery path that doesn't depend on the failed component, meets the RPO/RTO set in Stage 6, and has been exercised (fault injection, game day, restore test). Cold-start the whole system on paper: no circular dependencies at startup.
 
 ---
 
-## File Upload Architecture
+## File Uploads
 
-### Presigned URL Pattern
+Flow: metadata → signed direct upload to object storage → completion call. Server-proxied uploads waste bandwidth and compute. *Break when* files are small and rare: proxying through the API within its request-size limit is simpler.
 
-Server-proxied uploads waste bandwidth and compute. Use presigned URLs for direct client-to-storage uploads.
-
-```
-1. Client -> POST /api/uploads (file metadata)     -> Server generates presigned URL
-2. Client -> PUT presigned URL (file bytes)         -> Direct to object storage
-3. Client -> POST /api/uploads/{fileId}/complete    -> Server validates & processes
-```
-
-### Key Decisions
-
-- **Max file size**: Enforce in presigned URL policy AND client-side
-- **Allowed types**: Validate MIME type server-side (client Content-Type is spoofable)
-- **Processing**: Thumbnails, text extraction — always async via background job
-- **Cleanup**: Orphaned uploads (step 2 done, step 3 never called) need scheduled cleanup
+- **Signed URL**: short-lived, scoped to one server-chosen object key (never the client's filename) under the tenant's prefix.
+- **Size**: a storage-side length condition bound into the signed upload where the store supports it, plus re-verification at completion. Client checks are UX only.
+- **Type**: verified from the stored bytes (magic number), not the declared content type.
+- **Quarantine → validate/scan → promote**: nothing is served before promotion.
+- **Serving**: user content comes from a separate origin, with download disposition unless the type is allow-listed for inline display — uploaded markup served from the app origin is stored XSS.
+- **Processing** (thumbnails, text extraction) is async. **Orphans** (upload done, completion never called) are removed by a lifecycle rule.
 
 ---
 
 ## Background Jobs
 
-### Decision Framework
+Triggered by a user action: if the user can wait < ~2 s, do it inline; otherwise async. Multi-step work with side effects, or long waits → durable execution (below). Enqueue atomically with the state change: a job row in the same transaction is the simplest outbox (`reliability-patterns.md` §3), and an external queue is fed from the outbox — never written before commit, or as a separate step after it.
 
-```
-Triggered by user action?
-+-- YES -> User can wait < 2s? -> Do it inline
-|         User can't wait?    -> Async job
-+-- NO  -> Scheduled job
+Four invariants for every queue and scheduler:
 
-Async job complexity:
-+-- Simple fire-and-forget      -> Message queue -> worker handler
-+-- Fan-out (one event, many)   -> Pub/sub or fan-out queue
-+-- Complex multi-step          -> Durable execution (see below)
+1. **Handlers are idempotent** (a dedup key); delivery is at-least-once.
+2. **Every queue has max attempts, a DLQ, and alerts on DLQ depth and oldest-message age** — a poison message in an unwatched DLQ is silent data loss.
+3. **Scheduled jobs run as a singleton** (a lock or lease, or the scheduler's own guarantee) with an explicit overlap policy (skip / queue / allow) and an explicit timezone (DST shifts skip or repeat local times). N replicas must not fire one schedule N times.
+4. **The visibility or lease timeout exceeds p99 job duration**, or the job heartbeats to extend it; otherwise a slow job is redelivered while still running.
 
-Scheduled:
-+-- Simple recurring            -> Cron scheduler -> HTTP trigger / function
-+-- Database-level              -> Database-native scheduling (e.g., pg_cron)
-```
+Multi-tenant queues get per-tenant concurrency caps or fair scheduling, so one tenant's burst cannot starve the rest.
 
 ---
 
 ## Durable Execution
 
-When async work involves multiple steps, any of which can fail, simple queues aren't enough. Durable execution treats each step as a **checkpoint** — if the process crashes, it resumes from the last checkpoint, not from scratch.
+**Escalation ladder** — choose the lightest rung that fits:
 
-### When to Use
-
-```
-Simple fire-and-forget (send email, resize image)  -> Queue is enough
-Multi-step with side effects (payment -> provision -> notify)  -> Durable execution
-Long-running with waits (human approval, external callback)  -> Durable execution
-```
-
-### Core Primitives
-
-| Primitive | What It Does |
+| Rung | Fits |
 |---|---|
-| **step.run()** | Execute a function with automatic retry on failure |
-| **step.sleep()** | Pause workflow for a duration (minutes to days) without consuming compute |
-| **step.waitForEvent()** | Pause until an external signal arrives (webhook, user action) |
-| **checkpoint** | State persisted after each step — crash-safe resume |
+| Job table or queue | Simple fire-and-forget, one step (send email, resize image) |
+| State machine in your own store | A few steps with business-visible states (status column + guarded transitions) |
+| Durable execution (workflow engine) | Multi-step with side effects (payment → provision → notify), timers, compensation; long-running with waits (human approval, external callback) |
 
-**Architecture implication**: Durable execution replaces ad-hoc retry logic, manual state machines, and "check if already processed" patterns. If you find yourself writing status columns (`pending -> processing -> done -> failed`) with polling loops, you likely need durable execution instead.
+An engine is new infrastructure someone operates — a Stage 5 technology choice; adopt one when it replaces machinery you would otherwise build and run.
+
+**Engine-neutral primitives**: durable step (checkpointed; not re-run once recorded) · durable timer · await external signal — always with a timeout and an on-timeout path · deterministic replay.
+
+**Invariants for any engine:**
+
+1. **It does not replace idempotency at side effects.** A step can execute more than once (crash after the side effect, before the checkpoint), so every side-effecting step passes a step-scoped idempotency key downstream (`reliability-patterns.md` §2).
+2. **Workflow code between steps is deterministic**: time, randomness and I/O happen only inside steps.
+3. **Versioning of in-flight runs is planned before the first deploy**: pin each run to the code version it started on and drain, or branch on a recorded version marker; never reorder or remove steps under live runs.
+4. **Business-visible status still lives in your store**; engine history is not your query model.
+
+Compensation across services follows the saga rules in `system-architecture.md`; agent runs add their own deltas (`ai/agentic.md`).
 
 ---
 
 ## Webhook Reliability
 
-When integrating with external services that send webhooks (payment providers, SaaS platforms, etc.):
+A webhook from an external provider (payments, SaaS platforms) is an at-least-once, unordered and forgeable input. Protocol:
 
-| Concern | Solution |
-|---|---|
-| Idempotency | Store processed `event.id`. Skip duplicates. |
-| Ordering | Use `event.created` timestamp, not arrival order |
-| Verification | Always verify webhook signature |
-| Slow processing | Return 200 immediately, process async if heavy |
-| Missed events | Reconcile DB against provider API on startup / periodically |
+1. **Verify** the signature **and** the timestamp tolerance (replay window); otherwise reject.
+2. **Durably record, then acknowledge**: an inbox row keyed by the provider event id (`reliability-patterns.md` § Inbox pattern) or a durable enqueue — then return 2xx. Never ack before the record exists: providers don't redeliver after a 2xx. Duplicates die on the inbox's unique key.
+3. **Process async** from that record. Fan-out means one independent consumer per downstream action, so one failure doesn't block the others.
+4. **Handlers are order-independent**: treat an event as a notification and re-read the provider's current object state, or compare the object's version or sequence. Never order by the provider's timestamp — distinct events can share one.
+5. **Reconcile DB against provider API on startup / periodically** — deliveries get lost; reconciliation is the backstop, not an optimization.
+6. Confirmations that arrive later (bank transfers, manual approvals): the workflow awaits the signal (Durable Execution), with a timeout.
 
-### Webhook Fan-out + Durable Wait
-
-When a single webhook triggers multiple downstream actions:
-
-```
-Provider -> Webhook endpoint -> return 200 immediately
-                |
-            Queue fan-out -> Handler A (provision account)
-                          -> Handler B (send welcome email)
-                          -> Handler C (sync to analytics)
-```
-
-**Key decisions**:
-- **Immediate 200**: Never do heavy processing in the webhook handler. Return 200, enqueue, process async.
-- **Fan-out via queue**: Each downstream action is an independent consumer. One failure doesn't block others.
-- **waitForEvent for async flows**: For flows where confirmation arrives later (bank transfers, manual approvals), the workflow sleeps until the confirmation webhook arrives.
+Sending webhooks is a published contract (Stage 5): sign with a timestamp, deliver at-least-once from an outbox with backoff and a DLQ, carry an event id and a per-object version, and offer replay.
 
 ---
 
-## Caching Architecture
+## Caching
 
-### Caching Patterns
+**Forcing question: what staleness can this data tolerate, and who notices?** The answer sets the tool: TTL (bounded staleness is acceptable), event-driven invalidation (when seconds matter), or versioned keys (immutable content). **Default**: cache-aside with TTL.
 
-| Pattern | How It Works | When to Use |
-|---|---|---|
-| **Cache-Aside (Lazy Loading)** | App checks cache -> miss -> read from DB -> write to cache -> return | Default. Read-heavy workloads. App controls cache population |
-| **Write-Through** | App writes to cache AND DB on every write. Reads always hit cache | When cache consistency matters more than write latency |
-| **Write-Behind (Write-Back)** | App writes to cache, cache asynchronously syncs to DB | High write throughput. Risk: data loss if cache crashes before sync |
-| **Read-Through** | Cache itself loads from DB on miss (cache acts as proxy) | When you want the cache layer to own data loading logic |
-| **Refresh-Ahead** | Cache proactively refreshes entries before TTL expires | Predictable access patterns, latency-sensitive reads |
+- **Survive a full flush at peak**: the backing store is provisioned for it, or warm-up and rate-limited refill are designed. Otherwise the cache is a hidden availability dependency, and capacity sized at the steady-state hit rate is a metastable loop.
+- **Who shares a cache is a confidentiality boundary** (a one-way door — design-flow Stage 9): keys carry tenant and authorization scope, or the cache is partitioned per tenant. *Break when* the data is public and identical for every principal — then sharing is the point.
+- **Public or shared responses**: HTTP/edge caching is often the cheapest tier; personalized responses never reach a shared tier (private or no-store, and vary on every input that changes the response).
 
-**Default**: Cache-aside. Simple, explicit, and you control exactly what gets cached.
-
-### Cache Invalidation
-
-| Strategy | How It Works | Trade-offs |
-|---|---|---|
-| **TTL-based** | Set expiry time, accept staleness within window | Simple. Good enough when seconds-old data is acceptable |
-| **Event-driven** | Invalidate on write events (DB trigger, app event, webhook) | Consistent but requires event infrastructure |
-| **Versioned keys** | Include version/hash in cache key, new version = new key | No explicit invalidation needed. Old entries expire naturally via TTL |
+- Model-response and prompt caching follow their own rules in `ai/production.md`.
 
 ### Stampede Prevention
 
@@ -204,43 +170,12 @@ When a popular cache entry expires, many concurrent requests hit the DB simultan
 
 ---
 
-## Rate Limiting Architecture
+## Rate Limiting
 
-### Algorithm Selection
+**Default**: sliding-window counter — good balance of precision and resource usage. Use a token bucket when you want to allow controlled bursts; a fixed window lets up to twice the limit through across a window boundary.
 
-| Algorithm | How It Works | Trade-offs |
-|---|---|---|
-| **Fixed Window** | Count requests per time window (e.g., 100/min). Reset at boundary | Simple. Burst at window edges (up to 2x limit across boundaries) |
-| **Sliding Window Log** | Track timestamp of each request, count within sliding window | Precise. Memory-heavy at high volume |
-| **Sliding Window Counter** | Weighted blend of current and previous window counts | Good precision, low memory. Best general-purpose choice |
-| **Token Bucket** | Bucket fills at steady rate, each request consumes a token | Allows controlled bursts. Natural rate smoothing |
-| **Leaky Bucket** | Requests queue and process at fixed rate | Strict enforcement, no bursts. Good for downstream protection |
+- **Dimensions**: IP (unauthenticated endpoints only — proxies and shared addresses make it both evadable and unfair; aggregate IPv6 by prefix, e.g. /64, not by address) · user or API key · tenant · endpoint. Apply them in layers; the tightest limit wins.
+- **Weight by cost**: expensive endpoints (search, exports, model calls) spend more of the budget per request; limits for model-backed features at every scope live in `ai/production.md`.
+- **Limiter failure**: decide per endpoint what happens when the shared limiter store is down — fail open (availability) or fail closed (abuse- or cost-sensitive paths).
 
-**Default**: Sliding window counter — good balance of precision and resource usage. Use token bucket when you want to allow controlled bursts.
-
-### Rate Limit Dimensions
-
-| Dimension | When to Use | Evasion Risk |
-|---|---|---|
-| **IP address** | Unauthenticated endpoints, public APIs | High — proxies, VPNs, shared IPs |
-| **User/API key** | Authenticated endpoints | Low — tied to account |
-| **Tenant/org** | Multi-tenant SaaS | Low — tied to billing entity |
-| **Endpoint** | Expensive operations (search, AI, exports) | Combine with user dimension |
-| **Composite** (user + endpoint) | Granular control per operation | Most flexible, most complex |
-
-**Layered approach**: Apply multiple limits simultaneously — global (per IP), per user, and per endpoint. The tightest limit wins.
-
-### Response Convention
-
-Return rate limit state in headers so clients can self-regulate:
-
-```
-RateLimit-Limit: 100
-RateLimit-Remaining: 42
-RateLimit-Reset: 30
-Retry-After: 30          (only on 429 responses)
-```
-
-`RateLimit-Reset` is seconds-until-reset (delta-seconds), consistent with `Retry-After` — not a Unix timestamp. These are the widely-deployed de-facto headers from earlier IETF drafts; the current IETF direction consolidates them into structured `RateLimit` + `RateLimit-Policy` fields.
-
-Return `429 Too Many Requests` with a clear error message and `Retry-After` header.
+- **Response**: `429 Too Many Requests` with `Retry-After`; expose the remaining quota in the standard rate-limit header fields the API adopts (the implementation guide owns the exact field names).

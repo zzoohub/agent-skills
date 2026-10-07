@@ -1,11 +1,11 @@
 # ADR Template — one file per decision
 
 One Architecture Decision Record per file: `docs/arch/adr/ADR-NNN-{slug}.md`
-(NNN zero-padded to 3 digits — e.g. `ADR-001-postgres-over-dynamo.md`). The next number is
+(NNN zero-padded to 3 digits — e.g. `ADR-001-relational-store-over-document-store.md`). The next number is
 the highest existing ADR in `docs/arch/adr/` plus one. ADRs are written immediately when a
 decision occurs, not batched at the end.
 
-**Context**: See `docs/arch/context.md` for problem definition and ASRs. See `docs/arch/system.md` for architecture.
+**Context**: See `docs/arch/context.md` for problem definition and ASRs, `docs/arch/system.md` for architecture.
 
 ---
 
@@ -13,33 +13,19 @@ decision occurs, not batched at the end.
 
 - **Status**: Accepted | Proposed | Superseded by ADR-NNN
 - **Stage**: [which design stage produced this decision]
+- **Drivers**: [QA / C ids this decision serves]
 - **Door**: One-way (irreversible) | Two-way (reversible)
 - **Context**: [the situation and forces at play]
 - **Decision**: [what was chosen]
-- **Why**: [reasoning — reference quality attributes from utility tree]
-- **Rejected**: [alternatives and why not]
+- **Why**: [reasoning — the quality attributes it optimizes]
+- **Rejected**: [alternatives — the driver each fails or the cost it adds]
 - **Tradeoff**: [positive and negative consequences]
-- **Revisit when**: [trigger for reconsideration]
+- **Confirmation**: [the guard or metric that shows the decision holds]
+- **Revisit when**: [trigger — a variable and its threshold]
 
 <!-- When this decision is later superseded, set its Status to `Superseded by ADR-NNN`
      in place — keep the file, don't delete it. -->
 
----
+<!-- ~300 words: the decision and its price — link the design, never restate it. -->
 
-<!-- Minimum ADRs to record (guidance — this comment is scaffolding, not document content):
-
-Always (all software types):
-1. System architecture pattern
-2. Service architecture pattern
-3. Primary data storage approach
-4. Communication style (sync/async/event-driven)
-
-When applicable:
-- AI integration approach — when AI features exist
-- Authentication/authorization — when users exist
-- API design philosophy — when external consumers exist
-- Offline/sync strategy — when offline capability is needed
-- Distribution/packaging — for libraries, CLIs, desktop apps
-- Concurrency model — for high-throughput or real-time systems
-- Build-vs-buy — when a generic subdomain is bought as an external service rather than built or self-hosted
--->
+<!-- Minimum ADRs: references/design-flow.md § Minimum ADRs (single source). -->

@@ -34,7 +34,7 @@ If the build files show a framework with no guide here (Express, Actix, Django, 
 - **Python-only libraries required** (LangGraph, PyTorch, transformers, PydanticAI, …) **→ FastAPI**; otherwise default to Axum.
 - **A team that wants a modular framework with built-in DI → NestJS.**
 
-(The house stack — the software-architecture skill's `references/house-stack.md`, if available — lists Hono for Workers and Axum / FastAPI for containers.)
+(A project that adopts the software-architecture skill's house profile — `references/house-stack.md`, if available — takes the framework defaults from that profile instead; it changes independently of this skill.)
 
 ## Step 3 — Load the stack guide (mandatory, before writing any code)
 

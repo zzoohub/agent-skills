@@ -98,7 +98,7 @@ When user-defined structure **is** the differentiator — metadata platforms (St
 - Storage strategy and database choice (from `system.md` §3)
 - Performance/scalability expectations (from `context.md` §3 and `system.md` §5)
 - Consistency model (from `system.md` §3)
-- Ingestion patterns and data volume (from `context.md` §3)
+- Ingestion patterns and data volume (from `context.md` §2 scale envelope and §3)
 
 For most decisions, follow the design doc as-is — it represents system-level decisions already made. However, **independently evaluate** decisions where database domain expertise is more appropriate:
 

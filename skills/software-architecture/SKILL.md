@@ -1,29 +1,25 @@
 ---
 name: software-architecture
 description: |
-  Produce a full Software Architecture Design Document from a PRD (context, system
-  design, ADRs, D2 diagrams), or design one AI/LLM feature on a new or existing
-  system (AI Feature Mode).
-  Use when: "design doc", "software architecture", "system design", "architect
-  this", "tech spec", "how should I build this", "help me plan the backend",
-  "ASR", "utility tree", "domain model", "ATAM", "event storming", or a PRD needs
-  architecture for a NEW project. Also AI/LLM features (RAG, agents, chat,
-  copilot, semantic search) and their design — prompt engineering, tool use,
-  agents vs workflows, evals, LLM-as-judge, LLM cost/latency. Also "review",
-  "audit", or "diagnose" an EXISTING architecture, read-only.
-  Do NOT use for: one decision on an existing system (use arch-decision); table
-  schemas, indexes, or migrations (use database-design); folder structure or
-  code conventions (CLAUDE.md); UI component trees or page layouts (use
-  ux-design + design-system); provider SDK mechanics (use claude-api for
-  Anthropic); or ML training.
+  Architecture docs (context, system design, ADRs, risks) in three modes.
+  Build Mode: a new system from a PRD, or an existing one evolved (as-is
+  recovery, re-architecture, modernization, system migration).
+  Review / Diagnose Mode: audit an existing architecture from docs or code,
+  read-only by default. AI Feature Mode: one AI/LLM feature on a new or
+  existing system.
+  Use when: "design doc", "system design", "software architecture",
+  "architect this", "how should I build this", "ATAM", "quality attributes",
+  "threat model", "domain model", "modernize", "re-architect", "strangler",
+  "transition plan", "audit our architecture"; AI: RAG, agents, tool use,
+  evals, LLM cost/latency, on-device AI.
+  Do NOT use for: one decision on an existing system (arch-decision); table
+  schemas, indexes or schema-migration scripts (database-design); execution
+  review of a locked design doc (plan-review); folder/code conventions; UI
+  component trees (ux-design, design-system); provider SDK mechanics; model
+  training or fine-tuning.
 ---
 
-# Software Architecture — Full Design Pass
-
-Produces the **full architecture documents** for a new system from a PRD:
-context, system design, decision records, and risks. Use this skill at the start of a
-new project — or, in AI Feature Mode, to design a single AI/LLM feature on a new or
-existing system.
+# Software Architecture
 
 ## Premise
 
@@ -32,323 +28,193 @@ Architecture for **system correctness**, not for persuasion.
 - **Strengthen**: Logical rigor of decisions, context-restorable structure, fitness functions as automated reviewers
 - **Eliminate**: Redundant ceremony — sections, diagrams, and documents that don't inform decisions
 
-**The "6-Month Test"**: If you come back to this project after 6 months away, can you read the docs and understand the system well enough to start making changes within 10 minutes? If yes, it's good enough.
-
-## Philosophy
-
 Great architecture documents are **decision records, not implementation manuals**. Every section must answer *why* a choice was made, not just *what* was chosen. If there are no trade-offs to discuss, the section doesn't belong.
 
----
+**The 6-Month Test**: after six months away, can you read the docs and start a change within 10 minutes? Then they are good enough.
 
-## Three Modes
+## Modes & Routing
 
-- **Build Mode (default)** — produce or extend the full architecture from a PRD via the Design Flow below. This is everything in this file except the Review / Diagnose Mode and AI Feature Mode sections.
-- **Review / Diagnose Mode** — a **read-only** audit of an *existing* architecture. Triggered when the architecture context doc already exists (default `docs/arch/context.md`; caller may redirect) and the user asks to review / audit / diagnose rather than build. It critiques the docs and never regenerates the context or system doc. Jump to the [Review / Diagnose Mode](#review--diagnose-mode) section and follow it instead of the Design Flow.
-- **AI Feature Mode** — design **one** AI/LLM feature (chatbot, copilot, agent, RAG, classification, extraction): whether to use an LLM at all, the shape (single prompt / RAG / tool use / workflow / agent), prompt and output contract, failure path, eval set, and production envelope. Runs on a new **or existing** system and writes only that feature's doc. Jump to the [AI Feature Mode](#ai-feature-mode) section.
+- **Build Mode** (default): the Design Flow, for a new system from its requirements or an existing system's evolution.
+- **[Review / Diagnose Mode](#review--diagnose-mode)**: audit an existing architecture (its docs, else its code); critique by default, edits only on request.
+- **[AI Feature Mode](#ai-feature-mode)**: one AI/LLM feature on a new or existing system; writes that feature's doc.
 
-**Route by file state.** The greenfield sentinel is the context doc (default `docs/arch/context.md`) — not the `docs/arch/` directory, which a database-design pass may have created on its own. No context doc → greenfield: Build Mode from the PRD. Context doc exists → a single decision goes to a standalone-ADR capability (the `arch-decision` skill, if available), schema / index / migration design to the `database-design` skill, an LLM/AI feature to AI Feature Mode (fine on an existing system), and a review / audit to Review / Diagnose Mode. A request that spans scopes ("design the system **and** the database") runs in dependency order — Build Mode → `database-design` → AI Feature Mode — with one report at the end.
+**Route by intent and state.** Signals: the context doc, and implementation presence (build or deploy files, a schema, a source tree, or the caller says so). The greenfield sentinel is the context doc (default `docs/arch/context.md`) — not the `docs/arch/` directory, which a database-design pass may have created on its own.
+
+| State | Design, extend | Re-architect, modernize, system migration | Review, audit | One decision or option comparison | One AI feature |
+|---|---|---|---|---|---|
+| No doc, no code | Build, greenfield | — | Ask what to review | Answer inline in ADR shape; a Proposed ADR only if a docs root exists or the caller asks; never a full pass | AI Feature Mode; missing system context is a gap |
+| Code, no doc | Recover as-is → Build on existing system | Recover as-is → Build on existing system + Transition Plan | Recover as-is → Review, returning the as-is with the findings | Recover what it touches → ADR via `arch-decision` | Recover what it touches → AI Feature Mode |
+| Doc exists | Build on existing system (patch) | Build on existing system + Transition Plan | Review | ADR via `arch-decision` | AI Feature Mode |
+
+**Scope.** Architecture-level decisions only, including API philosophy, observability strategy and the strategy for moving or splitting a system's data (Transition Plan); endpoint catalogs, folder layout and code conventions are out. Table schemas, indexes and schema-migration scripts → `database-design`; execution review of a just-locked design → `plan-review` (fitness and docs↔code drift stay with Review). Sibling skills named in this file are used if available. Spanning requests run Build → `database-design` → AI Feature Mode with one report; when AI is the core subdomain or takes consequential actions, `references/ai/protocol.md` steps 1–5 run inside Stages 2–4.
+
+**Build Mode on an existing system** patches, never regenerates. If docs exist, drift-check their load-bearing claims first (Review step 3) and recover what drifted. Re-enter at the earliest stage whose inputs the change alters: a re-architecture, system migration or new business, regulatory or placement driver re-runs Stage 0 (re-calibrate; ask what the request cannot hold) and Stage 1 (the problem behind the requested solution; measured envelope; placement), patching context §1–§2 and §5–§6 before appending ASR deltas; an extension with no new driver re-enters at Stage 2. Later stages run only for the contexts the change touches; patch named sections in place; number ADRs from the directory's current max; supersede, never edit, reversed ADRs. Recovering the as-is, and where it lives: `references/evolution.md`.
 
 **Ownership.** This skill writes only under the architecture docs root (default `docs/arch/`). Read the PRD and brief; never edit them or any other owner's docs — a missing or wrong input becomes a gap in your summary.
 
-**After a Build pass**, audit `docs/arch/adr/` against the Minimum ADRs list (`references/design-flow.md`) and gap-fill only the foundational decisions the design settled but did not record, via the `arch-decision` skill if available — most foundational first, never duplicating ADRs the pass already wrote.
+**After a Build pass**, audit the ADR directory against design-flow § Minimum ADRs and gap-fill only the foundational decisions the design settled but did not record (at Lite rigor, one-way doors only), via `arch-decision`: most foundational first, never duplicating ADRs the pass already wrote.
 
-**Report back** a short summary, not the document contents: files created/updated · key decisions (stack, architecture pattern, database) · open questions and assumptions for the caller to relay · 2-3 sentence summary. For a review, replace key decisions with the severity-ranked findings (🔴/🟠/🟡/🟢, see the severity rubric). Push back both ways: simple CRUD doesn't need event sourcing; concurrent financial transactions need explicit concurrency design.
+**Report back** a short summary, not the document contents: files created/updated; rigor; key decisions (technology baseline, architecture pattern, database); spikes owed; open questions and assumptions for the caller to relay; on a first Build pass, a proposed 3-line pointer for the project conventions file (load `context.md` first; `system.md` for implementation; decisions as ADRs); a 2-3 sentence summary. For a review, replace key decisions with the severity-ranked findings (Critical/High/Medium/Low, 🔴/🟠/🟡/🟢). Push back both ways: simple CRUD doesn't need event sourcing; concurrent financial transactions need explicit concurrency design.
 
----
+## Stage 0 — Classification & Calibration
 
-## Scope Boundaries
+**Read first**, by path (defaults; caller may redirect): the requirements, meaning the PRD (`docs/prd/prd.md`), feature specs (`docs/prd/features/*.md`) and product brief (`docs/prd/product-brief.md`) if present, or the strategy memo, issue or change request the caller names; then the project conventions file, existing code and config. With no requirements source, ask the caller where it lives rather than halting.
 
-This skill produces architecture-level decisions. It deliberately **excludes** the following — they are separate implementation concerns:
+**Ask once, in one batch, only what the requirements cannot hold and a one-way door depends on**: mandated platforms, regions and jurisdictions, team and operating model, compliance regime, budget, safety standards. Give each question the default you will otherwise assume and the sections it gates. A subagent that cannot prompt applies the defaults provisionally, marks the dependent `A-nn` assumptions and lists the questions in its report.
 
-| Excluded Topic | Reason |
+**Classify each deployable unit** (a system may span several types) and mark it **operated** (you run it), **shipped** (others run it) or **fleet** (devices you update remotely); design-flow § Release Model says what each implies.
+
+| Type | Forcing question |
 |---|---|
-| Table schemas, column types, indexes, migrations | Implementation detail — derived from data models in the Design Doc |
-| API endpoint lists, request/response shapes | Implementation detail — derived from component interfaces in the Design Doc |
-| Folder structure, code conventions, linting rules | Codebase concern — belongs in CLAUDE.md or project config |
-| Concrete UI component trees, page layouts | Implementation detail — derived from system context in the Design Doc |
+| Web application | What renders where, and what are the session and cache models? |
+| API service | Who consumes it, and how does a breaking change ship? |
+| Library / SDK / CLI | What is the public contract, and how does it evolve without breaking users? |
+| Data pipeline | What happens to a record that fails mid-pipeline, and is every stage idempotent on replay? |
+| Mobile app | What works offline, for how long, and how do conflicting edits merge? |
+| Desktop app | How do updates reach users, and which old versions must the backend still serve? |
+| Game | Is the client or the server authoritative, and what tick and latency budget follows? |
+| Embedded / IoT | What must keep working with zero connectivity, for how long, and what happens if an update fails mid-install? |
 
-**Note**: API *design philosophy* and observability *strategy* are architectural decisions and ARE covered. What's excluded is the concrete endpoint catalog and boilerplate implementation code.
+**Calibrate**, one line each in `context.md` §2 ("none" is an answer):
+- **Load & latency**: load sources and units, data volume, latency targets.
+- **Placement**: residency, on-prem or air-gapped sites, edge or offline clients, user geography.
+- **Exposure**: internal, authenticated or public; untrusted input; money movement.
+- **Criticality**: cost of an hour down and of lost data; contractual availability; invariants at stake.
+- **Data sensitivity**: none, personal, sensitive or regulated (name the regime).
+- **Tenancy**: single or multi; the isolation promised.
+- **Run model**: per unit, who operates it, who is on call, release cadence.
+- **Teams**: how many, and expected growth.
+- **External consumers**: public API or SDK, partners, file formats.
+- **Reach**: locales, devices, networks, offline use, accessibility duties.
+- **Hazard**: can an action or omission harm people or property?
+- **Usage-priced dependencies**: metered inputs and margin pressure.
+- **AI**: decisions it owns (any about people?), tools and autonomy, untrusted or personal data in context, user-facing volume, client-side inference.
+- **Lifespan & phase**: prototype, product or platform.
+- **Top-3 risks**: failure scenarios with numbers ("checkout p99 > 5 s at peak").
 
----
+These set **rigor** and each perspective's **depth** (rules: design-flow § Perspectives).
 
 ## Design Flow Overview
 
-| Stage | Name | What It Answers | Output File |
-|---|---|---|---|
-| 0 | Auto-Classification | What type of software? What dimensions matter? | — |
-| 1 | Problem Definition | What problem, for whom, why now, at what scale? | `docs/arch/context.md` §1-2, §5-6 |
-| 2 | ASR Extraction & Utility Tree | Which quality attributes drive the architecture? | `docs/arch/context.md` §3 |
-| 3 | Domain Model | What are the core concepts and boundaries? | `docs/arch/context.md` §4 |
-| 4 | Pattern Selection & ATAM Gate | What patterns satisfy the architecture drivers? | `docs/arch/system.md` §1 |
-| 5 | Component Design | What are the concrete components? | `docs/arch/system.md` §2 |
-| 6 | Data Architecture | Where does data live, how does it flow? | `docs/arch/system.md` §3 |
-| 7 | Deployment | How does code get to production? | `docs/arch/system.md` §4 |
-| 8 | Cross-cutting Concerns | What properties hold across all components? | `docs/arch/system.md` §5 |
-| 9 | ADR & Risk Review | Are all decisions recorded? What could go wrong? | `docs/arch/adr/`, `docs/arch/risks.md` |
-
-**Stages 2 <-> 3 <-> 4 co-evolve**: Domain modeling reveals new ASRs, pattern selection changes domain boundaries. One iteration is usually sufficient.
-
-**ADRs are written immediately** when decisions occur — not batched at the end.
-
-See `references/design-flow.md` for detailed methodology for each stage.
-
----
-
-## Stage 0 — Auto-Classification
-
-**First, read the PRD by path** (defaults below; the caller may redirect to other locations):
-- the PRD (default `docs/prd/prd.md`) — vision, dev order, success metrics
-- per-feature requirements (default `docs/prd/features/*.md`)
-- the upstream product brief (default `docs/prd/product-brief.md`), if present
-
-If the PRD is absent at the expected path, ask the caller where it lives rather than halting.
-
-Then analyze the PRD content and classify the software automatically. No user questions — derive everything from the PRD.
-
-### Software Type Classification
-
-| Type | PRD Signals | Architecture Implications |
+| Stage | Name | Output |
 |---|---|---|
-| Web application | users, pages, dashboard, sign up | Client-server, sessions, rendering strategy |
-| API service | endpoints, consumers, rate limits | Interface design, versioning, SLA |
-| CLI tool | command, flags, terminal, output | Argument parsing, stdio, exit codes |
-| Library/SDK | import, package, API surface | Public API, compatibility, dependency policy |
-| Data pipeline | ingest, transform, ETL, batch | Throughput, fault tolerance, idempotency |
-| Mobile app | iOS, Android, push, offline | Offline-first, sync strategy |
-| Desktop app | native, installer, file system | Distribution, auto-update, OS integration |
-| Game | real-time, state sync, tick rate | Determinism, netcode, asset pipeline |
-| Embedded/IoT | device, firmware, constrained | Resource constraints, OTA, communication protocol |
+| — | As-is Recovery (existing systems) | `as-is.md`, or `context.md` + `system.md` |
+| 0 | Classification & Calibration | `context.md` header, §2, §5–§6 |
+| 1 | Problem Definition | `context.md` §1–§2, §5–§6 |
+| 2 | ASR Extraction & Utility Tree | `context.md` §3 |
+| 3 | Domain Model | `context.md` §4 |
+| 4 | Pattern Selection & ATAM Gate | `system.md` §1, ADRs |
+| 5 | Component Design | `system.md` §2 (+ §1 service pattern), `context.md` §5 baseline |
+| 6 | Data Architecture | `system.md` §3 |
+| 7 | Deployment | `system.md` §4 |
+| 8 | Cross-cutting Concerns | `system.md` §5 |
+| 9 | ADR & Risk Review | `adr/`, `risks.md` |
 
-> **Scope honesty**: the deep method (Stages 1-9) and reference library are shaped for **web / API / service-backed systems** (including AI features). For CLI, library/SDK, game, embedded, mobile, and desktop, Stage 0 gives you the right framing and the house-stack rows, but the downstream stages stay service-shaped — carry that type's "Architecture Implications" yourself as a checklist; they are not separately-resourced tracks.
-
-### Architecture Dimensions (Auto-Extract)
-
-From the PRD, extract:
-- **System boundary** — what this system does vs. what's handled externally
-- **Expected scale** — users, requests/sec, data volume, or "single-user tool"
-- **Latency requirements** — real-time needs, p99 targets
-- **Consistency model** — strong vs eventual, where
-- **Deployment constraints** — target environment, distribution method
-- **Regulatory/compliance** — data residency, audit requirements
-- **AI/LLM features** — whether the system includes AI capabilities
-
-If the PRD has critical gaps that block architecture decisions, note them as assumptions in the output.
-
----
+Stages 1–9: `references/design-flow.md`, header first.
 
 ## Output Structure
 
-The design flow produces these output files (default paths; the caller may redirect the `docs/arch/` root):
+Default paths; the caller may redirect the `docs/arch/` root.
 
-| File | Stages | Purpose | Template |
-|---|---|---|---|
-| `docs/arch/context.md` | 0-3 | What and why — problem, ASRs, domain model, constraints, assumptions | `templates/context.md` |
-| `docs/arch/system.md` | 4-8 | How — patterns, components, data, deployment, cross-cutting | `templates/system.md` |
-| `docs/arch/adr/ADR-NNN-{slug}.md` | All | One decision per file — context, options, decision, tradeoffs | `templates/adr.md` |
-| `docs/arch/risks.md` | 9 | Risk register, tech debt, open questions | `templates/risks.md` |
-| `docs/arch/ai-features/{feature}.md` | AI Feature Mode | One AI/LLM feature — task, shape, context, output contract, failure path, evals, envelope | [AI Feature Mode](#ai-feature-mode) § Output (≤200 lines) |
+| File | Holds | Template |
+|---|---|---|
+| `docs/arch/context.md` | What and why | `templates/context.md` |
+| `docs/arch/system.md` | How | `templates/system.md` |
+| `docs/arch/adr/ADR-NNN-{slug}.md` | One decision per file | `templates/adr.md` |
+| `docs/arch/risks.md` | Risk Register, Tech Debt, Open Questions | `templates/risks.md` |
+| `docs/arch/ai-features/{feature}.md` | One AI feature, ≤ 200 lines | `references/ai/protocol.md` |
+| `docs/arch/as-is.md` | Recovered as-is during a re-architecture, modernization or system migration | `references/evolution.md` |
 
-Read the template files before writing output. Follow their structure.
-
-### Line limits
-
-Before updating, check the file's line count. If it exceeds the limit,
-**consolidate** — merge redundant sections, tighten wording, remove items
-already resolved. Trust git history.
-
-Exception for ADRs: each decision is its own file at `docs/arch/adr/ADR-NNN-{slug}.md`,
-created fresh and never rewritten — so there is no aggregate line cap. When a decision is
-superseded, set the older ADR's status to `Superseded by ADR-NNN` in its file rather than
-deleting it. A standalone-ADR capability (e.g. the `arch-decision` skill, if available) records
-into the same `docs/arch/adr/` directory.
-
-| File | Limit |
-|---|---|
-| `docs/arch/context.md` | 400 lines |
-| `docs/arch/system.md` | 600 lines |
-| `docs/arch/risks.md` | 400 lines |
-
----
-
-## Claude Session Guide
-
-For future Claude sessions working on this project:
-
-- **New session** -> always load `docs/arch/context.md` first
-- **Implementation work** -> also load `docs/arch/system.md`
-- **Decision point** -> write a new ADR file at `docs/arch/adr/ADR-NNN-{slug}.md` immediately
-
----
+**Line caps** (`context.md` 400, `system.md` 600, `risks.md` 400 lines): check before updating and, over the cap, **consolidate** (merge redundant sections, tighten wording, remove resolved items), trusting version-control history. ADRs are exempt: one file per decision, superseded rather than rewritten, numbered in a namespace shared with `arch-decision`.
 
 ## Writing Style
 
-- **Direct and opinionated**. State what you chose and why. Don't hedge excessively.
-- **Trade-offs over descriptions**. Every choice should discuss what was gained and what was sacrificed.
-- **Concrete over abstract**. "Redis with 15-minute TTL" beats "a caching layer."
-- **Diagrams with D2**. Write D2 source directly in the doc — D2 classes give consistent styling (`person` for actors, `cylinder` for databases, `queue` for message brokers, dashed borders for system boundaries). Minimum: System Context (C4 L1) + Container (C4 L2) diagrams. If a D2 rendering tool/skill is installed, use it; otherwise leave the D2 source as-is, or fall back to Mermaid or ASCII.
-- **No filler**. If you catch yourself writing "it is important to note that" — delete it.
-- **Reference real-world precedent** when helpful: "Netflix uses a similar circuit-breaker pattern for their API gateway" adds credibility and context.
-
----
+- **Direct and opinionated.** State what you chose and why; put confidence in fields (assumption confidence, door type), not hedged prose.
+- **Trade-offs over descriptions.** Name what each choice gains and gives up.
+- **Concrete over abstract.** "A per-tenant read-through cache, 15-minute TTL, stale-while-revalidate" beats "a caching layer". Name a version only where the decision rests on one — the current supported line.
+- **Diagrams as code, in C4 notation.** System Context always, Container at Full rigor, deployment and dynamic views when a perspective needs them; trust boundaries marked; the notation the project (or an adopted house profile) names, else any text-based one.
+- **Evidence over reputation.** Justify choices with this system's numbers. Cite precedent only together with the condition that made it work; never for credibility.
+- **No filler.** If you catch yourself writing "it is important to note that", delete it. IDs only where another line cites them.
+- **Write for the reader, not the method.** Never narrate this skill's machinery in docs or reports — gate names, rule quotes, calibration lists, self-review tallies. Reviews lead with findings; patch text only for 🔴/🟠 unless asked.
 
 ## Self-Review
 
-Before finalizing, verify:
+Before finalizing, verify. Skip any item whose perspective is skipped in Perspective Coverage.
 
-- [ ] Every [H,H] ASR from the utility tree has a corresponding pattern in the design
-- [ ] ATAM gate passed — all [H,H] items verified against chosen patterns
-- [ ] Every [H,H] ASR also has a *standing guard* — a CI fitness function or a runtime SLO alert, not just the one-time ATAM check
-- [ ] Scale envelope computed from the PRD (peak RPS, data growth, working set) — and every pattern escalation cites one of its numbers or a non-scale driver
-- [ ] Every generic subdomain has a sourcing decision (build / self-host / buy); each external service adopted carries an ADR naming the non-code asset it sells
-- [ ] Ubiquitous language terms match code terms 1:1 *within each bounded context* (the same term may legitimately differ across contexts)
-- [ ] Fitness functions defined for key architectural properties (3-5 CI checks)
-- [ ] Quality targets have numbers (not "fast" or "reliable" — actual thresholds)
-- [ ] Cost estimate exists for two traffic levels (baseline + growth)
-- [ ] Every external dependency has a timeout, retry policy, and degradation strategy
-- [ ] Data flow is traceable for the main user journey
-- [ ] No section exists just because "a design doc should have it" — every section earns its place
-- [ ] AI (if applicable): cost ceiling defined, guardrail layers specified, model versions pinned
-
-**The "6-Month Test"**: Do these docs still pass the [6-Month Test](#premise) — readable enough to resume changes within 10 minutes after 6 months away?
-
----
+- Every `[H,H]` driver is a six-part scenario with an ATAM row (evidence; risk or non-risk); every `[H,·]` scenario has a standing guard, found by its QA id.
+- Every `[H,H]` QA id is in at least one ADR's `Drivers` and one guard; every one-way-door ADR has a `Confirmation`; no one-way door rests on a low-confidence assumption without a scheduled spike.
+- Envelope computed (measured, if the system runs); scale class and placement constraints recorded; every escalation cites an envelope number or a non-scale driver.
+- Perspective Coverage complete; every skip has a reason.
+- Technology baseline stated with its source; deviations, and one-way-door sourcing choices either way, have ADRs.
+- Every external dependency has a deadline, one budgeted retry layer, isolation and an exercised degradation path.
+- Every write that must not be lost or duplicated has a write-path decision (`system.md` §5).
+- Every personal or regulated data set has an owner, class, retention, an erasure path reaching every copy, and residency.
+- Every `Revisit when` names a variable and a threshold.
+- Existing system: each transition step states the driver levels it holds, its exit fitness function and its rollback trigger.
+- Operated or usage-priced: cost per unit of value at two load levels, plus idle cost.
+- AI present: the self-review gate in `references/ai/protocol.md` passes.
+- **Footprint**: every section earns its place; a light perspective is one line; at Lite, both docs fit about 2,000 words — cut subsections first, keep the specifics.
+- The docs pass the [6-Month Test](#premise).
 
 ## Review / Diagnose Mode
 
-Use this mode when the user asks to **review, audit, or diagnose an existing
-architecture** — not to build a new one. Trigger: the architecture context doc
-(default `docs/arch/context.md`) already exists and the intent is to critique, not create.
+Trigger: the context doc or an implementation exists, and the intent is to review, audit or diagnose rather than build.
 
-**Hard rule — never regenerate.** Do NOT run the Design Flow and do NOT rewrite
-the context or system doc wholesale. A review that silently overwrites the
-design it was asked to critique is a failure. The only writes allowed are:
+**Hard rule — never regenerate.** Do NOT run the Design Flow and do NOT rewrite the context or system doc wholesale. A review that silently overwrites the design it was asked to critique is a failure. **By default write nothing**: return each finding with its proposed disposition and patch text. When the caller asks you to apply them, the only writes allowed are:
 
-- **Targeted patch** of a specific, named defect, in place — and only after you
-  have stated the finding it fixes. One surgical edit per finding, never a
-  section-wide rewrite or a "consolidate" pass.
+- **Targeted patch** of a specific, named defect, in place — and only after you have stated the finding it fixes. One surgical edit per finding, never a section-wide rewrite or a "consolidate" pass.
 - **Additive append** to the Risk Register or Open Questions in `risks.md`.
 - **A new ADR** via a standalone-ADR capability (e.g. the `arch-decision` skill, if available).
 
-If the user wants a full redesign rather than an audit, stop and run Build Mode
-instead — but say so explicitly first.
+If the user wants a redesign rather than an audit, say so, then switch to Build Mode on an existing system, never a regeneration from the PRD.
 
 ### Procedure
 
-1. Read all of `docs/arch/` — `context.md`, `system.md`, `risks.md`, the ADRs
-   in `adr/`, and `database.md` if it exists.
-2. Audit against the **Self-Review checklist** above, the utility tree's
-   `[H,H]` ASRs, and the ATAM gate. Those checklist items *are* the review
-   criteria — you are checking whether the existing design still passes them.
-3. **Drift check** — if an implementation exists alongside the docs (an
-   `apps/` or `src/` tree), sample-verify the load-bearing claims: declared
-   containers exist, the declared service pattern is visible in the code
-   layout, declared fitness functions actually run in CI. Docs↔code drift on
-   a load-bearing claim is a finding (🟠 by default), whichever side is wrong.
-4. Rank every finding with the severity rubric below.
-5. Disposition each finding:
-   - 🔴 / 🟠 fixable now and unambiguous → targeted patch to the affected doc.
-   - Accepted risk / won't-fix → append to the Risk Register in `risks.md`.
-   - Needs user input → append to Open Questions in `risks.md`.
-   - Implies a new decision → new ADR via a standalone-ADR capability (e.g. the `arch-decision` skill, if available).
-6. **Never** create a separate `review.md` — findings live in the docs they
-   concern. Return a severity-ranked summary of what you found and did.
+1. **Read** the architecture docs root (default `docs/arch/`; caller may redirect): `context.md`, `system.md`, `risks.md`, `adr/`, `ai-features/`, `as-is.md`, and `database.md` (read-only) if present. With no docs, recover the as-is (`references/evolution.md`) and set rigor from it.
+2. **Audit** against Self-Review, Perspective Coverage at the depth each trigger demands, ATAM evidence quality and `references/review-lens.md`; apply the AI gate to each feature doc.
+3. **Drift check**: if an implementation exists alongside the docs (e.g. an `apps/` or `src/` tree), sample-verify the load-bearing claims: declared containers exist, the declared service pattern shows in the code layout, declared fitness functions run in CI. During a transition, compare against the live Transition Plan step. Behavior-changing config (prompts, model settings, flags) passes the same gates as code; declared fallbacks are exercised. Docs↔code drift on a load-bearing claim is a finding (🟠 by default), whichever side is wrong.
+4. **Fired triggers**: test every `Revisit when`, Scaling Ladder trigger and `context.md` §6 assumption against operational evidence (SLO history, incidents, cost trend, load vs the envelope). A fired trigger without a follow-up ADR is 🟠; a repeatedly breached `[H,H]` driver is 🔴; an invalidated assumption lists the ADRs resting on it. With no evidence, an Open Question names what is needed.
+5. **Rank** every finding with the rubric below.
+6. **Disposition** each finding (proposed by default; applied on request): 🔴/🟠 fixable now and unambiguous → targeted patch to the affected doc; accepted risk or won't-fix → Risk Register; needs user input → Open Questions; implies a new decision → new ADR via `arch-decision`.
+
+**Never** create a separate `review.md` — findings live in the docs they concern. Return a severity-ranked summary of what you found and, if asked, applied.
 
 ### Severity rubric
 
-- 🔴 **Critical** — correctness / security / data-loss; ATAM gate failure; an
-  `[H,H]` ASR from the utility tree has no covering pattern.
-- 🟠 **High** — deviates from a recorded ADR without justification; docs↔code
-  drift on a load-bearing claim; an external dependency missing a timeout /
-  retry / degradation strategy; an N+1 or thundering-herd baked into the data
-  flow.
-- 🟡 **Medium** — structural improvement; a doc gap that fails the 6-Month Test.
-- 🟢 **Low** — wording, nits, optional consistency fixes.
+- 🔴 **Critical**: correctness, security or data loss; ATAM gate failure; an `[H,H]` ASR from the utility tree has no covering pattern; unlawful or unlisted processing of regulated data, or regulated data with no erasure path; cross-tenant exposure; a safety function that can be disabled.
+- 🟠 **High**: deviates from a recorded ADR without justification; docs↔code drift on a load-bearing claim; an external dependency missing a timeout, retry or degradation strategy; an N+1 or thundering herd baked into the data flow; an unexercised fallback on a critical path; a published contract with no compatibility policy; a required item missing without a recorded reason.
+- 🟡 **Medium**: structural improvement; a doc gap that fails the 6-Month Test.
+- 🟢 **Low**: wording, nits, optional consistency fixes.
 
-For data-model and schema findings, also apply the schema-review checklist from a
-database-design capability (e.g. the `database-design` skill's "When Reviewing an
-Existing Schema" checklist, if available) rather than re-deriving criteria here.
-
----
+For data-model and schema findings, also apply the schema-review checklist from a database-design capability (e.g. the `database-design` skill's "When Reviewing an Existing Schema" checklist, if available) rather than re-deriving criteria here.
 
 ## AI Feature Mode
 
-Use this mode to design **one AI/LLM feature** — a chatbot, copilot, agent, RAG,
-classification, or extraction feature — or to decide whether to use an LLM at all,
-choose an agent vs a fixed workflow, or set up evals. It is provider-neutral design
-and operational planning, not SDK code.
+Design **one AI/LLM feature** (chatbot, copilot, agent, retrieval, classification, extraction), including whether to use a model at all, workflow vs agent, and evals: provider-neutral design and operational planning, not SDK code.
 
-**Works on a new or existing system** — one feature per run, written to the AI feature
-doc (default `docs/arch/ai-features/{feature}.md`; caller may redirect). An existing
-context doc does **not** route this request to `arch-decision`. When the same request
-also needs a system design or schema, run those first (Build Mode, then the
-`database-design` skill, if available). Writes only that feature file; reads the PRD
-and other architecture docs but never edits them — a missing input becomes a gap in
-your summary.
+**Works on a new or existing system**: one feature per run, written to the AI feature doc (default `docs/arch/ai-features/{feature}.md`; caller may redirect). An existing context doc does **not** route this request to `arch-decision`. Standalone, it writes only that feature file and records any architecture-surface change (new container, store, provider or trust boundary) as an ADR via `arch-decision`. In a combined run it adopts Build's decisions and ADRs, completes the remaining steps, and may patch docs written earlier in that run; Build itself records only the system-level AI slots.
 
-**Method**: follow `references/llm-app/guide.md` — the do-you-need-an-LLM test, the
-four layers, the shape table, and the 8-step design flow (inputs: the AI ASRs in
-`context.md` §3, or ask the caller for the cost ceiling and tolerated error rate). It
-links the shape-specific references under `references/llm-app/`; the system-level
-counterparts are `references/ai-architecture.md` and `references/ai-agents.md`.
+**Method**: follow `references/ai/protocol.md` and the `references/ai/` files its steps name; write the doc from its 8-section template (≤ 200 lines) and pass its self-review gate. A **light** feature (defined in `references/ai/protocol.md` § Depth: light or deep) skips the evals, security and production files and applies its minimum gate. Link the originating feature spec (default `docs/prd/features/{feature}.md`), if any.
 
-### Output
-
-Save the LLM feature design to `docs/arch/ai-features/{feature}.md` (default). Each file is one feature; reference the originating PRD feature in `docs/prd/features/{feature}.md` if applicable.
-
-Structure (≤200 lines):
-1. **Task** — one-sentence X → Y → Z
-2. **Shape** — single-prompt / RAG / tool use / agent / multi-agent (from the shape table in `references/llm-app/guide.md`)
-3. **Context** — system prompt outline, retrieval sources, tool list
-4. **Output contract** — structured (JSON schema) or free-form; validation strategy
-5. **Failure path** — wrong / unsure / down: validation depth, abstain & escalation thresholds, fallback (from design-flow step 5)
-6. **Eval set** — link to golden examples, metric, judging strategy, and baseline pass rate (record whether the hand-written examples currently pass — closes design-flow step 7)
-7. **Production envelope** — tokens/request and $/month vs the cost ceiling, latency target, caching, rate limits, observability
-8. **Open questions / risks**
-
-**Report back** files created/updated · the chosen shape and model tier · the
-envelope numbers vs the cost ceiling · open questions for the caller to relay.
-
----
+**Report back** files created/updated; shape and model tier (or the spike that will choose it); autonomy level; release gate; envelope vs the cost ceiling; ADRs recorded or requested; spikes owed; open questions for the caller to relay.
 
 ## Reference Files
 
-### Reading Order
-
-**Always read** (Build and Review modes): `design-flow.md` + all four templates.
-
-**Read based on Stage 0 findings**:
-- Pattern selection -> `system-architecture.md`, `service-architecture.md`
-- Technology selection (Stage 5, Component Design) -> `house-stack.md` (opinionated house stack; deviations need an ADR)
-- AI features in PRD -> `ai-architecture.md` (+ `ai-agents.md` if agents needed)
-- AI Feature Mode -> `llm-app/guide.md`, then the `llm-app/` shape references it names
-- Cross-cutting -> `operational-patterns.md`
-- Writes that must not be lost / duplicated / interleaved -> `reliability-patterns.md`
-- Stage 8 (Cross-cutting Concerns) -> `observability.md`
-
-**Skip if PRD has no AI/LLM features**: `ai-architecture.md`, `ai-agents.md`, `llm-app/`
-
-Every reference is linked directly from here, so read only what a stage needs.
-Cross-links between reference files are optional pointers for going deeper — not
-a required reading chain.
-
-### Index
-
-| File | Content |
-|---|---|
-| `references/design-flow.md` | Design-flow methodology, stages 1-9 (Stage 0 lives in this SKILL.md). **Read first.** |
-| `templates/*.md` | Output templates for `docs/arch/context.md`, `docs/arch/system.md`, `docs/arch/adr/`, and `docs/arch/risks.md` |
-| `references/system-architecture.md` | System patterns, composition flowchart, real-world examples |
-| `references/service-architecture.md` | Internal service structure: hexagonal (default), clean, vertical slice, FC/IS |
-| `references/ai-architecture.md` | LLM integration, RAG, streaming, vector storage, guardrails |
-| `references/ai-agents.md` | Agent patterns, protocols (MCP/A2A/AG-UI), durable execution, safety |
-| `references/llm-app/guide.md` | AI Feature Mode method: do-you-need-an-LLM test, four layers, shape table, 8-step design flow, anti-patterns |
-| `references/llm-app/prompting.md` | Prompt structure, output specification, few-shot, CoT, thinking modes, iteration loop |
-| `references/llm-app/tool-use.md` | Tool/function design, the tool-calling loop, structured output vs tool use, MCP, tool security |
-| `references/llm-app/rag.md` | Chunking, embedding-model choice, hybrid retrieval, reranking, augmentation, RAG evals |
-| `references/llm-app/agents.md` | Workflow vs agent, workflow patterns, agent loop, context & memory, safety rails, failure modes |
-| `references/llm-app/evaluation.md` | Golden sets, LLM-as-judge calibration, agent evals (pass^k, trajectory), eval workflow |
-| `references/llm-app/production.md` | Latency, cost, caching, reliability, observability, security, rollout, model updates |
-| `references/house-stack.md` | Opinionated, non-portable house stack (deviations need an ADR) — language/runtime, framework, infra, data, AI, services |
-| `references/operational-patterns.md` | Resilience, background jobs, caching, rate limiting |
-| `references/reliability-patterns.md` | Transaction boundaries, idempotency, outbox, concurrency control |
-| `references/observability.md` | OpenTelemetry strategy, traces/metrics/logs, sampling, health checks |
+| File | Read when | Owns |
+|---|---|---|
+| `references/design-flow.md` | Build: first. Review: criteria | Stages 1–9: perspectives, ATAM gate, technology baseline, data inventory, guards, Minimum ADRs |
+| `templates/*.md` | Writing or patching that file | Output structure; section numbers other skills read |
+| `references/evolution.md` | Existing system: recovery, re-architecture, modernization, system migration | As-is recovery and where it lives; Transition Plan method |
+| `references/review-lens.md` | Review only | Questions, red flags with default severity, failure modes, smells |
+| `references/system-architecture.md` | Pattern selection; topology, tenancy, contract evolution | Patterns, Deployment Topology, Multi-Tenancy, API Versioning Strategy, Feature Flag Architecture |
+| `references/service-architecture.md` | Internal structure | Style per context, tactical rules, Strategic Context Mapping |
+| `references/security-privacy.md` | Security or Privacy & compliance light or deep | Threat modeling, principals, keys, supply chain, data duties, compliance evidence |
+| `references/reliability-patterns.md` | Writes that must not be lost, duplicated or interleaved | Transactions, idempotency, outbox, concurrency, offline writers |
+| `references/operational-patterns.md` | Resilience, overload, jobs, caching, webhooks, rate limits | Dependency protection, Durable Execution, Pagination Strategy |
+| `references/observability.md` | Stage 8: what you operate; diagnosability for software others run | Instrumentation, sampling, cardinality, burn-rate alerts, health checks |
+| `references/house-stack.md` | Only if the project adopts this house profile (the project conventions or the caller say so; caller may redirect or omit) | One swappable house profile |
+| `references/ai/protocol.md` | Any AI | AI inputs, Build-mode hooks, steps, feature-doc template, self-review gate |
+| `references/ai/evals.md`, `references/ai/security.md`, `references/ai/production.md` | AI perspective deep | Evals; AI threats, authority, governance; envelope, limits, caching, routing, AI SLIs |
+| `references/ai/context.md` | Retrieval, memory or long sessions | Retrieval, index lifecycle, context budget, memory |
+| `references/ai/agentic.md` | Tools or agents | Tool design, harness, multi-agent, oversight |
+| `references/ai/placement.md` | Inference could run on a client | Client tiers, fallback chains, client model lifecycle and trust |

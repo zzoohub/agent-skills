@@ -1,31 +1,25 @@
 # Risks & Open Questions
 
-**Context**: See `docs/arch/context.md` for problem definition and ASRs, `docs/arch/system.md` for architecture, and `docs/arch/adr/` for decision records.
+**Context**: See `docs/arch/context.md` (problem, ASRs), `docs/arch/system.md` (architecture) and `docs/arch/adr/` (decisions).
 
 ---
 
 # Risk Register
 
-<!-- Seed prompts below mirror the design's highest-leverage non-AI risks — replace with this system's real ones. -->
+<!-- Seeds mirror the highest-leverage non-AI risks; replace with this system's real ones. ATAM rows marked risk land here. -->
 
-| Risk | Impact | Probability | Mitigation |
-|---|---|---|---|
-| e.g. Security: tenant data leak across a trust boundary | ... | ... | STRIDE-surfaced ASR (filter #8) + RLS + per-tenant authz tests |
-| e.g. Data: replica lag breaks read-your-writes | ... | ... | Replication topology choice (Stage 6); read-from-leader on critical path |
-| e.g. Capacity: traffic spike exceeds modeled QPS | ... | ... | Load test to the ASR p99; autoscale + backpressure |
-| e.g. External dependency outage | ... | ... | Timeout + retry budget + graceful degradation (Stage 8) |
-| e.g. Write hazard: lost update / double-process | ... | ... | Outbox, idempotency keys, optimistic concurrency |
+| Risk | Threatens (QA/C ids) | Impact | Probability | Owner | Signal | Mitigation |
+|---|---|---|---|---|---|---|
+| Security: tenant data leak across a trust boundary | | | | | cross-tenant test failures | STRIDE-surfaced ASR (filter #8) + ≥ 2 enforcement points + cross-tenant tests |
+| Data: replica lag breaks read-your-writes | | | | | replica lag | Read-path choice (Stage 6); leader reads on critical paths |
+| Capacity: load beyond the envelope | | | | | peak vs modeled load | Load test to the driver's measure; admission control, backpressure |
+| Dependency slow or down | | | | | dependency p99, error rate | Deadline, one budgeted retry layer, exercised degradation (Stage 8) |
+| Write hazard: lost update / double-process | | | | | duplicates, version conflicts | Outbox, idempotency keys, optimistic concurrency |
 
-## AI Risks
-<!-- Include only if PRD involves AI/LLM features -->
+**Risk themes**: [theme → risks]
 
-| Risk | Impact | Probability | Mitigation |
-|---|---|---|---|
-| Hallucination in critical output | ... | ... | Schema validation, citations, human review |
-| Model deprecation | ... | ... | Version pinning, abstraction layer, eval suite |
-| Vendor lock-in | ... | ... | LLM Gateway pattern, standardized prompt format |
-| Cost explosion | ... | ... | Per-request tracking, daily budget alerts, model cascading |
-| RAG poisoning | ... | ... | Source trust scoring, content validation |
+<!-- AI: add rows from each feature doc's failure path and envelope, never pre-rated (e.g. provider lock-in → model port + eval-qualified alternate).
+     Transition: seed from references/evolution.md § Transition Plan (cutover data loss, store features that do not port, knowledge held by few people, old and new drifting apart). -->
 
 ---
 
@@ -33,12 +27,11 @@
 
 | Item | When | Priority | Resolution Condition |
 |---|---|---|---|
-| ... | ... | ... | ... |
 
 ---
 
 # Open Questions
 
-| Question | Options | Info Needed to Decide |
-|---|---|---|
-| ... | ... | ... |
+| Question | Options | Info needed | Decide-by | Blocking? |
+|---|---|---|---|---|
+| ... | ... | ... | [date or stage] | yes / no |

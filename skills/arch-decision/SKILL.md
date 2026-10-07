@@ -10,7 +10,9 @@ description: |
   of infrastructure. Trigger phrases: "record an ADR", "we decided to X",
   "make an architecture decision about X", "let's switch from X to Y".
   Do NOT use for: a new system from scratch (use software-architecture — it
-  produces the full design doc plus initial ADRs). Do NOT use for: schema
+  produces the full design doc plus initial ADRs), or re-architecting,
+  modernizing or migrating an existing system across several decisions (use
+  software-architecture on the existing system). Do NOT use for: schema
   decisions (use database-design). Do NOT use for: writing feature requirements
   (use feature-spec). Do NOT use for: pure code refactors that don't shift
   architecture (no ADR needed).
@@ -28,7 +30,10 @@ The architecture docs root defaults to `docs/arch/` (caller may redirect).
 absent, ask the caller rather than halting — you can still record an ADR
 against a missing context, but flag the gap. If there is no `context.md` and the
 request is really a new system, it is greenfield: run a full design pass (the
-`software-architecture` skill, if available) instead.
+`software-architecture` skill, if available) instead. An existing system with code
+but no `context.md` goes to that skill's as-is recovery first; a re-architecture,
+modernization, system migration or change spanning several decisions goes to its
+Build Mode on an existing system.
 
 Write only under the architecture docs root — read the PRD/feature specs, never
 edit them or any other owner's docs.
@@ -64,6 +69,7 @@ edit them or any other owner's docs.
 
 - **Status:** Accepted | Proposed | Superseded by ADR-{NNN}
 - **Door:** One-way (irreversible) | Two-way (reversible)
+- **Drivers:** QA / C ids from `docs/arch/context.md` §3 / §5 that this decision serves.
 - **Context:** Issue motivating this decision. Cite ASRs from `docs/arch/context.md` §3, and the feature spec at `docs/prd/features/{feature}.md` if feature-driven. For performance/scale/cost-driven decisions, include the **measured trigger** (observed metric, breached threshold, bill).
 - **Options:**
   1. **{Option A}** — pros / cons
@@ -73,12 +79,14 @@ edit them or any other owner's docs.
 - **Why:** Reason tied to ASR or constraint.
 - **Rejected:** Why other options were rejected.
 - **Tradeoff:** Positive and negative consequences. Affected components from `system.md` §2 (or "none").
+- **Confirmation:** The guard (fitness function, SLO, scheduled check) in `system.md` §5 that shows the decision holds.
 - **Revisit when:** Trigger conditions that should prompt reconsideration. Scale/cost triggers name a **metric + threshold** that is (or now becomes) observable on a dashboard — a revisit trigger nobody can see never fires.
 ```
 
 This aligns with the standard `software-architecture` ADR template (in that skill's
 templates if installed; otherwise the format above is self-sufficient): it shares
-`Status` / Door / Context / Decision / Why / Rejected / Tradeoff / Revisit-when, **adds**
+`Status` / Door / Drivers / Context / Decision / Why / Rejected / Tradeoff /
+Confirmation / Revisit-when, **adds**
 an explicit `Options` list, and **omits** `Stage` (a standalone decision has no
 design-flow stage). `Rejected` states why each *other* option lost the comparison —
 not a restatement of its cons. ADRs authored here sit in the same `docs/arch/adr/`
@@ -121,7 +129,8 @@ When options differ in reversibility, weigh it explicitly: a cheaply-reversible 
 7. **Patch system.md if needed** — Only when surface changes (new component,
    new pattern, etc.). A surface change usually moves the guards too: update
    the affected fitness-function / SLO rows in `system.md` §5 (where the doc
-   tracks them) so the new decision is guarded like the old one was, and
+   tracks them) so the new decision is guarded like the old one was (name that
+   guard in `Confirmation`), and
    reconcile the Scaling Ladder in §4 — if this ADR executes a deferred
    escalation, mark that ladder row done; if it defers one, add the trigger
    metric there.
@@ -135,7 +144,8 @@ When options differ in reversibility, weigh it explicitly: a cheaply-reversible 
 
 - [ ] One decision, clearly named
 - [ ] 2-4 realistic options considered, including "keep current"
-- [ ] Decision tied to a specific ASR or constraint from `context.md`
+- [ ] Decision tied to a specific ASR or constraint from `context.md` — its ids
+      in `Drivers`; the guard that confirms it in `Confirmation`
 - [ ] Scale/cost claims carry a measured number — or an explicit assumption plus
       the spike that would validate it
 - [ ] Revisit-when names an observable metric + threshold for scale/cost triggers

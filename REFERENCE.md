@@ -57,7 +57,9 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 
 The conventional file locations the skills and agents follow by default — a reference map of where
 each artifact lives, not a runtime override point. Skills and agents do **not** read this table at
-boot; to change paths for a real project, set the conventions in that project's `CLAUDE.md`. Every
+boot; to change paths for a real project, set the conventions in that project's `CLAUDE.md`. A
+project adopts the software-architecture house profile the same way — one line there naming the
+profile path (`references/house-stack.md`); without it, technology is selected per driver. Every
 file a skill or agent reads or writes has a row here. A trailing `/` denotes a directory family
 authored by one owner. "Main session" means the artifact has no producing skill: whoever does that
 work (the main session or a subagent it spawns) writes it.
@@ -67,12 +69,13 @@ work (the main session or a subagent it spawns) writes it.
 | Product brief | `docs/prd/product-brief.md` | product-brief | prd-craft, software-architecture, copywriting (persuasion psychology, social), data-analyst |
 | PRD | `docs/prd/prd.md` | prd-craft | feature-spec, software-architecture, database-design, ux-design, plan-review (scope mode) |
 | Feature spec | `docs/prd/features/{feature}.md` | feature-spec (new product: prd-craft) | software-architecture (incl. AI Feature Mode), arch-decision, database-design, ux-design, screen-design, implementers |
-| Arch context (greenfield sentinel) | `docs/arch/context.md` | software-architecture | software-architecture (brownfield detection), arch-decision, implementers |
+| Arch context (greenfield sentinel) | `docs/arch/context.md` | software-architecture | software-architecture (brownfield detection, together with implementation presence), arch-decision, implementers |
 | Architecture | `docs/arch/system.md` | software-architecture (patched by arch-decision) | implementers (hexagonal-backend), database-design, plan-review (execution mode), reviewer |
 | Architecture decisions (ADRs) | `docs/arch/adr/ADR-NNN-{slug}.md` | software-architecture, arch-decision | implementers |
 | Risks & open questions | `docs/arch/risks.md` | software-architecture | arch-decision, implementers, reviewer |
 | Database design | `docs/arch/database.md` | database-design | backend implementers, reviewer |
 | AI feature design | `docs/arch/ai-features/{feature}.md` | software-architecture (AI Feature Mode) | ux-design, implementers |
+| Recovered as-is (re-architecture / system migration; retired when the transition completes) | `docs/arch/as-is.md` | software-architecture (Build Mode on an existing system) | software-architecture (Transition Plan), implementers |
 | App UX | `docs/ux/ux-design.md` | ux-design | screen-design, web/mobile implementers |
 | Screen specs | `docs/ux/screens/{screen}.md` | ux-design (initial set), screen-design | web/mobile implementers |
 | Project checklist (optional) | `checklist.md` (repo root or `docs/`) | *(project-defined)* | reviewer |

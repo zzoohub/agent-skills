@@ -383,8 +383,9 @@ Once the PRD + feature specs are approved, the PRD is an input — not the finis
 line. Hand off to the next stages of the planning pipeline if such capabilities
 are available (routing hints, not inline reads):
 
-1. **Architecture** — `software-architecture` for a new system, or `arch-decision`
-   for a brownfield change → `docs/arch/`
+1. **Architecture** — `software-architecture` for a new system or a multi-decision
+   change to an existing one (re-architecture, modernization, system migration), or
+   `arch-decision` for a single decision on an existing system → `docs/arch/`
 2. **UX** — `ux-design` for app-wide design, or `screen-design` for a single
    screen → `docs/ux/`
 
