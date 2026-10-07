@@ -126,7 +126,7 @@ A human must pivot in seconds: metric alert → exemplar → trace (which span f
 
 **Critical**: liveness must not call dependencies — a flaky store would cascade-restart every replica into a full outage.
 
-Readiness must not fail fleet-wide on a shared dependency either: when it blips, every replica goes unready at once and the system loses even its degraded modes (cached reads, clear 503s). Shared-dependency health drives degraded mode and alerts instead. If readiness does check a shared dependency, the routing layer must fail open when all targets are unready — state which, because platforms differ. Where there are no probes (serverless, edge), readiness becomes dependency health in metrics plus an external synthetic check.
+Readiness must not fail fleet-wide on a shared dependency either: when it blips, or its pool saturates under load, every replica goes unready at once and the system loses even its degraded modes (cached reads, clear 503s). Shared-dependency health drives degraded mode and alerts instead. If readiness does check a shared dependency, the routing layer must fail open when all targets are unready and nothing may restart or replace instances on that check — state which, because platforms differ. Where there are no probes (serverless, edge), readiness becomes dependency health in metrics plus an external synthetic check.
 
 ---
 
