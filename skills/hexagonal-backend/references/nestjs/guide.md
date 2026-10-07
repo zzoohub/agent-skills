@@ -365,7 +365,7 @@ Define each cross-cutting port (shared list: `SKILL.md` § Reliability) as an ab
 |---|---|---|
 | **UnitOfWork** | Scopes a database transaction across multiple repositories. Service composes `authorRepo` + `outboxRepo` (+ ...) inside one `uow.run(...)` callback — all writes commit or roll back together. CLS-scoped `EntityManager` propagation invisible to callers. | Outbound (TypeORM adapter); domain depends only on the abstract `UnitOfWork` class |
 | **Outbox** | Atomic state change + message publish — outbox row written inside the same `uow.run(...)` callback as the aggregate write | Outbound (`OutboxRepository`, participates in UoW via CLS-scoped `EntityManager`) |
-| **IdempotencyStore** | Replay safe responses for `Idempotency-Key`-bearing requests | Outbound; called by an interceptor or application service |
+| **IdempotencyStore** | Leased Idempotency-Key records: replay, mismatch (422), in flight (409) | Outbound; acquired by an interceptor, completed inside the handler's `uow.run(...)` (a deterministic 4xx in a `uow.run` of its own) |
 | **Tracer** / **Meter** | OTel span / metric emission. Domain depends on the abstract class, not on `@opentelemetry/*` | Outbound (OTel adapter); no-op for tests |
 
 **Architectural rule**: domain emits **`DomainEvent`** plain objects; the application service opens a `UnitOfWork` and calls the aggregate repository + `OutboxRepository` inside the same `uow.run(...)` callback. Both writes commit together. A separate **outbox relay** (a `@nestjs/bullmq` worker, a `@Cron` task, or a separate process) publishes rows asynchronously.

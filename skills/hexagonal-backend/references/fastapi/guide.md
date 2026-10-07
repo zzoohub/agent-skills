@@ -284,10 +284,10 @@ Define each cross-cutting port (shared list: `SKILL.md` § Reliability) as a `Pr
 | Port | Purpose | Where it lives |
 |---|---|---|
 | **UnitOfWork** | Scopes a transaction across multiple repositories so the aggregate write and the outbox write share one `AsyncSession` | Outbound; entered by application service |
-| **IdempotencyStore** | Replay safe responses for `Idempotency-Key`-bearing requests | Outbound; called by inbound middleware or application service |
+| **IdempotencyStore** | Leased `Idempotency-Key` records: replay, mismatch (422), in flight (409 + `Retry-After`) | Outbound; the application service acquires, then `complete()`s on the UoW's `AsyncSession` |
 | **Tracer** / **Meter** | OTel span / metric emission. Domain depends on the `Protocol`, not on `opentelemetry` packages | Outbound (OTel adapter); no-op for tests |
 
-**Architectural rule**: domain emits **`DomainEvent`** dataclasses; the application service opens a UnitOfWork (`async with uow:`) and calls both the aggregate repo and the outbox repo inside it. Same `AsyncSession` = same transaction. A separate **outbox relay** worker (background task or separate process) publishes rows asynchronously.
+**Architectural rule**: domain emits **`DomainEvent`** dataclasses; the application service opens a fresh UnitOfWork per call (`async with self._new_uow() as uow:`) and calls both the aggregate repo and the outbox repo inside it. Same `AsyncSession` = same transaction. A UoW holds per-transaction state, so the lifespan-scoped service holds a factory (`partial(PostgresUnitOfWork, sessions)`), never a shared instance. A separate **outbox relay** worker (background task or separate process) publishes rows asynchronously.
 
 **Why UnitOfWork instead of letting each repo create its own session?** SQLAlchemy's `AsyncSession` *is* the unit of work. If two repos own two different sessions, you're back to dual writes. UoW makes the shared session explicit and the tx boundary visible at the call site.
 

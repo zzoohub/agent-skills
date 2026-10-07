@@ -818,7 +818,7 @@ class DomainEvent:
 
 ```python
 # src/domain/shared/uow.py — port
-from typing import Protocol, Self
+from typing import Any, Protocol, Self
 from domain.shared.events import DomainEvent
 from domain.authors.ports import AuthorRepository
 
@@ -828,6 +828,7 @@ class OutboxRepository(Protocol):
 class UnitOfWork(Protocol):
     authors: AuthorRepository
     outbox: OutboxRepository
+    session: Any  # opaque tx handle for ports that must join it (IdempotencyStore.complete)
 
     async def __aenter__(self) -> Self: ...
     async def __aexit__(self, exc_type, exc, tb) -> None: ...
@@ -856,6 +857,7 @@ class PostgresUnitOfWork:
         # building its own engine/session.
         self.authors = PostgresAuthorRepository(self._session)
         self.outbox = PostgresOutboxRepository(self._session)
+        self.session = self._session  # what IdempotencyStore.complete() joins
         return self
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
@@ -920,9 +922,10 @@ class PostgresOutboxRepository:
 ```
 
 ```python
-# Application service uses the UoW — tx boundary visible at the call site
+# Application service uses the UoW — tx boundary visible at the call site. A UoW holds
+# per-tx state, so one per call, never shared: inject partial(PostgresUnitOfWork, sessions).
 async def create_author(self, req: CreateAuthorRequest) -> Author:
-    async with self._uow as uow:
+    async with self._new_uow() as uow:
         author = await uow.authors.create_author(req)
         await uow.outbox.enqueue([DomainEvent(
             aggregate_type="author",
@@ -947,63 +950,124 @@ async def create_author(self, req: CreateAuthorRequest) -> Author:
 
 ## Outbound: Idempotency Store
 
-A KV-shaped table keyed by `(scope, key)` with a unique constraint. The application service (or an inbound middleware) wraps the use case.
+One row per `(scope, key)`: a lease while the first request runs, then its stored status and body. Only a write grants execution — this request's insert or a conditional takeover of an expired lease, never a read — and the result commits in the use case's transaction under the lease. Inbound mapping: a missing required key → **400**; `Replay` → its status and body (store `Location` beside the body if the route sets one); `Mismatch` → **422** problem, `type` `…/idempotency-key-mismatch`, no `errors[]`; `InFlight` → **409** problem, `type` `…/idempotency-in-flight`, plus `Retry-After`.
 
 ```python
 # src/domain/shared/idempotency.py
 from dataclasses import dataclass
 from typing import Protocol
+from uuid import UUID
 
 @dataclass(frozen=True)
-class NewExecution: ...
+class NewExecution:
+    lease: UUID  # proves ownership to complete() / release()
 @dataclass(frozen=True)
 class Replay:
-    response: bytes
+    status: int
+    body: bytes
 @dataclass(frozen=True)
-class Conflict: ...  # same key, different request_hash
+class Mismatch: ...  # same key, different request_hash — 422, never re-run
 @dataclass(frozen=True)
-class InFlight: ...  # same key, first request still executing — 409 (retry later), never re-run
+class InFlight:
+    retry_after_seconds: int  # live lease — 409 + Retry-After, never re-run
+class LeaseLostError(Exception): ...  # complete() found its lease taken over — roll back
 
-Acquire = NewExecution | Replay | Conflict | InFlight
+Acquire = NewExecution | Replay | Mismatch | InFlight
 
-class IdempotencyStore(Protocol):
+class IdempotencyStore[Tx](Protocol):  # Tx: the unit of work's session type (AsyncSession)
     async def acquire(self, scope: str, key: str, request_hash: str) -> Acquire: ...
-    async def store(self, scope: str, key: str, response: bytes) -> None: ...
+    async def complete(  # inside the use case's transaction, under the lease
+        self, session: Tx, scope: str, key: str, lease: UUID, status: int, body: bytes) -> None: ...
+    async def release(self, scope: str, key: str, lease: UUID) -> None: ...  # failed before commit
+    async def purge_expired(self) -> None: ...  # scheduled job
 ```
 
 ```python
-# src/outbound/postgres/idempotency.py
+# src/outbound/postgres/idempotency.py — migration: idempotency(scope, key, request_hash text,
+# lease_token uuid, locked_until, expires_at timestamptz NOT NULL; status int, response bytea,
+# completed_at timestamptz NULL), PRIMARY KEY (scope, key), index on expires_at
+from datetime import timedelta
+from uuid import UUID
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from domain.shared.idempotency import Acquire, Conflict, InFlight, NewExecution, Replay
+from domain.shared.idempotency import Acquire, InFlight, LeaseLostError, Mismatch, NewExecution, Replay
+
+# LEASE > the longest a handler holds the key. uvicorn has no request timeout: callers bound the
+# use case with asyncio.timeout(REQUEST_TIMEOUT); timeout_graceful_shutdown only bounds the drain.
+LEASE = timedelta(seconds=60)
+TTL = timedelta(hours=24)  # >= the longest client retry horizon
+
+_INSERT = text("""INSERT INTO idempotency (scope, key, request_hash, lease_token, locked_until,
+    expires_at) VALUES (:s, :k, :h, gen_random_uuid(), now() + :lease, now() + :ttl)
+    ON CONFLICT (scope, key) DO NOTHING RETURNING lease_token""")
+_SELECT = text("""SELECT request_hash, completed_at, status, response,
+    greatest(1, ceil(extract(epoch FROM locked_until - now())))::int AS retry_after
+    FROM idempotency WHERE scope = :s AND key = :k""")
+_TAKEOVER = text("""UPDATE idempotency SET lease_token = gen_random_uuid(),
+    locked_until = now() + :lease WHERE scope = :s AND key = :k
+    AND completed_at IS NULL AND locked_until < now() RETURNING lease_token""")
+_COMPLETE = text("""UPDATE idempotency SET status = :st, response = :b, completed_at = now()
+    WHERE scope = :s AND key = :k AND lease_token = :l AND completed_at IS NULL RETURNING 1""")
+_RELEASE = text("""DELETE FROM idempotency
+    WHERE scope = :s AND key = :k AND lease_token = :l AND completed_at IS NULL""")
 
 
 class PostgresIdempotencyStore:
     def __init__(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
-        self._session_factory = session_factory
+        self._sessions = session_factory
 
     async def acquire(self, scope: str, key: str, request_hash: str) -> Acquire:
-        async with self._session_factory() as session, session.begin():
-            # Insert-or-fetch — unique (scope, key) collapses races to one winner.
-            result = await session.execute(text("""
-                INSERT INTO idempotency (scope, key, request_hash)
-                VALUES (:s, :k, :h)
-                ON CONFLICT (scope, key) DO NOTHING
-                RETURNING 1
-            """), {"s": scope, "k": key, "h": request_hash})
-            if result.scalar() == 1:
-                return NewExecution()
+        p = {"s": scope, "k": key, "h": request_hash, "lease": LEASE, "ttl": TTL}
+        for _ in range(3):  # bounded: the row can vanish (release, purge) between INSERT and SELECT
+            async with self._sessions.begin() as session:
+                # Execution comes only from a write: this INSERT's returned row, or the takeover.
+                lease = (await session.execute(_INSERT, p)).scalar_one_or_none()
+                if lease is not None:
+                    return NewExecution(lease)
+                row = (await session.execute(_SELECT, p)).one_or_none()
+                if row is None:
+                    continue
+                if row.request_hash != request_hash:
+                    return Mismatch()
+                if row.completed_at is not None:  # not `if row.response`: b"" is a valid body
+                    return Replay(row.status, bytes(row.response))
+                lease = (await session.execute(_TAKEOVER, p)).scalar_one_or_none()
+                return NewExecution(lease) if lease is not None else InFlight(row.retry_after)
+        return InFlight(1)
 
-            row = (await session.execute(text(
-                "SELECT request_hash, response FROM idempotency "
-                "WHERE scope = :s AND key = :k"
-            ), {"s": scope, "k": key})).one()
-            if row.request_hash != request_hash:
-                return Conflict()
-            # No stored response yet = the first request is still running. Returning
-            # NewExecution here would double-execute (double charge).
-            return Replay(response=row.response) if row.response else InFlight()
+    async def complete(
+        self, session: AsyncSession, scope: str, key: str, lease: UUID, status: int, body: bytes
+    ) -> None:  # the use case's session: commits or rolls back with the business write
+        p = {"s": scope, "k": key, "l": lease, "st": status, "b": body}
+        if (await session.execute(_COMPLETE, p)).first() is None:
+            raise LeaseLostError(key)  # taken over after the lease expired
+
+    async def release(self, scope: str, key: str, lease: UUID) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(_RELEASE, {"s": scope, "k": key, "l": lease})
+
+    async def purge_expired(self) -> None:
+        async with self._sessions.begin() as session:
+            await session.execute(text("DELETE FROM idempotency WHERE expires_at < now()"))
+```
+
+```python
+# Application service, after acquire() → NewExecution(lease); `render` is the inbound serializer.
+# No external call in the tx: record intent, derive the downstream key (reliability-patterns.md § 2).
+try:
+    try:
+        async with asyncio.timeout(REQUEST_TIMEOUT), self._new_uow() as uow:  # timeout < LEASE
+            status, body = render(await uow.authors.create_author(req))
+            await self._idem.complete(uow.session, scope, key, lease, status, body)
+    except DuplicateAuthorError as exc:  # deterministic 4xx: complete in a fresh tx (first aborted)
+        status, body = render(exc)
+        async with self._new_uow() as uow:
+            await self._idem.complete(uow.session, scope, key, lease, status, body)
+except BaseException:  # exception / 5xx / timeout / LeaseLostError, either branch: free the key
+    await self._idem.release(scope, key, lease)
+    raise
 ```
 
 ---

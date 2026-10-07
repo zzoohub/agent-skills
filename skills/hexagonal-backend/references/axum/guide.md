@@ -313,7 +313,7 @@ Define each cross-cutting port (shared list: `SKILL.md` § Reliability) as a tra
 | Port | Purpose | Where it lives |
 |---|---|---|
 | **Outbox** | Atomic state change + message publish — outbox row written in the **same** sqlx transaction as the aggregate | Outbound (combined with the repository adapter) |
-| **IdempotencyStore** | Replay safe responses for `Idempotency-Key`-bearing requests | Outbound; called by inbound middleware or application service |
+| **IdempotencyStore** | Leased Idempotency-Key records: replay, mismatch (422), in flight (409) | Outbound; the inbound handler acquires / releases, the use case's adapter completes it inside its sqlx tx |
 | **Tracer** / **Meter** | OTel span / metric emission. Domain depends on the trait, not on `opentelemetry` crates | Outbound (OTel adapter); no-op adapter for tests |
 
 **Architectural rule**: domain emits **typed domain events** (e.g. an `AuthorEvent` enum — plain data, no `serde_json`); the outbound adapter persists the aggregate AND the outbox rows in a single `sqlx::Transaction` (`&mut *tx`), serializing each event to the JSON payload column in the adapter. A separate **outbox relay** binary polls `outbox` and publishes asynchronously — this is the only safe way to pair a DB write with a broker publish.

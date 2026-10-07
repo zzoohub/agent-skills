@@ -1230,25 +1230,35 @@ D1's transaction model is per-request and not transferable across `waitUntil` bo
 
 ## Outbound: Idempotency Store
 
-A KV-shaped table keyed by `(scope, key)` with a unique constraint.
+One leased row per `(scope, key)`, scope = tenant + principal + operation. Only a write — this request's `INSERT` or the takeover of an expired lease — grants execution; `complete` stores the response inside the use case's transaction.
 
 ```typescript
 // src/domain/shared/idempotency.ts
 export type Acquire =
-  | { tag: "new" }
-  | { tag: "replay"; response: Uint8Array }
-  | { tag: "conflict" }   // same key, different request hash
-  | { tag: "in_flight" }; // same key, first request still executing — 409 (retry later), never re-run
+  | { tag: "new_execution"; lease: string }             // our write won — run the use case
+  | { tag: "replay"; status: number; body: Uint8Array } // completed — return the stored response
+  | { tag: "mismatch" }                                 // same key, different request hash → 422
+  | { tag: "in_flight"; retryAfterSeconds: number };    // live lease → 409 + Retry-After, never re-run
 
-export interface IdempotencyStore {
+export class LeaseLostError extends Error {
+  readonly tag = "LeaseLostError" as const; // complete() matched no row: a retry took the lease
+  override name = "LeaseLostError";
+}
+
+/** Tx = the adapter's transaction handle; generic, so no Drizzle type enters the domain. */
+export interface IdempotencyStore<Tx> {
   acquire(scope: string, key: string, requestHash: string): Promise<Acquire>;
-  store(scope: string, key: string, response: Uint8Array): Promise<void>;
+  // 2xx or deterministic 4xx, inside the use case's transaction; LeaseLostError → roll back.
+  complete(tx: Tx, scope: string, key: string, lease: string, status: number, body: Uint8Array): Promise<void>;
+  // Throw, 5xx or timeout before commit: frees the key so a corrected retry can run.
+  release(scope: string, key: string, lease: string): Promise<void>;
+  purgeExpired(): Promise<void>; // scheduled job: delete rows past expires_at
 }
 ```
 
 ```typescript
 // src/outbound/drizzle/schema.ts — idempotency table (Postgres dialect shown)
-import { pgTable, text, timestamp, primaryKey, customType } from "drizzle-orm/pg-core";
+import { customType, index, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
 
 // Raw response bytes; `bytea` in Postgres.
 const bytea = customType<{ data: Uint8Array }>({ dataType: () => "bytea" });
@@ -1259,52 +1269,102 @@ export const idempotency = pgTable(
     scope: text("scope").notNull(),
     key: text("key").notNull(),
     requestHash: text("request_hash").notNull(),
-    response: bytea("response"), // null until the response is stored
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    leaseToken: uuid("lease_token").notNull(),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }).notNull(),
+    status: integer("status"), // status, response, completed_at: null until complete()
+    response: bytea("response"),
+    completedAt: timestamp("completed_at", { withTimezone: true }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   },
-  // Composite PK gives the unique (scope, key) constraint races collapse on.
-  (t) => [primaryKey({ columns: [t.scope, t.key] })],
+  // Composite PK = the unique (scope, key) races collapse on; expires_at serves purgeExpired().
+  (t) => [primaryKey({ columns: [t.scope, t.key] }), index("idempotency_expires_at_idx").on(t.expiresAt)],
 );
 ```
 
 ```typescript
 // src/outbound/drizzle/idempotency.ts
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull, lt, sql } from "drizzle-orm";
 import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 import { idempotency } from "./schema";
-import type { Acquire, IdempotencyStore } from "../../domain/shared/idempotency";
+import { LeaseLostError, type Acquire, type IdempotencyStore } from "../../domain/shared/idempotency";
 
-export class PostgresIdempotencyStore implements IdempotencyStore {
+// LEASE > the longest a request can run (the `hono/timeout` duration if mounted, the 10 s drain
+// failsafe in server.ts), or a live request gets taken over. TTL ≥ the longest client retry horizon.
+const LEASE = sql`interval '60 seconds'`;
+const TTL = sql`interval '24 hours'`;
+const retryAfter = sql<number>`greatest(1, ceil(extract(epoch from ${idempotency.lockedUntil} - now())))::int`;
+
+/** The tx `db.transaction` hands its callback — complete() joins the use case's transaction. */
+export type PgTx = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
+
+const at = (scope: string, key: string) => and(eq(idempotency.scope, scope), eq(idempotency.key, key));
+// Still ours: lease not taken over, row not completed.
+const owned = (scope: string, key: string, lease: string) =>
+  and(at(scope, key), eq(idempotency.leaseToken, lease), isNull(idempotency.completedAt));
+
+export class PostgresIdempotencyStore implements IdempotencyStore<PgTx> {
   constructor(private readonly db: NodePgDatabase) {}
 
   async acquire(scope: string, key: string, hash: string): Promise<Acquire> {
-    // Insert-or-fetch — unique (scope, key) collapses races to one winner.
-    const inserted = await this.db
-      .insert(idempotency)
-      .values({ scope, key, requestHash: hash })
-      .onConflictDoNothing()
-      .returning({ ok: idempotency.scope });
+    // Only a write (our INSERT or the takeover UPDATE) grants execution, never a read: on Workers a
+    // client disconnect can cancel a request before release(), and Hyperdrive may serve a cached SELECT.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const [won] = await this.db
+        .insert(idempotency)
+        .values({ scope, key, requestHash: hash, leaseToken: crypto.randomUUID(),
+          lockedUntil: sql`now() + ${LEASE}`, expiresAt: sql`now() + ${TTL}` })
+        .onConflictDoNothing({ target: [idempotency.scope, idempotency.key] })
+        .returning({ lease: idempotency.leaseToken }); // a RETURNING row = our INSERT won
+      if (won) return { tag: "new_execution", lease: won.lease };
 
-    if (inserted.length === 1) return { tag: "new" };
+      const [row] = await this.db
+        .select({ hash: idempotency.requestHash, completedAt: idempotency.completedAt,
+          status: idempotency.status, body: idempotency.response, retryAfter })
+        .from(idempotency)
+        .where(at(scope, key));
+      if (!row) continue; // purged or raced since our INSERT: insert again, never run
+      if (row.hash !== hash) return { tag: "mismatch" };
+      // completed_at, not a truthy body: an empty body is a valid completed response.
+      if (row.completedAt !== null) return { tag: "replay", status: row.status!, body: row.body! };
 
-    const [row] = await this.db
-      .select()
-      .from(idempotency)
-      .where(and(eq(idempotency.scope, scope), eq(idempotency.key, key)));
-
-    // The losing racer may read before the winner's row is visible — treat a
-    // missing row as a fresh insert rather than dereferencing undefined.
-    if (!row) return { tag: "new" };
-
-    if (row.requestHash !== hash) return { tag: "conflict" };
-    if (row.response) return { tag: "replay", response: row.response };
-    // No stored response yet = the first request is still running. Returning
-    // "new" here would double-execute (double charge).
-    return { tag: "in_flight" };
+      // Expired lease (owner crashed or was cancelled): conditional takeover, one racer wins.
+      const [took] = await this.db
+        .update(idempotency)
+        .set({ leaseToken: crypto.randomUUID(), lockedUntil: sql`now() + ${LEASE}` })
+        .where(and(at(scope, key), isNull(idempotency.completedAt),
+          lt(idempotency.lockedUntil, sql`now()`)))
+        .returning({ lease: idempotency.leaseToken });
+      if (took) return { tag: "new_execution", lease: took.lease };
+      return { tag: "in_flight", retryAfterSeconds: row.retryAfter };
+    }
+    return { tag: "in_flight", retryAfterSeconds: 1 };
   }
-  // store(...) updates the row with the response bytes.
+
+  async complete(tx: PgTx, scope: string, key: string, lease: string, status: number, body: Uint8Array) {
+    const done = await tx
+      .update(idempotency)
+      .set({ status, response: body, completedAt: sql`now()` })
+      .where(owned(scope, key, lease))
+      .returning({ key: idempotency.key });
+    if (done.length === 0) throw new LeaseLostError(); // thrown inside db.transaction → rollback
+  }
+
+  async release(scope: string, key: string, lease: string) {
+    await this.db.delete(idempotency).where(owned(scope, key, lease));
+  }
+
+  async purgeExpired() {
+    await this.db.delete(idempotency).where(lt(idempotency.expiresAt, sql`now()`));
+  }
 }
 ```
+
+**Wiring** — inbound middleware on idempotent routes:
+
+- Missing `Idempotency-Key` where required → 400; otherwise hash method + path + canonical body.
+- `replay` → the stored status and body (`application/problem+json` for a stored 4xx); `mismatch` → 422 `problem("idempotency-key-mismatch", …)` with no `errors`; `in_flight` → 409 `problem("idempotency-in-flight", …)` + `Retry-After`.
+- `new_execution` → run the use case; its adapter calls `complete(tx, …)` inside the `db.transaction` that holds its writes (like the outbox rows above), and a deterministic 4xx completes in a transaction of its own. A throw or 5xx (incl. a `hono/timeout` 504) → `release`.
+- External calls never run inside that tx: record the intent and derive the downstream idempotency key first (software-architecture `reliability-patterns.md` § 2).
 
 ---
 

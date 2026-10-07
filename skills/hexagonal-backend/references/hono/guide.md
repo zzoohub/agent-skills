@@ -296,7 +296,7 @@ Define each cross-cutting port (shared list: `SKILL.md` § Reliability) as a TS 
 | Port | Purpose | Where it lives |
 |---|---|---|
 | **Outbox** | Atomic state change + message publish — outbox row written inside the same `db.transaction(...)` callback as the aggregate write | Outbound (combined with the repository adapter) |
-| **IdempotencyStore** | Replay safe responses for `Idempotency-Key`-bearing requests | Outbound; called by inbound middleware or application service |
+| **IdempotencyStore** | Leased `Idempotency-Key` records: replay, mismatch (422), in flight (409 + `Retry-After`) | Outbound; inbound middleware acquires / releases, the use case's adapter calls `complete(tx, …)` inside its `db.transaction` |
 | **Tracer** / **Meter** | OTel span / metric emission. Domain depends on the interface, not on `@opentelemetry/*` packages | Outbound (OTel adapter); no-op for tests |
 
 **Architectural rule**: domain emits **`DomainEvent`** plain objects; the outbound adapter persists the aggregate AND the outbox rows inside one Drizzle `db.transaction(async (tx) => ...)` callback. A separate **outbox relay** (background task or worker) publishes rows asynchronously.

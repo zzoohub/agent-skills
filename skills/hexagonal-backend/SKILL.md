@@ -147,7 +147,7 @@ Cross-cutting infrastructure that must not leak into the domain. Define each as 
 - **Transactions** are encapsulated in the adapter (or the UnitOfWork), invisible to callers. Keep them short. **No external calls (HTTP, queues) inside tx.**
 - **Uniqueness** is enforced by a DB `UNIQUE` constraint (the race-safe backstop); the adapter maps the unique-violation (Postgres `23505`, SQLite `UNIQUE constraint failed`) to a domain conflict → 409. An app-side check-then-insert alone is TOCTOU.
 - **Outbox**: the domain emits typed domain events; the adapter writes them as outbox rows in the aggregate's transaction; a separate relay publishes them with retry/backoff and dead-letters after N attempts. Never publish to a broker inside the transaction or "right after commit".
-- **Idempotency keys**: unique `(scope, key)` plus a request hash. Same key + same hash → replay the stored response; different hash → 409; same key still in flight → 409 (never re-run it).
+- **Idempotency keys**: a row per `(scope, key)` — scope = tenant + principal + operation — with a hash of method, path and canonical body, a lease longer than the request timeout and an expiry longer than any client's retry horizon. Completed (2xx or a deterministic 4xx) → replay the stored status and body; different hash → **422** with its own problem `type`; live lease → **409** + `Retry-After`. Only this request's insert or a conditional takeover of an expired lease grants execution — never a read; the result commits in the use case's transaction under the lease, and a failure before commit releases the key (external calls: software-architecture `reliability-patterns.md` § 2).
 - **Optimistic concurrency (lost-update protection)**: any aggregate two clients can update concurrently carries a `version` column; writes are conditional (`… WHERE id = $id AND version = $expected`, setting `version = version + 1`); 0 rows affected → domain conflict → **409** (or **412** with `If-Match` / ETag). Idempotency keys cover the *same* client retrying; the version column covers *different* clients racing — you usually need both.
 - **Authorization ≠ authentication.** Every by-id read and write is scoped to the caller's tenant / ownership (a policy port, or an owner/org filter in the repository); foreign resources return 404. Otherwise `GET /v1/{resource}/{id}` is an IDOR.
 - **Pools** always set an acquire / connect timeout.
@@ -207,7 +207,7 @@ Auth middleware lives in the inbound layer. Domain never handles raw tokens. Pas
 - [ ] `/v1` mount, `{data}` / `{data, meta}` envelopes, 201 + Location, `X-Request-Id` header
 - [ ] Lists use keyset cursor pagination with `limit + 1` and a clamped limit
 - [ ] By-id reads and writes tenant / ownership-scoped (404 for foreign resources)
-- [ ] Transactions short and in adapters; outbox for events; version column on racing aggregates; idempotency for retried POSTs
+- [ ] Transactions short and in adapters; outbox for events; version column on racing aggregates; idempotency for retried POSTs (principal-scoped, leased, expiring keys)
 - [ ] Liveness without dependencies, readiness 503 under timeout, graceful SIGTERM / SIGINT drain
 - [ ] Tests written first; adapter tests hit a real DB
 

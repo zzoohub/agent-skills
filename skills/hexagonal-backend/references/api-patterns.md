@@ -39,7 +39,7 @@ Idempotency-Key: txn_8a3b2c1d
 { "amount": 5000, "currency": "USD" }
 ```
 
-Retry with same key → returns original response without duplicate.
+Retry with same key → returns original response without duplicate. Same key with a different body → **422** (non-retryable); first request still running → **409** + `Retry-After`.
 
 ### Read Single (GET → 200)
 

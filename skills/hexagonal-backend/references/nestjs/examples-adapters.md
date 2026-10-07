@@ -595,6 +595,32 @@ function problem(input: ProblemInput): ProblemDetails {
   };
 }
 
+/**
+ * The use case's deterministic 4xx: DomainError → ProblemDetails, or undefined
+ * (→ 500). Exported so IdempotencyInterceptor stores exactly what this filter sends.
+ *
+ * Domain-agnostic note: this switch is author-specific by design (it's the
+ * illustration). In a multi-domain app a new feature's DomainError tag would
+ * fall through to 500. Scale this one of three ways:
+ *   (a) give `DomainError` an abstract `toProblem(): { slug; title; status }`
+ *       so each error maps itself and nothing switches on tags;
+ *   (b) a tag→problem registry each feature module contributes to at boot;
+ *   (c) keep per-domain filters. Pick one before you have a second domain.
+ */
+export function domainProblem(e: DomainError, instance?: string): ProblemDetails | undefined {
+  const detail = e.message;
+  switch (e.tag) {
+    case "DuplicateAuthorError":
+      return problem({ slug: "duplicate-author", title: "Conflict", status: 409, detail, instance });
+    case "AuthorNameEmptyError":
+      return problem({ slug: "validation-error", title: "Unprocessable Entity", status: 422, detail, instance });
+    case "AuthorNotFoundError":
+      return problem({ slug: "not-found", title: "Not Found", status: 404, detail, instance });
+    default:
+      return undefined; // UnknownAuthorError and unmapped tags
+  }
+}
+
 @Catch()
 export class DomainExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(DomainExceptionFilter.name);
@@ -645,43 +671,19 @@ export class DomainExceptionFilter implements ExceptionFilter {
     }
 
     // `instanceof DomainError` rules out third-party Error objects that
-    // might happen to carry a `tag` field. Switch on the string-literal
-    // discriminant; unmapped tags fall through to the 500 below.
-    //
-    // Domain-agnostic note: this switch is author-specific by design (it's the
-    // illustration). In a multi-domain app a new feature's DomainError tag would
-    // fall through to 500. Scale this one of three ways:
-    //   (a) give `DomainError` an abstract `toProblem(): { slug; title; status }`
-    //       so each error maps itself and the filter never switches on tags;
-    //   (b) a tag→problem registry each feature module contributes to at boot;
-    //   (c) keep per-domain filters. Pick one before you have a second domain.
+    // might happen to carry a `tag` field; unmapped tags fall through to the 500 below.
     if (exception instanceof DomainError) {
-      switch (exception.tag) {
-        case "DuplicateAuthorError":
-          this.send(response, problem({
-            slug: "duplicate-author", title: "Conflict", status: 409,
-            detail: exception.message, instance,
-          }));
-          return;
-        case "AuthorNameEmptyError":
-          this.send(response, problem({
-            slug: "validation-error", title: "Unprocessable Entity", status: 422,
-            detail: exception.message, instance,
-          }));
-          return;
-        case "AuthorNotFoundError":
-          this.send(response, problem({
-            slug: "not-found", title: "Not Found", status: 404,
-            detail: exception.message, instance,
-          }));
-          return;
-        case "UnknownAuthorError":
-          this.logger.error("Unexpected error:", (exception as UnknownAuthorError).cause);
-          break;
-        default:
-          // New domain errors fall through here. Add a case above (or adopt
-          // toProblem()) before shipping; the request gets a 500 meanwhile.
-          this.logger.error(`Unhandled domain error tag "${exception.tag}":`, exception);
+      const body = domainProblem(exception, instance);
+      if (body) {
+        this.send(response, body);
+        return;
+      }
+      if (exception instanceof UnknownAuthorError) {
+        this.logger.error("Unexpected error:", exception.cause);
+      } else {
+        // New domain errors land here. Add a case to domainProblem() (or adopt
+        // toProblem()) before shipping; the request gets a 500 meanwhile.
+        this.logger.error(`Unhandled domain error tag "${exception.tag}":`, exception);
       }
     } else {
       this.logger.error("Unhandled error:", exception);
@@ -941,6 +943,12 @@ import { UnitOfWork } from "../../domain/shared/unit-of-work";
  */
 export const TYPEORM_EM_KEY = "typeorm:em";
 
+// Published when a unit of work ends: work that outlives its callback (a handler still
+// running after a timeout) fails loudly instead of falling through to an autocommit connection.
+const CLOSED_EM = new Proxy({} as EntityManager, {
+  get() { throw new Error("unit of work already finished"); },
+});
+
 @Injectable()
 export class TypeOrmUnitOfWork extends UnitOfWork {
   constructor(
@@ -964,7 +972,11 @@ export class TypeOrmUnitOfWork extends UnitOfWork {
     return this.dataSource.transaction(async (em) =>
       this.cls.run(async () => {
         this.cls.set(TYPEORM_EM_KEY, em);
-        return fn();
+        try {
+          return await fn();
+        } finally {
+          this.cls.set(TYPEORM_EM_KEY, CLOSED_EM);
+        }
       }),
     );
   }
@@ -1137,36 +1149,68 @@ export class AuthorServiceImpl extends AuthorService {
 
 ## Outbound: Idempotency Store
 
-A KV-shaped table keyed by `(scope, key)` with a unique constraint. Wrap the use case via an interceptor or directly in the application service.
+A leased row per `(scope, key)` (rules: `SKILL.md` § Reliability). Only a write grants execution — this request's insert, or a conditional takeover of an expired lease — never a read.
 
 ```typescript
 // src/domain/shared/idempotency.ts
 export type Acquire =
-  | { tag: "new" }
-  | { tag: "replay"; response: Buffer }
-  | { tag: "conflict" }   // same key, different request hash
-  | { tag: "in_flight" }; // same key, first request still executing — 409 (retry later), never re-run
+  | { tag: "new"; lease: string }                        // won by this request's write — run it
+  | { tag: "replay"; status: number; response: Buffer }  // completed — replay, never re-run
+  | { tag: "mismatch" }                                  // same key, different request — 422
+  | { tag: "in_flight"; retryAfterSeconds: number };     // live lease elsewhere — 409 + Retry-After
+
+/** complete() matched no row: the lease expired and was taken over — roll the use case back. */
+export class LeaseLostError extends Error {}
 
 export abstract class IdempotencyStore {
-  abstract acquire(
-    scope: string,
-    key: string,
-    requestHash: string,
-  ): Promise<Acquire>;
-  abstract store(
-    scope: string,
-    key: string,
-    response: Buffer,
-  ): Promise<void>;
+  abstract acquire(scope: string, key: string, requestHash: string): Promise<Acquire>;
+  /** Lease-guarded; only inside `uow.run(...)`: the use case's, or its own for a 4xx that wrote nothing. */
+  abstract complete(scope: string, key: string, lease: string, status: number, response: Buffer): Promise<void>;
+  /** The handler failed before commit: free the key so a corrected retry can run. */
+  abstract release(scope: string, key: string, lease: string): Promise<void>;
+  /** Scheduled job (`@Cron`): delete rows past `expires_at`. */
+  abstract purgeExpired(): Promise<number>;
+}
+```
+
+```typescript
+// src/outbound/typeorm/entities/idempotency.entity.ts
+import { Column, Entity, Index, PrimaryColumn } from "typeorm";
+
+@Entity({ name: "idempotency" })
+export class IdempotencyEntity {
+  @PrimaryColumn({ type: "text" }) scope!: string;
+  @PrimaryColumn({ type: "text" }) key!: string;
+  @Column({ name: "request_hash", type: "text" }) requestHash!: string;
+  @Column({ name: "lease_token", type: "uuid" }) leaseToken!: string;
+  @Column({ name: "locked_until", type: "timestamptz" }) lockedUntil!: Date;
+  @Column({ type: "int", nullable: true }) status!: number | null;
+  @Column({ type: "bytea", nullable: true }) response!: Buffer | null; // body + Location
+  @Column({ name: "completed_at", type: "timestamptz", nullable: true }) completedAt!: Date | null;
+  @Index() // purgeExpired()
+  @Column({ name: "expires_at", type: "timestamptz" }) expiresAt!: Date;
 }
 ```
 
 ```typescript
 // src/outbound/typeorm/postgres-idempotency.ts
-//
-// Like other repos in this codebase, the store reads the active EntityManager
-// from CLS — so if the idempotency check is part of a `uow.run(...)` it
-// participates in the same tx. Most apps run it outside any UoW; both work.
+import { Injectable } from "@nestjs/common";
+import { InjectRepository } from "@nestjs/typeorm";
+import { ClsService } from "nestjs-cls";
+import { randomUUID } from "node:crypto";
+import { EntityManager, IsNull, Repository } from "typeorm";
+import { IdempotencyEntity } from "./entities/idempotency.entity";
+import { TYPEORM_EM_KEY } from "./typeorm-unit-of-work";
+import { type Acquire, IdempotencyStore, LeaseLostError } from "../../domain/shared/idempotency";
+
+// LEASE > the request timeout (your Nest TimeoutInterceptor's timeout(ms); rxjs timeout
+// does not cancel the handler, so leave headroom). TTL >= the longest client retry horizon.
+const LEASE = "interval '60 seconds'";
+const TTL = "interval '24 hours'";
+
+// acquire()/release() autocommit on the base manager, never the CLS tx: a lease must be visible
+// to concurrent retries at once and outlive a rollback. complete() runs only in a uow.run (CLS
+// EntityManager), normally the use case's: the response commits with its writes or not at all.
 @Injectable()
 export class PostgresIdempotencyStore extends IdempotencyStore {
   constructor(
@@ -1175,142 +1219,172 @@ export class PostgresIdempotencyStore extends IdempotencyStore {
     private readonly cls: ClsService,
   ) { super(); }
 
-  private em(): EntityManager {
-    return this.cls.get<EntityManager>(TYPEORM_EM_KEY) ?? this.repo.manager;
-  }
-
   async acquire(scope: string, key: string, hash: string): Promise<Acquire> {
-    // Insert-or-fetch — unique (scope, key) collapses races to one winner.
-    const result = await this.em()
-      .createQueryBuilder()
-      .insert()
-      .into(IdempotencyEntity)
-      .values({ scope, key, requestHash: hash })
-      .orIgnore()
-      .returning("scope")
-      .execute();
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const inserted = await this.repo.createQueryBuilder().insert()
+        .values({
+          scope, key, requestHash: hash, leaseToken: randomUUID(),
+          lockedUntil: () => `now() + ${LEASE}`, expiresAt: () => `now() + ${TTL}`,
+        })
+        .orIgnore() // ON CONFLICT DO NOTHING
+        .returning("lease_token").execute();
+      // Won only if RETURNING produced a row. Never test result.identifiers: TypeORM
+      // builds them from the input values, so they are set even when nothing was inserted.
+      const [won] = inserted.raw as { lease_token: string }[];
+      if (won) return { tag: "new", lease: won.lease_token };
 
-    if (result.identifiers.length === 1) return { tag: "new" };
+      const row = await this.repo.findOneBy({ scope, key });
+      if (!row) continue; // released or purged since the insert
+      if (row.requestHash !== hash) return { tag: "mismatch" };
+      if (row.completedAt !== null) return { tag: "replay", status: row.status!, response: row.response! };
 
-    const row = await this.em().findOneByOrFail(IdempotencyEntity, { scope, key });
-    if (row.requestHash !== hash) return { tag: "conflict" };
-    // No stored response yet = the first request is still running. Returning
-    // "new" here would double-execute (double charge).
-    return row.response
-      ? { tag: "replay", response: row.response }
-      : { tag: "in_flight" };
+      // Not completed: take over only an EXPIRED lease, and only by a conditional write.
+      const took = await this.repo.createQueryBuilder().update()
+        .set({ leaseToken: randomUUID(), lockedUntil: () => `now() + ${LEASE}` })
+        .where("scope = :scope AND key = :key AND completed_at IS NULL AND locked_until < now()", { scope, key })
+        .returning("lease_token").execute();
+      const [taken] = took.raw as { lease_token: string }[];
+      if (taken) return { tag: "new", lease: taken.lease_token };
+      const ms = row.lockedUntil.getTime() - Date.now();
+      return { tag: "in_flight", retryAfterSeconds: Math.max(1, Math.ceil(ms / 1000)) };
+    }
+    return { tag: "in_flight", retryAfterSeconds: 1 };
   }
-  // store(...) updates the row with the response bytes via this.em().update(...)
+
+  async complete(scope: string, key: string, lease: string, status: number, response: Buffer): Promise<void> {
+    const em = this.cls.get<EntityManager>(TYPEORM_EM_KEY);
+    if (!em) throw new Error("IdempotencyStore.complete() must run inside uow.run()");
+    const { affected } = await em.update(
+      IdempotencyEntity,
+      { scope, key, leaseToken: lease, completedAt: IsNull() },
+      { status, response, completedAt: () => "now()" },
+    );
+    if (affected !== 1) throw new LeaseLostError("idempotency lease lost");
+  }
+
+  async release(scope: string, key: string, lease: string): Promise<void> {
+    await this.repo.delete({ scope, key, leaseToken: lease, completedAt: IsNull() });
+  }
+
+  async purgeExpired(): Promise<number> {
+    const { affected } = await this.repo.createQueryBuilder().delete().where("expires_at < now()").execute();
+    return affected ?? 0;
+  }
 }
 ```
 
-Wire as a NestJS interceptor that checks the `Idempotency-Key` header before invoking the controller — keeps the controller body free of replay logic.
+Wire it as an interceptor: it acquires before the controller runs and completes inside the handler's transaction, so the controller body stays free of replay logic.
 
 ### Inbound: Idempotency Interceptor
 
 ```typescript
 // src/inbound/http/interceptors/idempotency.interceptor.ts
 //
-// Replay-safe POST/PATCH semantics for clients that retry on transient errors.
-// Flow:
-//   1. No Idempotency-Key header → skip (lookup-free fast path).
-//   2. Acquire (scope, key, request-hash) on the store.
-//        "replay"   → respond with the cached body, same status code.
-//        "conflict"  → 409 — same key, different request body.
-//        "in_flight" → 409 — same key, first request still running; client retries later.
-//        "new"       → run the handler, then store the serialised response.
-//
-// Apply selectively (controller- or route-scoped) — not globally. GET should
-// not pay the round-trip; non-mutating endpoints don't need replay protection.
+// Replay-safe POST/PATCH for clients that retry. Apply per route (never globally),
+// BEHIND the auth guard (guards run before interceptors), so every key is per caller.
+// Every request timeout must WRAP this interceptor (global, controller-level, or listed
+// before it in @UseInterceptors): a timeout inside it ends the transaction while the
+// handler still runs, the key is released, and a retry repeats the work.
+//   no key → 400 · same key, other request → 422 · live lease → 409 + Retry-After
+//   completed → stored status + body (+ Location) · new → handler + complete() in one uow.run
+// Handlers return their body and throw on failure: @Res() without passthrough can't be
+// captured, and a non-2xx set via res.status() is rolled back, never stored.
 import {
-  CallHandler, ExecutionContext, Injectable, NestInterceptor, ConflictException,
+  BadRequestException, CallHandler, ConflictException, ExecutionContext, Injectable,
+  NestInterceptor, UnauthorizedException, UnprocessableEntityException,
 } from "@nestjs/common";
 import { createHash } from "node:crypto";
-import { Observable, concatMap, from, of, switchMap } from "rxjs";
+import { Observable, from, lastValueFrom } from "rxjs";
 import type { Request, Response } from "express";
+import { DomainError } from "../../../domain/shared/errors";
 import { IdempotencyStore } from "../../../domain/shared/idempotency";
+import { UnitOfWork } from "../../../domain/shared/unit-of-work";
+import { domainProblem } from "../filters/domain-exception.filter";
 
-// Headers worth replaying on a cached response. Location (created resource)
-// and Content-Type matter; skip hop-by-hop / per-connection headers.
-const REPLAYABLE_HEADERS = ["location", "content-type"] as const;
+// Set by the auth guard: JwtAuthGuard sets userId; set tenantId from your tenant claim.
+type AuthedRequest = Request & { userId?: string; tenantId?: string };
+interface Stored { body: unknown; location?: string }
 
-interface StoredResponse {
-  status: number;
-  body: unknown;
-  headers: Record<string, string>;
-}
+const problem = (status: number, slug: string, title: string, detail: string) =>
+  ({ type: `https://api.example.com/errors/${slug}`, title, status, detail });
+// Canonical body for the hash: object keys sorted at every depth.
+const sortKeys = (_k: string, v: unknown) =>
+  v && typeof v === "object" && !Array.isArray(v)
+    ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)))
+    : v;
 
 @Injectable()
 export class IdempotencyInterceptor implements NestInterceptor {
-  constructor(private readonly store: IdempotencyStore) {}
+  constructor(private readonly store: IdempotencyStore, private readonly uow: UnitOfWork) {}
 
   intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const req = context.switchToHttp().getRequest<Request>();
+    const req = context.switchToHttp().getRequest<AuthedRequest>();
     const res = context.switchToHttp().getResponse<Response>();
+    if (!req.userId) { // no principal, no key scope
+      throw new UnauthorizedException(problem(401, "unauthorized", "Unauthorized", "Authentication required"));
+    }
     const key = req.header("idempotency-key");
-    if (!key) return next.handle();
-
-    // Scope from controller + handler, NOT req.route?.path — the latter is
-    // often undefined under Express 5 inside a Nest interceptor. The class +
-    // method name is stable and unique per endpoint.
-    const scope = `${context.getClass().name}.${context.getHandler().name}`;
+    if (!key) {
+      throw new BadRequestException(problem(400, "idempotency-key-required",
+        "Idempotency-Key Required", "This endpoint requires an Idempotency-Key header"));
+    }
+    // tenant + principal + operation (Class.handler; req.route?.path is unreliable under Express 5).
+    const op = `${context.getClass().name}.${context.getHandler().name}`;
+    const scope = JSON.stringify([req.tenantId ?? null, req.userId, op]);
     const hash = createHash("sha256")
-      .update(JSON.stringify(req.body ?? null))
+      .update(`${req.method} ${req.originalUrl}\n${JSON.stringify(req.body ?? null, sortKeys)}`)
       .digest("hex");
 
-    return from(this.store.acquire(scope, key, hash)).pipe(
-      switchMap((outcome) => {
-        if (outcome.tag === "conflict") {
-          throw new ConflictException({
-            type: "https://api.example.com/errors/idempotency-conflict",
-            title: "Idempotency Conflict",
-            status: 409,
-            detail: "Idempotency-Key already used with a different request body",
-          });
-        }
-        if (outcome.tag === "in_flight") {
-          throw new ConflictException({
-            type: "https://api.example.com/errors/idempotency-in-flight",
-            title: "Request In Progress",
-            status: 409,
-            detail: "A request with this Idempotency-Key is still being processed; retry later",
-          });
-        }
-        if (outcome.tag === "replay") {
-          // Replay path — short-circuit the handler, return the cached body
-          // verbatim. Stored body includes status, headers + serialised JSON.
-          const cached = JSON.parse(outcome.response.toString("utf8")) as StoredResponse;
-          res.status(cached.status);
-          for (const [name, value] of Object.entries(cached.headers)) {
-            res.header(name, value);
-          }
-          return of(cached.body);
-        }
-        // "new" — run the handler, then persist the response for future replays.
-        // concatMap (not tap(async ...)) so the store write is AWAITED before
-        // the response flushes and any rejection propagates to the client
-        // instead of being swallowed by a floating promise.
-        return next.handle().pipe(
-          concatMap(async (body) => {
-            const headers: Record<string, string> = {};
-            for (const name of REPLAYABLE_HEADERS) {
-              const value = res.getHeader(name);
-              if (typeof value === "string") headers[name] = value;
-            }
-            const serialised = Buffer.from(
-              JSON.stringify({ status: res.statusCode, body, headers } satisfies StoredResponse),
-            );
-            await this.store.store(scope, key, serialised);
-            return body;
-          }),
-        );
-      }),
-    );
+    // A promise, not rxjs: an outer TimeoutInterceptor's unsubscribe can't skip complete()/release().
+    const run = async (): Promise<unknown> => {
+      const outcome = await this.store.acquire(scope, key, hash);
+      if (outcome.tag === "mismatch") {
+        throw new UnprocessableEntityException(problem(422, "idempotency-key-mismatch",
+          "Idempotency-Key Mismatch", "This Idempotency-Key was already used for a different request"));
+      }
+      if (outcome.tag === "in_flight") {
+        res.header("Retry-After", String(outcome.retryAfterSeconds));
+        throw new ConflictException(problem(409, "idempotency-in-flight",
+          "Request In Progress", "A request with this Idempotency-Key is still being processed"));
+      }
+      if (outcome.tag === "replay") {
+        const stored = JSON.parse(outcome.response.toString("utf8")) as Stored;
+        res.status(outcome.status); // Nest sets the route status before interceptors, never after
+        if (outcome.status >= 400) res.type("application/problem+json");
+        if (stored.location) res.header("Location", stored.location);
+        return stored.body;
+      }
+      const { lease } = outcome;
+      try {
+        // Writes + complete() commit in ONE tx (the service's uow.run joins it). No external call in it:
+        // record an intent, derive the downstream key (software-architecture reliability-patterns.md § 2).
+        return await this.uow.run(async () => {
+          const body = await lastValueFrom(next.handle());
+          // Only a 2xx this handler produced completes; headersSent = a timeout already answered.
+          const status = res.statusCode;
+          if (res.headersSent || status < 200 || status > 299) throw new Error(`not stored: ${status}`);
+          const location = res.getHeader("location");
+          const stored: Stored = { body, location: typeof location === "string" ? location : undefined };
+          await this.store.complete(scope, key, lease, status, Buffer.from(JSON.stringify(stored)));
+          return body;
+        });
+      } catch (err) {
+        // Rolled back. A deterministic 4xx (a DomainError the filter maps) completes in its own tx;
+        // anything else (5xx, timeout, LeaseLostError, ...) frees the key; lease expiry is the backstop.
+        const p = err instanceof DomainError ? domainProblem(err, req.url) : undefined;
+        const completed = p !== undefined && await this.uow
+          .run(() => this.store.complete(scope, key, lease, p.status, Buffer.from(JSON.stringify({ body: p }))))
+          .then(() => true, () => false);
+        if (!completed) await this.store.release(scope, key, lease).catch(() => undefined);
+        throw err; // the filter renders it (a 4xx as the very body just stored)
+      }
+    };
+    return from(run());
   }
 }
 ```
 
-Apply at the controller (`@UseInterceptors(IdempotencyInterceptor)`) or per route. Combine with a unique `(scope, key)` constraint in the store — that's what collapses concurrent retries to a single winner.
+Apply per route behind the guard: `@UseGuards(JwtAuthGuard)` + `@UseInterceptors(IdempotencyInterceptor)`. Register `IdempotencyEntity` (`entities` + `forFeature`), bind and export `{ provide: IdempotencyStore, useClass: PostgresIdempotencyStore }` in the persistence module, and call `purgeExpired()` from a `@Cron` job. The `(scope, key)` primary key is what collapses concurrent first attempts to one winner.
 
 ---
 

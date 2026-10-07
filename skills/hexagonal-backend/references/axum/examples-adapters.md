@@ -1182,66 +1182,126 @@ async fn create_author(&self, req: &CreateAuthorRequest)
 
 ## Outbound: Idempotency Store
 
-A KV-shaped table keyed by `(scope, key)` with a unique constraint. The application service (or an inbound middleware) wraps the use case.
+One row per `(scope, key)` — scope = tenant + principal + operation; `request_hash` covers method, path and canonical body. Only a write grants execution — this request's `INSERT` or a conditional takeover of an expired lease — never a read (replicas and query caches can be stale).
+
+```sql
+-- migrations/NNNN_idempotency.sql — status, response and completed_at stay NULL until complete()
+CREATE TABLE idempotency (scope text, key text, request_hash text NOT NULL, lease_token uuid NOT NULL,
+    locked_until timestamptz NOT NULL, status int, response bytea, completed_at timestamptz,
+    expires_at timestamptz NOT NULL, PRIMARY KEY (scope, key));
+CREATE INDEX ON idempotency (expires_at); -- purge_expired()
+```
 
 ```rust
 // src/domain/shared/idempotency.rs
-pub trait IdempotencyStore: Clone + Send + Sync + 'static {
-    fn acquire(
-        &self,
-        scope: &str,
-        key: &str,
-        request_hash: &str,
-    ) -> impl Future<Output = Result<Acquire, anyhow::Error>> + Send;
+use std::future::Future;
+use uuid::Uuid;
 
-    fn store(
-        &self,
-        scope: &str,
-        key: &str,
-        response_bytes: &[u8],
-    ) -> impl Future<Output = Result<(), anyhow::Error>> + Send;
+#[derive(Debug)]
+pub enum Acquire {
+    NewExecution { lease: Uuid },
+    Replay { status: u16, body: Vec<u8> }, // completed: a 2xx or deterministic 4xx
+    Mismatch,                              // same key, different request_hash → 422
+    InFlight { retry_after_secs: u64 },    // live lease → 409 + Retry-After; never re-run
 }
 
-pub enum Acquire {
-    NewExecution,
-    Replay(Vec<u8>),
-    Conflict, // same key, different request_hash
-    InFlight, // same key, first request still executing — return 409 (retry later), never re-run
+#[derive(Debug, thiserror::Error)]
+pub enum CompleteError {
+    #[error("idempotency lease lost")]
+    LeaseLost, // lease taken over, or the row is gone → the caller rolls back
+    #[error(transparent)]
+    Unknown(#[from] anyhow::Error),
+}
+
+pub trait IdempotencyStore: Clone + Send + Sync + 'static {
+    type Tx: Send; // the use case's open transaction, named by the adapter (no sqlx in domain/)
+    fn acquire(&self, scope: &str, key: &str, request_hash: &str)
+        -> impl Future<Output = Result<Acquire, anyhow::Error>> + Send;
+    /// Lease-guarded; runs inside the use case's transaction, before commit.
+    fn complete(&self, tx: &mut Self::Tx, scope: &str, key: &str, lease: Uuid, status: u16, body: &[u8])
+        -> impl Future<Output = Result<(), CompleteError>> + Send;
+    /// The request failed before commit (error, 5xx, timeout): lets a corrected retry run.
+    fn release(&self, scope: &str, key: &str, lease: Uuid)
+        -> impl Future<Output = Result<(), anyhow::Error>> + Send;
+    /// Scheduled job: deletes rows past `expires_at`.
+    fn purge_expired(&self) -> impl Future<Output = Result<u64, anyhow::Error>> + Send;
 }
 ```
 
 ```rust
 // src/outbound/postgres.rs
+// LEASE must outlive the request timeout (the 10 s `TimeoutLayer` in server.rs) so a live
+// request never loses its lease; TTL must cover the longest client retry horizon.
+const LEASE: Duration = Duration::from_secs(30);
+const TTL: Duration = Duration::from_secs(24 * 60 * 60);
+type KeyRow = (String, bool, Option<i32>, Option<Vec<u8>>, i64); // step 2's SELECT, in column order
+
 impl IdempotencyStore for Postgres {
+    type Tx = sqlx::PgConnection; // callers pass `&mut *tx` from a `Transaction<'_, Postgres>`
     async fn acquire(&self, scope: &str, key: &str, hash: &str) -> Result<Acquire, anyhow::Error> {
-        // Insert-or-fetch — unique constraint collapses races to one winner.
-        let inserted = sqlx::query!(
-            "INSERT INTO idempotency (scope, key, request_hash) \
-             VALUES ($1, $2, $3) ON CONFLICT (scope, key) DO NOTHING",
-            scope, key, hash,
-        ).execute(&self.pool).await?;
-
-        if inserted.rows_affected() == 1 {
-            return Ok(Acquire::NewExecution);
+        for _ in 0..3 {
+            // 1. A RETURNING row proves this INSERT won (never compare echoed values).
+            let inserted: Option<Uuid> = sqlx::query_scalar(
+                "INSERT INTO idempotency (scope, key, request_hash, lease_token, locked_until, expires_at) \
+                 VALUES ($1, $2, $3, $4, now() + $5, now() + $6) \
+                 ON CONFLICT (scope, key) DO NOTHING RETURNING lease_token")
+                .bind(scope).bind(key).bind(hash).bind(Uuid::new_v4()).bind(LEASE).bind(TTL)
+                .fetch_optional(&self.pool).await?;
+            if let Some(lease) = inserted { return Ok(Acquire::NewExecution { lease }); }
+            // 2. Inspect the holder (no row: purged or released → retry). A read never grants execution.
+            let row: Option<KeyRow> = sqlx::query_as(
+                "SELECT request_hash, completed_at IS NOT NULL, status, response, \
+                        GREATEST(1, CEIL(EXTRACT(EPOCH FROM locked_until - now())))::int8 \
+                 FROM idempotency WHERE scope = $1 AND key = $2")
+                .bind(scope).bind(key).fetch_optional(&self.pool).await?;
+            let Some((stored_hash, completed, status, body, retry_after)) = row else { continue };
+            if stored_hash != hash { return Ok(Acquire::Mismatch); } // 3.
+            if completed { // 4. completed_at decides — an empty body is a valid stored response
+                let status = u16::try_from(status.context("completed row has no status")?)?;
+                return Ok(Acquire::Replay { status, body: body.unwrap_or_default() });
+            }
+            // 5. Take over only an expired, uncompleted lease — a conditional write.
+            let taken: Option<Uuid> = sqlx::query_scalar(
+                "UPDATE idempotency SET lease_token = $3, locked_until = now() + $4 \
+                 WHERE scope = $1 AND key = $2 AND completed_at IS NULL AND locked_until < now() \
+                 RETURNING lease_token")
+                .bind(scope).bind(key).bind(Uuid::new_v4()).bind(LEASE).fetch_optional(&self.pool).await?;
+            if let Some(lease) = taken { return Ok(Acquire::NewExecution { lease }); }
+            return Ok(Acquire::InFlight { retry_after_secs: retry_after as u64 });
         }
-        let row = sqlx::query!(
-            "SELECT request_hash, response FROM idempotency WHERE scope = $1 AND key = $2",
-            scope, key,
-        ).fetch_one(&self.pool).await?;
-
-        if row.request_hash != hash {
-            return Ok(Acquire::Conflict);
-        }
-        match row.response {
-            Some(bytes) => Ok(Acquire::Replay(bytes)),
-            // No stored response yet: the first request is still running. Re-running
-            // it here would double-execute (double charge) — report it instead.
-            None => Ok(Acquire::InFlight),
-        }
+        Ok(Acquire::InFlight { retry_after_secs: 1 })
     }
-    // store(...) updates the row.
+
+    async fn complete(
+        &self, tx: &mut sqlx::PgConnection, scope: &str, key: &str, lease: Uuid, status: u16, body: &[u8],
+    ) -> Result<(), CompleteError> {
+        let done = sqlx::query(
+            "UPDATE idempotency SET status = $4, response = $5, completed_at = now() \
+             WHERE scope = $1 AND key = $2 AND lease_token = $3 AND completed_at IS NULL")
+            .bind(scope).bind(key).bind(lease).bind(i32::from(status)).bind(body)
+            .execute(&mut *tx).await.context("complete idempotency key")?;
+        if done.rows_affected() == 0 { return Err(CompleteError::LeaseLost); } // caller's tx rolls back
+        Ok(())
+    }
+
+    async fn release(&self, scope: &str, key: &str, lease: Uuid) -> Result<(), anyhow::Error> {
+        sqlx::query("DELETE FROM idempotency \
+                     WHERE scope = $1 AND key = $2 AND lease_token = $3 AND completed_at IS NULL")
+            .bind(scope).bind(key).bind(lease).execute(&self.pool).await?;
+        Ok(())
+    }
+
+    async fn purge_expired(&self) -> Result<u64, anyhow::Error> {
+        let done = sqlx::query("DELETE FROM idempotency WHERE expires_at < now()").execute(&self.pool).await?;
+        Ok(done.rows_affected())
+    }
 }
 ```
+
+**Caller** — the inbound handler (or a `from_fn` middleware) owns the HTTP side:
+- A required key that is missing → **400**. `Replay` → the stored status and body (`application/problem+json` when ≥ 400; `Location` isn't stored). `Mismatch` → **422** problem+json, `type` `…/errors/idempotency-key-mismatch`, no `errors` array (so not `ApiError::unprocessable`). `InFlight` → **409** problem+json, `type` `…/errors/idempotency-in-flight`, plus `Retry-After: retry_after_secs`.
+- `NewExecution` → pass `(scope, key, lease)` and a render fn down to the use case. Its adapter method writes on `&mut *tx`, then calls `self.complete(&mut *tx, …)` before `tx.commit()`, so the stored response commits with the data; `LeaseLost` returns early and the dropped tx rolls back. A deterministic 4xx that wrote nothing completes on its own connection.
+- Any other error or a 5xx → `release`. `TimeoutLayer` cancels by dropping the handler future, so release from a drop guard (`tokio::spawn`) or let the lease lapse. Never hold the tx across an external call: record an intent and derive the downstream idempotency key first (software-architecture `reliability-patterns.md` § 2).
 
 ---
 
