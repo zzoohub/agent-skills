@@ -1,1458 +1,1267 @@
-# Examples: Adapters
+# NestJS examples: adapters
 
-Inbound (controller, DTOs, exception filter, auth guard, pipes, healthcheck) and outbound (TypeORM + PostgreSQL repository, mapper).
+Outbound PostgreSQL adapters (TypeORM 1.1 under `@nestjs-cls/transactional`) and inbound HTTP and webhook adapters. Complete files of the same project as `examples-domain.md`.
 
-## Table of Contents
+## Contents
 
-1. [Outbound: TypeORM — Entity](#outbound-typeorm--entity)
-2. [Outbound: TypeORM — Module](#outbound-typeorm--module)
-3. [Outbound: Cursor Helpers (composite + base64)](#outbound-cursor-helpers-composite--base64)
-4. [Outbound: TypeORM — Mapper + Repository](#outbound-typeorm--mapper--repository)
-5. [Outbound: TypeORM — Inline Single-Repo Transaction](#outbound-typeorm--inline-single-repo-transaction)
-6. [Inbound: ZodValidationPipe](#inbound-zodvalidationpipe)
-7. [Inbound: Request DTOs](#inbound-request-dtos)
-8. [Inbound: Response DTOs](#inbound-response-dtos)
-9. [Inbound: Controller](#inbound-controller)
-10. [Inbound: Exception Filter (RFC 9457)](#inbound-exception-filter-rfc-9457)
-11. [Inbound: Auth Guard (JWT with `jose`)](#inbound-auth-guard-jwt-with-jose)
-12. [Inbound: Healthcheck](#inbound-healthcheck)
-13. [Inbound: Job Handler (non-HTTP inbound adapter)](#inbound-job-handler-non-http-inbound-adapter)
-14. [Outbound: UnitOfWork Adapter (TypeORM + nestjs-cls)](#outbound-unitofwork-adapter-typeorm--nestjs-cls)
-15. [Outbound: Outbox via UoW](#outbound-outbox-via-uow)
-16. [Outbound: Idempotency Store](#outbound-idempotency-store)
-17. [Inbound: Rate Limiting (`@nestjs/throttler`)](#inbound-rate-limiting-nestjsthrottler)
-18. [Outbound: Tracer Port (OTel)](#outbound-tracer-port-otel)
+1. [Schema migration](#schema-migration)
+2. [Entity and connection options](#entity-and-connection-options)
+3. [Transaction rules and the unit of work](#transaction-rules-and-the-unit-of-work)
+4. [Article repository](#article-repository)
+5. [Outbox and inbox](#outbox-and-inbox)
+6. [Idempotency store](#idempotency-store)
+7. [Outbox relay](#outbox-relay)
+8. [Problem documents](#problem-documents)
+9. [Filter, validation pipe and edge middleware](#filter-validation-pipe-and-edge-middleware)
+10. [Bearer auth and the Actor](#bearer-auth-and-the-actor)
+11. [Idempotency interceptor](#idempotency-interceptor)
+12. [Schemas, controller and OpenAPI](#schemas-controller-and-openapi)
+13. [Moderation webhook](#moderation-webhook)
+14. [Health probes](#health-probes)
 
----
+## Schema migration
 
-## Outbound: TypeORM — Entity
+Hand-written SQL that TypeORM runs; the release step applies it before the code that needs it.
 
-```typescript
-// src/outbound/typeorm/entities/author.entity.ts
-import {
-  Entity, Column, PrimaryGeneratedColumn,
-  CreateDateColumn, UpdateDateColumn, Index,
-} from "typeorm";
+```ts file=src/migrations/1791417600000-publishing.ts
+import type { MigrationInterface, QueryRunner } from "typeorm";
 
-/**
- * TypeORM entity — outbound only. NEVER imported in domain.
- * This is a persistence representation of `Author`, not the domain model itself.
- */
-@Entity({ name: "authors" })
-export class AuthorEntity {
-  @PrimaryGeneratedColumn("uuid")
-  id!: string;
+// uuidv7() needs PostgreSQL 18.
+export class Publishing1791417600000 implements MigrationInterface {
+  async up(db: QueryRunner): Promise<void> {
+    await db.query(`
+      CREATE TABLE articles (
+        id           uuid PRIMARY KEY,
+        tenant_id    uuid NOT NULL,
+        author_id    text NOT NULL,
+        slug         text NOT NULL,
+        title        text NOT NULL,
+        body         text NOT NULL,
+        status       text NOT NULL,
+        version      integer NOT NULL,
+        created_at   timestamptz NOT NULL,
+        updated_at   timestamptz NOT NULL,
+        published_at timestamptz,
+        CONSTRAINT articles_tenant_slug_key UNIQUE (tenant_id, slug),
+        CONSTRAINT articles_status_check CHECK (status IN ('draft', 'published', 'archived')),
+        CONSTRAINT articles_length_check CHECK (
+          char_length(slug) <= 100 AND char_length(title) BETWEEN 1 AND 200 AND char_length(body) <= 20000)
+      );
+      CREATE INDEX articles_tenant_id_id_idx ON articles (tenant_id, id);
 
-  @Index({ unique: true })
-  @Column({ type: "text" })
-  name!: string;
+      CREATE TABLE outbox (
+        id               uuid PRIMARY KEY DEFAULT uuidv7(),
+        tenant_id        uuid NOT NULL,
+        aggregate_type   text NOT NULL,
+        aggregate_id     uuid NOT NULL,
+        aggregate_seq    integer NOT NULL,
+        event_type       text NOT NULL,
+        event_version    integer NOT NULL,
+        payload          jsonb NOT NULL,
+        headers          jsonb NOT NULL DEFAULT '{}',
+        created_at       timestamptz NOT NULL DEFAULT now(),
+        published_at     timestamptz,
+        attempts         integer NOT NULL DEFAULT 0,
+        next_attempt_at  timestamptz NOT NULL DEFAULT now(),
+        last_error       text,
+        dead_lettered_at timestamptz,
+        CONSTRAINT outbox_aggregate_seq_key UNIQUE (aggregate_id, aggregate_seq)
+      );
+      CREATE INDEX outbox_pending_idx ON outbox (next_attempt_at, id)
+        WHERE published_at IS NULL AND dead_lettered_at IS NULL;
 
-  @CreateDateColumn({ name: "created_at", type: "timestamptz" })
-  createdAt!: Date;
+      CREATE TABLE idempotency_keys (
+        scope        text NOT NULL,
+        key          text NOT NULL,
+        request_hash text NOT NULL,
+        lease_token  uuid NOT NULL,
+        locked_until timestamptz NOT NULL,
+        status       integer,
+        response     bytea,
+        completed_at timestamptz,
+        expires_at   timestamptz NOT NULL,
+        PRIMARY KEY (scope, key)
+      );
+      CREATE INDEX idempotency_keys_expires_at_idx ON idempotency_keys (expires_at);
 
-  @UpdateDateColumn({ name: "updated_at", type: "timestamptz" })
-  updatedAt!: Date;
-}
-```
-
-```typescript
-// src/outbound/typeorm/entities/outbox.entity.ts
-import {
-  Entity, Column, PrimaryGeneratedColumn, CreateDateColumn, Index,
-} from "typeorm";
-
-/**
- * Outbox row — written inside the same UoW as the aggregate. A relay worker
- * reads `published_at IS NULL ORDER BY id LIMIT N`, publishes, then updates
- * `published_at`. `traceparent` carries the originating request's trace.
- */
-@Entity({ name: "outbox" })
-export class OutboxEntity {
-  @PrimaryGeneratedColumn("uuid")
-  id!: string;
-
-  @Column({ name: "aggregate_type", type: "text" })
-  aggregateType!: string;
-
-  @Column({ name: "aggregate_id", type: "text" })
-  aggregateId!: string;
-
-  @Column({ name: "event_type", type: "text" })
-  eventType!: string;
-
-  @Column({ type: "jsonb" })
-  payload!: Record<string, unknown>;
-
-  @Column({ type: "text", nullable: true })
-  traceparent!: string | null;
-
-  @CreateDateColumn({ name: "created_at", type: "timestamptz" })
-  createdAt!: Date;
-
-  // Index covers the relay's "find next batch" query.
-  @Index("idx_outbox_unpublished", ["publishedAt", "id"])
-  @Column({ name: "published_at", type: "timestamptz", nullable: true })
-  publishedAt!: Date | null;
-}
-```
-
-## Outbound: TypeORM — Module
-
-```typescript
-// src/outbound/typeorm/typeorm.module.ts
-import { Global, Module } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { TypeOrmModule } from "@nestjs/typeorm";
-import { AuthorEntity } from "./entities/author.entity";
-import { OutboxEntity } from "./entities/outbox.entity";
-import { TypeOrmAuthorRepository } from "./author.repository";
-import { TypeOrmOutboxRepository } from "./typeorm-outbox.repository";
-import { TypeOrmUnitOfWork } from "./typeorm-unit-of-work";
-import { AuthorRepository } from "../../domain/authors/ports";
-import { OutboxRepository } from "../../domain/shared/outbox";
-import { UnitOfWork } from "../../domain/shared/unit-of-work";
-import type { AppConfig } from "../../config";
-
-@Global()
-@Module({
-  imports: [
-    TypeOrmModule.forRootAsync({
-      inject: [ConfigService],
-      useFactory: (config: ConfigService<AppConfig, true>) => ({
-        type: "postgres",
-        url: config.get("DATABASE_URL"),
-        entities: [AuthorEntity, OutboxEntity],
-        migrations: ["dist/migrations/*.js"],
-        // synchronize MUST stay false in every deployed env — migrations only.
-        synchronize: false,
-        logging: config.get("NODE_ENV") === "development" ? ["query", "error"] : ["error"],
-        poolSize: 10,
-      }),
-    }),
-    TypeOrmModule.forFeature([AuthorEntity, OutboxEntity]),
-  ],
-  providers: [
-    // Repository implementations — each bound to its domain port.
-    { provide: AuthorRepository, useClass: TypeOrmAuthorRepository },
-    { provide: OutboxRepository, useClass: TypeOrmOutboxRepository },
-    // UnitOfWork — wraps DataSource.transaction + CLS propagation.
-    { provide: UnitOfWork, useClass: TypeOrmUnitOfWork },
-  ],
-  exports: [AuthorRepository, OutboxRepository, UnitOfWork, TypeOrmModule],
-})
-export class TypeOrmPersistenceModule {}
-```
-
-> The persistence module depends on `ClsModule` (registered in `AppModule`) for the CLS-scoped `EntityManager`. CLS is set up via middleware on the request, then `TypeOrmUnitOfWork.run()` nests its own frame on top.
-
-## Outbound: Cursor Helpers (composite + base64)
-
-```typescript
-// src/outbound/cursor.ts
-// Composite cursor (createdAt, id) encoded as opaque base64.
-// Single-column `id > X` cursors skip/duplicate rows under concurrent inserts;
-// composite (createdAt, id) is stable.
-export function encodeCursor(createdAt: Date, id: string): string {
-  return Buffer.from(`${createdAt.toISOString()}|${id}`).toString("base64url");
-}
-
-export function decodeCursor(raw: string): { createdAt: Date; id: string } {
-  const [ts, id] = Buffer.from(raw, "base64url").toString("utf8").split("|", 2);
-  return { createdAt: new Date(ts), id };
-}
-```
-
-## Outbound: TypeORM — Mapper + Repository
-
-```typescript
-// src/outbound/typeorm/mapper.ts
-import { AuthorName } from "../../domain/authors/models";
-import type { Author, CreateAuthorRequest } from "../../domain/authors/models";
-import { AuthorEntity } from "./entities/author.entity";
-
-/**
- * Maps in BOTH directions so the entity stays sealed inside the adapter.
- * Domain code only ever sees `Author`.
- */
-export class AuthorMapper {
-  static toDomain(entity: AuthorEntity): Author {
-    return { id: entity.id, name: AuthorName.create(entity.name) };
+      CREATE TABLE inbox (
+        consumer    text NOT NULL,
+        message_id  text NOT NULL,
+        received_at timestamptz NOT NULL DEFAULT now(),
+        PRIMARY KEY (consumer, message_id)
+      );
+    `);
   }
 
-  static toEntity(req: CreateAuthorRequest): AuthorEntity {
-    const entity = new AuthorEntity();
-    entity.name = req.name.value;
-    return entity;
+  async down(db: QueryRunner): Promise<void> {
+    await db.query(`DROP TABLE inbox, idempotency_keys, outbox, articles`);
   }
 }
 ```
 
-```typescript
-// src/outbound/typeorm/author.repository.ts
+## Entity and connection options
+
+Only `articles` has an entity; the infrastructure tables are reached through SQL.
+
+```ts file=src/outbound/postgres/article.entity.ts
+import { Check, Column, Entity, Index, PrimaryColumn, Unique } from "typeorm";
+import type { ArticleStatus } from "../../domain/publishing/article.js";
+
+// Mirrors the SQL migration, constraint names included.
+@Entity({ name: "articles" })
+@Unique("articles_tenant_slug_key", ["tenantId", "slug"])
+@Index("articles_tenant_id_id_idx", ["tenantId", "id"])
+@Check("articles_status_check", `status IN ('draft', 'published', 'archived')`)
+@Check("articles_length_check", `char_length(slug) <= 100 AND char_length(title) BETWEEN 1 AND 200 AND char_length(body) <= 20000`)
+export class ArticleEntity {
+  @PrimaryColumn("uuid") id!: string;
+  @Column("uuid", { name: "tenant_id" }) tenantId!: string;
+  @Column("text", { name: "author_id" }) authorId!: string;
+  @Column("text") slug!: string;
+  @Column("text") title!: string;
+  @Column("text") body!: string;
+  @Column("text") status!: ArticleStatus;
+  @Column("integer") version!: number;
+  @Column("timestamptz", { name: "created_at" }) createdAt!: Date;
+  @Column("timestamptz", { name: "updated_at" }) updatedAt!: Date;
+  @Column("timestamptz", { name: "published_at", nullable: true }) publishedAt!: Date | null;
+}
+```
+
+```ts file=src/outbound/postgres/options.ts
+import type { DataSourceOptions } from "typeorm";
+import { Publishing1791417600000 } from "../../migrations/1791417600000-publishing.js";
+import { ArticleEntity } from "./article.entity.js";
+
+/** For the API, the worker, the CLI and the tests. */
+export function postgresOptions(settings: {
+  url: string;
+  applicationName: string;
+  poolSize?: number;
+  statementTimeoutMs?: number; // 0 = none, for migrations
+}): DataSourceOptions {
+  return {
+    type: "postgres",
+    url: settings.url,
+    applicationName: settings.applicationName,
+    entities: [ArticleEntity],
+    migrations: [Publishing1791417600000],
+    migrationsTransactionMode: "each",
+    poolSize: settings.poolSize ?? 10,
+    connectTimeoutMS: 3_000,
+    extra: { statement_timeout: settings.statementTimeoutMs ?? 0, idle_in_transaction_session_timeout: 15_000 },
+  };
+}
+```
+
+## Transaction rules and the unit of work
+
+```ts file=src/outbound/postgres/db.ts
 import { Injectable } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { ClsService } from "nestjs-cls";
-import { EntityManager, QueryFailedError, Repository } from "typeorm";
-import { AuthorEntity } from "./entities/author.entity";
-import { AuthorMapper } from "./mapper";
-import { TYPEORM_EM_KEY } from "./typeorm-unit-of-work";
-import { decodeCursor, encodeCursor } from "../cursor";
-import { AuthorRepository } from "../../domain/authors/ports";
-import type { Author, CreateAuthorRequest, CursorPage } from "../../domain/authors/models";
-import {
-  DuplicateAuthorError,
-  UnknownAuthorError,
-} from "../../domain/authors/errors";
-
-const PG_UNIQUE_VIOLATION = "23505";
+import { TransactionHost } from "@nestjs-cls/transactional";
+import type { TransactionalAdapterTypeOrm } from "@nestjs-cls/transactional-adapter-typeorm";
+import { QueryFailedError, type EntityManager } from "typeorm";
+import { DomainError } from "../../domain/shared/errors.js";
 
 @Injectable()
-export class TypeOrmAuthorRepository extends AuthorRepository {
-  constructor(
-    @InjectRepository(AuthorEntity)
-    private readonly repo: Repository<AuthorEntity>,
-    private readonly cls: ClsService,
-  ) {
+export class Db {
+  constructor(private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>) {}
+
+  async read<T>(query: (em: EntityManager) => Promise<T>): Promise<T> {
+    try {
+      return await query(this.txHost.tx);
+    } catch (error) {
+      throw translateDbError(error);
+    }
+  }
+
+  write<T>(command: (em: EntityManager) => Promise<T>): Promise<T> {
+    if (!this.txHost.isTransactionActive()) return Promise.reject(new Error("database write outside a unit of work"));
+    return command(this.txHost.tx);
+  }
+
+  /** Commits on its own, even inside a unit of work. */
+  outside<T>(query: (em: EntityManager) => Promise<T>): Promise<T> {
+    return this.txHost.withoutTransaction(() => this.read(query));
+  }
+}
+
+export function sqlState(error: unknown): string | undefined {
+  if (error instanceof DomainError) return sqlState(error.cause);
+  const source: unknown = error instanceof QueryFailedError ? error.driverError : error;
+  return typeof source === "object" && source !== null && "code" in source && typeof source.code === "string"
+    ? source.code
+    : undefined;
+}
+
+export function isUniqueViolation(error: unknown, constraint: string): boolean {
+  const driver: unknown = error instanceof QueryFailedError ? error.driverError : undefined;
+  return sqlState(error) === "23505" && typeof driver === "object" && driver !== null &&
+    "constraint" in driver && driver.constraint === constraint;
+}
+
+export const isRetryable = (error: unknown) => ["40001", "40P01"].includes(sqlState(error) ?? "");
+
+const TRANSIENT = /^(08|53|57P0|57014|55P03|40001|40P01|ECONNREFUSED|ECONNRESET|ETIMEDOUT)/;
+
+export function translateDbError(error: unknown): unknown {
+  if (error instanceof DomainError) return error;
+  const transient = TRANSIENT.test(sqlState(error) ?? "") ||
+    (error instanceof Error && /timeout exceeded when trying to connect|Connection terminated/.test(error.message));
+  return transient ? new DomainError("unavailable", "the database is unavailable", { cause: error }) : error;
+}
+```
+
+```ts file=src/outbound/postgres/unit-of-work.ts
+import { Injectable } from "@nestjs/common";
+import { TransactionHost } from "@nestjs-cls/transactional";
+import type { TransactionalAdapterTypeOrm } from "@nestjs-cls/transactional-adapter-typeorm";
+import { setTimeout as sleep } from "node:timers/promises";
+import { UnitOfWork } from "../../domain/shared/ports.js";
+import { isRetryable, translateDbError } from "./db.js";
+
+@Injectable()
+export class TypeOrmUnitOfWork extends UnitOfWork {
+  constructor(private readonly txHost: TransactionHost<TransactionalAdapterTypeOrm>) {
     super();
   }
 
-  /**
-   * Pick the active EntityManager — CLS-scoped if we're inside `uow.run(...)`,
-   * otherwise the repository's default manager. Every read/write goes through
-   * this helper so the same code participates in any active transaction
-   * without each caller threading an `em` parameter.
-   */
-  private em(): EntityManager {
-    return this.cls.get<EntityManager>(TYPEORM_EM_KEY) ?? this.repo.manager;
+  async run<T>(work: () => Promise<T>): Promise<T> {
+    // Joining: the outer owner commits, retries and translates.
+    if (this.txHost.isTransactionActive()) return work();
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await this.txHost.withTransaction(work);
+      } catch (error) {
+        if (attempt < 3 && isRetryable(error)) {
+          await sleep(Math.random() * 50 * 2 ** attempt); // exponential backoff, full jitter
+          continue;
+        }
+        throw translateDbError(error);
+      }
+    }
+  }
+}
+```
+
+## Article repository
+
+Tenant-scoped in every query.
+
+```ts file=src/outbound/postgres/article.repository.ts
+import { Injectable } from "@nestjs/common";
+import { rehydrateArticle, type Article, type ArticleStatus } from "../../domain/publishing/article.js";
+import { ArticleRepository } from "../../domain/publishing/ports.js";
+import { conflict, DomainError } from "../../domain/shared/errors.js";
+import type { Page } from "../../domain/shared/ports.js";
+import { ArticleEntity } from "./article.entity.js";
+import { Db, isUniqueViolation } from "./db.js";
+
+@Injectable()
+export class TypeOrmArticleRepository extends ArticleRepository {
+  constructor(private readonly db: Db) {
+    super();
   }
 
-  async createAuthor(req: CreateAuthorRequest): Promise<Author> {
-    const entity = AuthorMapper.toEntity(req);
+  async insert(article: Article): Promise<void> {
     try {
-      // Data Mapper style: em.save(EntityClass, entity), never entity.save().
-      const saved = await this.em().save(AuthorEntity, entity);
-      return AuthorMapper.toDomain(saved);
+      await this.db.write((em) => em.insert(ArticleEntity, { ...article }));
     } catch (error) {
-      if (this.isUniqueConstraintError(error)) {
-        throw new DuplicateAuthorError(req.name.value);
-      }
-      throw new UnknownAuthorError(error);
+      if (!isUniqueViolation(error, "articles_tenant_slug_key")) throw error;
+      throw conflict("already-exists", `an article with slug '${article.slug}' already exists`);
     }
   }
 
-  async findAuthor(authorId: string): Promise<Author | null> {
-    const entity = await this.em().findOneBy(AuthorEntity, { id: authorId });
-    return entity ? AuthorMapper.toDomain(entity) : null;
+  async findById(tenantId: string, id: string): Promise<Article | null> {
+    const row = await this.db.read((em) => em.findOneBy(ArticleEntity, { tenantId, id }));
+    return row && rehydrateArticle(row);
   }
 
-  async listAuthors(
-    cursor: string | null,
-    limit: number,
-  ): Promise<CursorPage<Author>> {
-    // QueryBuilder for tuple comparison `(created_at, id) > (cursorAt, cursorId)`.
-    // Plain `find({ where })` doesn't support tuple predicates.
-    const qb = this.em()
-      .createQueryBuilder(AuthorEntity, "author")
-      .orderBy("author.created_at", "ASC")
-      .addOrderBy("author.id", "ASC")
-      .limit(limit + 1);
+  async list(tenantId: string, cursor: string | null, limit: number): Promise<Page<Article>> {
+    const after = cursor === null ? null : decodeCursor(cursor);
+    const rows = await this.db.read((em) => {
+      const query = em.createQueryBuilder(ArticleEntity, "a").where("a.tenant_id = :tenantId", { tenantId });
+      if (after) query.andWhere("a.id < :after", { after });
+      return query.orderBy("a.id", "DESC").limit(limit + 1).getMany();
+    });
+    const items = rows.slice(0, limit).map(rehydrateArticle);
+    const last = items.at(-1);
+    return { items, nextCursor: rows.length > limit && last ? encodeCursor(last.id) : null };
+  }
 
-    if (cursor) {
-      const { createdAt, id } = decodeCursor(cursor);
-      qb.where(
-        "(author.created_at, author.id) > (:createdAt, :id)",
-        { createdAt, id },
+  async update(article: Article, expectedVersion: number): Promise<boolean> {
+    const { tenantId, id, title, body, version, updatedAt } = article;
+    const { affected } = await this.db.write((em) =>
+      em.update(ArticleEntity, { tenantId, id, version: expectedVersion }, { title, body, version, updatedAt }),
+    );
+    return affected === 1;
+  }
+
+  async transition(next: Article, from: ArticleStatus): Promise<Article | null> {
+    const { tenantId, id, status, publishedAt, updatedAt } = next;
+    const { affected } = await this.db.write((em) =>
+      em.update(ArticleEntity, { tenantId, id, status: from }, { status, publishedAt, updatedAt, version: () => "version + 1" }),
+    );
+    return affected === 1 ? this.findById(tenantId, id) : null;
+  }
+}
+
+const encodeCursor = (id: string) => Buffer.from(`v1:${id}`).toString("base64url");
+
+function decodeCursor(cursor: string): string {
+  const raw = Buffer.from(cursor, "base64url").toString("utf8");
+  const id = /^v1:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(raw)?.[1];
+  if (!id) throw new DomainError("malformed", "the cursor is not one this list issued", { field: "cursor" });
+  return id;
+}
+```
+
+## Outbox and inbox
+
+```ts file=src/outbound/postgres/outbox-inbox.ts
+import { Injectable } from "@nestjs/common";
+import { context, propagation } from "@opentelemetry/api";
+import { Inbox, Outbox, type DomainEvent } from "../../domain/publishing/ports.js";
+import { Db } from "./db.js";
+
+@Injectable()
+export class SqlOutbox extends Outbox {
+  constructor(private readonly db: Db) {
+    super();
+  }
+
+  async append(events: readonly DomainEvent[]): Promise<void> {
+    const headers: Record<string, string> = {};
+    propagation.inject(context.active(), headers); // traceparent, captured at insert
+    for (const e of events) {
+      await this.db.write((em) =>
+        em.query(
+          `INSERT INTO outbox (tenant_id, aggregate_type, aggregate_id, aggregate_seq, event_type, event_version, payload, headers)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [e.tenantId, e.aggregateType, e.aggregateId, e.aggregateSeq, e.type, e.version, e.payload, { ...headers, tenant_id: e.tenantId }],
+        ),
       );
     }
-
-    const entities = await qb.getMany();
-    const hasMore = entities.length > limit;
-    // Drop overflow row; cursor is the LAST RETURNED row so the next page
-    // resumes AFTER it (no duplicates, no skips).
-    const pageEntities = entities.slice(0, limit);
-    const items = pageEntities.map(AuthorMapper.toDomain);
-    // `last` is the ENTITY row, not the mapped domain model — the cursor needs
-    // created_at, which the entity carries and domain Author deliberately omits.
-    const last = pageEntities[pageEntities.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
-
-    return { items, nextCursor, hasMore };
   }
-
-  private isUniqueConstraintError(error: unknown): boolean {
-    return (
-      error instanceof QueryFailedError &&
-      (error as QueryFailedError & { driverError?: { code?: string } }).driverError?.code === PG_UNIQUE_VIOLATION
-    );
-  }
-}
-```
-
-> **Why `this.em()` everywhere?** Without it, `this.repo.save(...)` always uses the data source's *default* manager — never the UoW's scoped one. The result: `uow.run(...)` opens a tx, but the repo writes outside it. Silent atomicity failure. Making every read/write go through `this.em()` is the only safe default.
-
-## Outbound: TypeORM — Inline Single-Repo Transaction
-
-For a transaction confined to **one repository** (writing two entities the
-adapter already knows about), inline `manager.transaction(...)` is the simplest
-path — no UoW needed.
-
-```typescript
-async createAuthorWithProfile(req: CreateAuthorWithProfileRequest): Promise<Author> {
-  try {
-    // Use the active EM as the *transaction root*. If we're already inside
-    // `uow.run(...)`, this nests via SAVEPOINT (be aware). If not, it opens
-    // a fresh tx for just this method.
-    const saved = await this.em().transaction(async (manager) => {
-      const author = await manager.save(AuthorEntity, { name: req.name.value });
-      await manager.save(ProfileEntity, { authorId: author.id, bio: req.bio });
-      return author;
-    });
-    return AuthorMapper.toDomain(saved);
-  } catch (error) {
-    if (this.isUniqueConstraintError(error)) throw new DuplicateAuthorError(req.name.value);
-    throw new UnknownAuthorError(error);
-  }
-}
-```
-
-For atomicity that spans multiple repositories (aggregate write + outbox enqueue, or two aggregates touched together), use the `UnitOfWork` port instead — the service composes the repos inside one `uow.run(...)` callback.
-
----
-
-## Inbound: ZodValidationPipe
-
-`nestjs-zod` ships the `ZodValidationPipe`; register it once via `APP_PIPE` (see `examples-bootstrap.md`). Build it with `createZodValidationPipe` so a failed parse returns the RFC 9457 ProblemDetails body — `DomainExceptionFilter` already serves `HttpException` bodies as `application/problem+json`, so this shape flows through unchanged. Without the custom factory, `nestjs-zod` emits its own `{ statusCode, message, errors }` body, which breaks the API's error contract.
-
-```typescript
-// src/inbound/http/pipes/zod-validation.pipe.ts
-import { UnprocessableEntityException } from "@nestjs/common";
-import { createZodValidationPipe } from "nestjs-zod";
-import type { ZodError, ZodIssue } from "zod";
-
-/**
- * nestjs-zod's pipe, customized so validation failures match the API's
- * RFC 9457 ProblemDetails error shape instead of nestjs-zod's default body.
- * The object thrown here IS a ProblemDetails body — `DomainExceptionFilter`
- * passes it through verbatim (only stamping `instance`), so the validation
- * shape and the filter's `problem()` shape can't drift apart.
- *
- * Status: 422 Unprocessable Entity (matches api-design.md — schema parsed,
- * semantic validation failed). Use 400 only for malformed transport
- * (unparseable JSON, missing Content-Type, etc.).
- */
-
-/**
- * For z.discriminatedUnion / nested unions the failing issue can carry an
- * empty (root) path → `field: ""`, which names nothing. Recurse into the
- * union's sub-issues and prefer one with a non-empty path so `errors[]`
- * always names a meaningful field. (Zod 4 also offers `z.treeifyError` /
- * `z.flattenError`; this keeps the flat `errors[]` contract.)
- */
-function fieldOf(issue: ZodIssue): string {
-  if (issue.path.length > 0) return issue.path.join(".");
-  // Zod 4: an invalid_union issue carries `errors` — one issue list per union
-  // option (Zod 3 called it `unionErrors: ZodError[]`; that field no longer exists).
-  if (issue.code === "invalid_union" && Array.isArray(issue.errors)) {
-    for (const optionIssues of issue.errors) {
-      const named = optionIssues.find((i) => i.path.length > 0);
-      if (named) return named.path.join(".");
-    }
-  }
-  return "";
-}
-
-export const ZodValidationPipe = createZodValidationPipe({
-  createValidationException: (error: ZodError) =>
-    new UnprocessableEntityException({
-      type: "https://api.example.com/errors/validation-failed",
-      title: "Validation Failed",
-      status: 422,
-      detail: "Request body failed validation",
-      errors: error.issues.map((e) => ({
-        field: fieldOf(e),
-        code: e.code,
-        message: e.message,
-      })),
-    }),
-});
-```
-
-## Inbound: Request DTOs
-
-`createZodDto(schema)` turns a Zod schema into a class that is three things at once: the compile-time type, the runtime validation schema, and the OpenAPI schema `@nestjs/swagger` reads. `toDomain()` translates the validated DTO into the domain request.
-
-```typescript
-// src/inbound/http/authors/request.dto.ts
-import { createZodDto } from "nestjs-zod";
-import { z } from "zod";
-import { AuthorName, type CreateAuthorRequest } from "../../../domain/authors/models";
-
-export const createAuthorSchema = z.object({
-  name: z.string().min(1, "name is required"),
-});
-export class CreateAuthorDto extends createZodDto(createAuthorSchema) {}
-
-export function toDomain(body: CreateAuthorDto): CreateAuthorRequest {
-  return { name: AuthorName.create(body.name) };
-}
-
-export const paginationSchema = z.object({
-  cursor: z.string().nullish().transform((v) => v ?? null),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-export class PaginationQueryDto extends createZodDto(paginationSchema) {}
-```
-
-> `z.coerce.number()` is required for query-string params — every query value arrives as a string. For nested objects just nest `z.object(...)`; for tagged unions use `z.discriminatedUnion("type", [...])`.
-
-## Inbound: Response DTOs
-
-```typescript
-// src/inbound/http/authors/response.dto.ts
-import { ApiProperty } from "@nestjs/swagger";
-import type { Author } from "../../../domain/authors/models";
-
-export class AuthorResponse {
-  // Definite-assignment `!` — fields are populated by fromDomain(), never the
-  // constructor, so `strict: true` (strictPropertyInitialization) is satisfied.
-  // Matches the entity style, which uses `!` for the same reason.
-  @ApiProperty({ example: "550e8400-e29b-41d4-a716-446655440000" })
-  id!: string;
-
-  @ApiProperty({ example: "Alice" })
-  name!: string;
-
-  static fromDomain(author: Author): AuthorResponse {
-    const dto = new AuthorResponse();
-    dto.id = author.id;
-    dto.name = author.name.value;
-    return dto;
-  }
-}
-
-/**
- * Cursor pagination response shape — matches api-design.md:
- *   { data: [...], meta: { limit, next_cursor, has_more } }
- * Keep cursor metadata inside `meta`, never flat on the top level.
- */
-export class CursorPageMeta {
-  @ApiProperty({ example: 20 })
-  limit!: number;
-
-  // base64url of `<isoDate>|<uuid>` — see encodeCursor/decodeCursor in cursor.ts.
-  @ApiProperty({
-    nullable: true,
-    example: "MjAyNi0wNS0yOVQxMjowMDowMC4wMDBafDU1MGU4NDAwLWUyOWItNDFkNC1hNzE2LTQ0NjY1NTQ0MDAwMA",
-  })
-  next_cursor!: string | null;
-
-  @ApiProperty()
-  has_more!: boolean;
-}
-
-export class CursorPageResponse {
-  @ApiProperty({ type: [AuthorResponse] })
-  data!: AuthorResponse[];
-
-  @ApiProperty({ type: CursorPageMeta })
-  meta!: CursorPageMeta;
-}
-```
-
-## Inbound: Controller
-
-```typescript
-// src/inbound/http/authors/authors.controller.ts
-import {
-  Controller, Get, Post, Param, Body, Query, Res,
-  HttpCode, HttpStatus,
-} from "@nestjs/common";
-import { ApiTags, ApiOperation, ApiResponse } from "@nestjs/swagger";
-import type { Response } from "express";
-import { AuthorService } from "../../../domain/authors/ports";
-import { CreateAuthorDto, PaginationQueryDto, toDomain } from "./request.dto";
-import { AuthorResponse, CursorPageResponse } from "./response.dto";
-import { ProblemDetail } from "../filters/problem-detail.dto";
-import { AuthorNotFoundError } from "../../../domain/authors/errors";
-
-@ApiTags("authors")
-@Controller("v1/authors")
-export class AuthorsController {
-  constructor(private readonly authorService: AuthorService) {}
-
-  @Post()
-  @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: "Create an author" })
-  @ApiResponse({ status: 201, type: AuthorResponse })
-  @ApiResponse({ status: 409, type: ProblemDetail })
-  @ApiResponse({ status: 422, type: ProblemDetail })
-  async create(
-    // passthrough: true → we set headers but still return a body Nest serialises.
-    @Res({ passthrough: true }) res: Response,
-    @Body() body: CreateAuthorDto,
-  ): Promise<{ data: AuthorResponse }> {
-    const author = await this.authorService.createAuthor(toDomain(body));
-    // 201 responses carry a Location header pointing at the new resource.
-    res.header("Location", `/v1/authors/${author.id}`);
-    return { data: AuthorResponse.fromDomain(author) };
-  }
-
-  @Get()
-  @ApiOperation({ summary: "List authors" })
-  async list(
-    @Query() query: PaginationQueryDto,
-  ): Promise<CursorPageResponse> {
-    const page = await this.authorService.listAuthors(query.cursor, query.limit);
-    return {
-      data: page.items.map(AuthorResponse.fromDomain),
-      meta: {
-        limit: query.limit,
-        next_cursor: page.nextCursor,
-        has_more: page.hasMore,
-      },
-    };
-  }
-
-  @Get(":id")
-  @ApiOperation({ summary: "Get an author by ID" })
-  @ApiResponse({ status: 200, type: AuthorResponse })
-  @ApiResponse({ status: 404, type: ProblemDetail })
-  async findOne(@Param("id") id: string): Promise<{ data: AuthorResponse }> {
-    const author = await this.authorService.findAuthor(id);
-    if (!author) {
-      throw new AuthorNotFoundError(id);
-    }
-    return { data: AuthorResponse.fromDomain(author) };
-  }
-}
-```
-
-> **Not-found semantics note:** `findAuthor()` returns `Author | null` and the
-> controller maps `null → AuthorNotFoundError`. That's fine for a single inbound
-> adapter. With multiple adapters (controller + job + gRPC), prefer a
-> `getAuthor(id): Promise<Author>` use case in the service that throws
-> `AuthorNotFoundError` itself, so every adapter inherits identical semantics
-> instead of re-implementing the null check.
-
-## Inbound: Exception Filter (RFC 9457)
-
-Every error response — domain errors, `HttpException` bodies (incl. the
-`ZodValidationPipe` output and the throttler's 429) — flows through ONE
-`problem()` builder, so the shape can't diverge field-to-field. The body
-always carries `type`/`title`/`status` and optionally `detail`, `instance`,
-and the `errors[]` validation extension. The correlation id is set on the
-`X-Request-Id` **response header** (the CLS/pino id), never in the body, so
-it survives bodiless 204/304 responses too.
-
-```typescript
-// src/inbound/http/filters/domain-exception.filter.ts
-//
-// Note (Express coupling): this filter writes directly through Express's
-// Response object (status/header/json). If you swap to Fastify
-// (@nestjs/platform-fastify), replace these calls with the Fastify reply
-// API or use NestJS's platform-agnostic HttpAdapterHost.
-import {
-  Catch, ExceptionFilter, ArgumentsHost, Logger, HttpException, HttpStatus,
-} from "@nestjs/common";
-import { ThrottlerException } from "@nestjs/throttler";
-import { ClsService } from "nestjs-cls";
-import type { Request, Response } from "express";
-import { DomainError } from "../../../domain/shared/errors";
-import { UnknownAuthorError } from "../../../domain/authors/errors";
-
-/**
- * RFC 9457 ProblemDetails. `detail`, `instance`, and the `errors[]` extension
- * are all optional — but every body is built by `problem()` so the field set
- * is uniform regardless of which branch produced it.
- */
-interface ProblemDetails {
-  type: string;
-  title: string;
-  status: number;
-  detail?: string;
-  instance?: string;
-  errors?: Array<{ field: string; code: string; message: string }>;
-}
-
-interface ProblemInput {
-  slug: string;
-  title: string;
-  status: number;
-  detail?: string;
-  instance?: string;
-  errors?: ProblemDetails["errors"];
-}
-
-function problem(input: ProblemInput): ProblemDetails {
-  const { slug, title, status, detail, instance, errors } = input;
-  return {
-    type: `https://api.example.com/errors/${slug}`,
-    title,
-    status,
-    ...(detail !== undefined ? { detail } : {}),
-    ...(instance !== undefined ? { instance } : {}),
-    ...(errors !== undefined ? { errors } : {}),
-  };
-}
-
-/**
- * The use case's deterministic 4xx: DomainError → ProblemDetails, or undefined
- * (→ 500). Exported so IdempotencyInterceptor stores exactly what this filter sends.
- *
- * Domain-agnostic note: this switch is author-specific by design (it's the
- * illustration). In a multi-domain app a new feature's DomainError tag would
- * fall through to 500. Scale this one of three ways:
- *   (a) give `DomainError` an abstract `toProblem(): { slug; title; status }`
- *       so each error maps itself and nothing switches on tags;
- *   (b) a tag→problem registry each feature module contributes to at boot;
- *   (c) keep per-domain filters. Pick one before you have a second domain.
- */
-export function domainProblem(e: DomainError, instance?: string): ProblemDetails | undefined {
-  const detail = e.message;
-  switch (e.tag) {
-    case "DuplicateAuthorError":
-      return problem({ slug: "duplicate-author", title: "Conflict", status: 409, detail, instance });
-    case "AuthorNameEmptyError":
-      return problem({ slug: "validation-error", title: "Unprocessable Entity", status: 422, detail, instance });
-    case "AuthorNotFoundError":
-      return problem({ slug: "not-found", title: "Not Found", status: 404, detail, instance });
-    default:
-      return undefined; // UnknownAuthorError and unmapped tags
-  }
-}
-
-@Catch()
-export class DomainExceptionFilter implements ExceptionFilter {
-  private readonly logger = new Logger(DomainExceptionFilter.name);
-
-  constructor(private readonly cls: ClsService) {}
-
-  private send(res: Response, body: ProblemDetails): void {
-    res.status(body.status).header("Content-Type", "application/problem+json");
-    // Correlation id → response header (CLS/pino request id), never the body.
-    // getId() is set per request by ClsModule's middleware (generateId: true);
-    // guard for setups without it so we never write an `undefined` header.
-    const requestId = this.cls.getId();
-    if (requestId) res.header("X-Request-Id", requestId);
-    res.json(body);
-  }
-
-  catch(exception: unknown, host: ArgumentsHost): void {
-    const http = host.switchToHttp();
-    const response = http.getResponse<Response>();
-    const request = http.getRequest<Request>();
-    const instance = request.url;
-
-    // 429 from @nestjs/throttler: its default body is NOT problem+json. Re-map
-    // it here so even rate-limit responses honour the error contract.
-    if (exception instanceof ThrottlerException) {
-      this.send(response, problem({
-        slug: "rate-limited",
-        title: "Too Many Requests",
-        status: HttpStatus.TOO_MANY_REQUESTS,
-        detail: "Rate limit exceeded; retry after the Retry-After interval",
-        instance,
-      }));
-      return;
-    }
-
-    if (exception instanceof HttpException) {
-      const status = exception.getStatus();
-      const raw = exception.getResponse();
-      // A string response → wrap it. An object response is assumed to already
-      // be a ProblemDetails-shaped body (e.g. ZodValidationPipe, Conflict
-      // exceptions thrown with a problem body); normalise `instance` onto it.
-      const body: ProblemDetails =
-        typeof raw === "string"
-          ? problem({ slug: "error", title: raw, status, detail: raw, instance })
-          : { ...(raw as ProblemDetails), instance };
-      this.send(response, body);
-      return;
-    }
-
-    // `instanceof DomainError` rules out third-party Error objects that
-    // might happen to carry a `tag` field; unmapped tags fall through to the 500 below.
-    if (exception instanceof DomainError) {
-      const body = domainProblem(exception, instance);
-      if (body) {
-        this.send(response, body);
-        return;
-      }
-      if (exception instanceof UnknownAuthorError) {
-        this.logger.error("Unexpected error:", exception.cause);
-      } else {
-        // New domain errors land here. Add a case to domainProblem() (or adopt
-        // toProblem()) before shipping; the request gets a 500 meanwhile.
-        this.logger.error(`Unhandled domain error tag "${exception.tag}":`, exception);
-      }
-    } else {
-      this.logger.error("Unhandled error:", exception);
-    }
-
-    this.send(response, problem({
-      slug: "internal-error", title: "Internal Server Error", status: 500,
-      detail: "An unexpected error occurred", instance,
-    }));
-  }
-}
-```
-
-> **DomainExceptionFilter now depends on `ClsService`** for the request id, so
-> register it via DI (`{ provide: APP_FILTER, useClass: DomainExceptionFilter }`)
-> rather than `new DomainExceptionFilter()` — see `examples-bootstrap.md`.
-
-### ProblemDetail OpenAPI DTO
-
-A documentation-only class so `@ApiResponse({ status, type: ProblemDetail })`
-renders the RFC 9457 error shape in the generated OpenAPI. It is never
-constructed at runtime — the filter emits plain objects via `problem()`.
-
-```typescript
-// src/inbound/http/filters/problem-detail.dto.ts
-import { ApiProperty } from "@nestjs/swagger";
-
-class ProblemErrorItem {
-  @ApiProperty({ example: "name" })
-  field!: string;
-
-  @ApiProperty({ example: "too_small" })
-  code!: string;
-
-  @ApiProperty({ example: "name is required" })
-  message!: string;
-}
-
-export class ProblemDetail {
-  @ApiProperty({ example: "https://api.example.com/errors/not-found" })
-  type!: string;
-
-  @ApiProperty({ example: "Not Found" })
-  title!: string;
-
-  @ApiProperty({ example: 404 })
-  status!: number;
-
-  @ApiProperty({ required: false, example: 'author with id "123" not found' })
-  detail?: string;
-
-  @ApiProperty({ required: false, example: "/v1/authors/123" })
-  instance?: string;
-
-  @ApiProperty({ required: false, type: [ProblemErrorItem] })
-  errors?: ProblemErrorItem[];
-}
-```
-
-## Inbound: Auth Guard (JWT with `jose`)
-
-```typescript
-// src/inbound/http/guards/jwt-auth.guard.ts
-//
-// `jose` (https://github.com/panva/jose) is the modern JWT/JOSE library:
-// EdDSA/ES256 first-class, ESM/CJS, JWK/JWKS, no CVE backlog. Prefer it
-// over `jsonwebtoken` (CJS-only, no native ES module support).
-//
-// Canonical example below is ASYMMETRIC (ES256 over a JWKS) — matches
-// api-design.md ("prefer ES256/EdDSA once multiple services verify"):
-// only the issuer holds the private key; verifiers fetch the public key
-// from the issuer's JWKS endpoint. `aud` and `iss` are validated so a
-// token minted for another audience can't be replayed here.
-import {
-  CanActivate, ExecutionContext, Injectable, UnauthorizedException,
-} from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import type { Request } from "express";
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
-import { z } from "zod";
-import type { AppConfig } from "../../../config";
-
-/**
- * Validate the decoded payload — never trust the JWT body just because
- * the signature checks out. Refuse anything we don't recognise.
- */
-const JwtPayload = z.object({
-  sub: z.string().min(1),
-  exp: z.number(),
-});
-
-// Augment Express's Request locally so we don't sprinkle `as any` everywhere.
-interface AuthedRequest extends Request {
-  userId?: string;
 }
 
 @Injectable()
-export class JwtAuthGuard implements CanActivate {
-  private readonly jwks: JWTVerifyGetKey;
-  private readonly audience: string;
-  private readonly issuer: string;
-
-  constructor(config: ConfigService<AppConfig, true>) {
-    // createRemoteJWKSet caches keys and refreshes on unknown `kid` rotation.
-    this.jwks = createRemoteJWKSet(new URL(config.get("JWT_JWKS_URL")));
-    this.audience = config.get("JWT_AUDIENCE");
-    this.issuer = config.get("JWT_ISSUER");
+export class SqlInbox extends Inbox {
+  constructor(private readonly db: Db) {
+    super();
   }
 
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<AuthedRequest>();
-    const authHeader = request.headers.authorization;
-    if (!authHeader?.startsWith("Bearer ")) {
-      throw new UnauthorizedException("Missing token");
-    }
+  async claim(consumer: string, messageId: string): Promise<boolean> {
+    const rows: unknown[] = await this.db.write((em) =>
+      em.query(`INSERT INTO inbox (consumer, message_id) VALUES ($1, $2) ON CONFLICT DO NOTHING RETURNING 1`, [consumer, messageId]),
+    );
+    return rows.length === 1;
+  }
+}
+```
 
+## Idempotency store
+
+```ts file=src/outbound/postgres/idempotency.store.ts
+import { Injectable } from "@nestjs/common";
+import { DomainError } from "../../domain/shared/errors.js";
+import { IdempotencyStore, type Acquired, type StoredResponse } from "../../domain/shared/idempotency.js";
+import { Db } from "./db.js";
+
+// Longer than REQUEST_TIMEOUT_MS (<= 30 s) plus the tail of a handler Node cannot cancel.
+const LEASE = "interval '60 seconds'";
+
+interface KeyRow { request_hash: string; completed_at: Date | null; status: number; response: Buffer }
+
+@Injectable()
+export class SqlIdempotencyStore extends IdempotencyStore {
+  constructor(private readonly db: Db) {
+    super();
+  }
+
+  acquire(scope: string, key: string, requestHash: string): Promise<Acquired> {
+    return this.db.outside(async (em) => {
+      // Only this insert, or a takeover of an expired lease on the same request, grants execution.
+      const [won]: { lease: string }[] = await em.query(
+        `INSERT INTO idempotency_keys AS k (scope, key, request_hash, lease_token, locked_until, expires_at)
+         VALUES ($1, $2, $3, gen_random_uuid(), now() + ${LEASE}, now() + interval '24 hours')
+         ON CONFLICT (scope, key) DO UPDATE SET lease_token = excluded.lease_token, locked_until = excluded.locked_until
+           WHERE k.completed_at IS NULL AND k.locked_until < now() AND k.request_hash = excluded.request_hash
+         RETURNING lease_token AS lease`,
+        [scope, key, requestHash],
+      );
+      if (won) return { kind: "new", lease: won.lease };
+      const [row]: KeyRow[] = await em.query(
+        `SELECT request_hash, completed_at, status, response FROM idempotency_keys WHERE scope = $1 AND key = $2`,
+        [scope, key],
+      );
+      if (!row) return { kind: "in_flight" }; // released meanwhile: the retry wins
+      if (row.request_hash !== requestHash) return { kind: "mismatch" };
+      if (!row.completed_at) return { kind: "in_flight" };
+      const stored: Omit<StoredResponse, "status"> = JSON.parse(row.response.toString("utf8"));
+      return { kind: "replay", response: { status: row.status, ...stored } };
+    });
+  }
+
+  async complete(scope: string, key: string, lease: string, response: StoredResponse): Promise<void> {
+    const stored = Buffer.from(JSON.stringify({ headers: response.headers, body: response.body }));
+    const [, completed]: [unknown[], number] = await this.db.write((em) =>
+      em.query(
+        `UPDATE idempotency_keys SET status = $4, response = $5, completed_at = now()
+         WHERE scope = $1 AND key = $2 AND lease_token = $3 AND completed_at IS NULL`,
+        [scope, key, lease, response.status, stored],
+      ),
+    );
+    if (completed !== 1) {
+      throw new DomainError("conflict", "the idempotency lease expired and was taken over", { code: "idempotency-in-flight" });
+    }
+  }
+
+  async release(scope: string, key: string, lease: string): Promise<void> {
+    await this.db.outside((em) =>
+      em.query(`DELETE FROM idempotency_keys WHERE scope = $1 AND key = $2 AND lease_token = $3 AND completed_at IS NULL`, [scope, key, lease]),
+    );
+  }
+
+  async purgeExpired(): Promise<number> {
+    const [, deleted]: [unknown[], number] = await this.db.outside((em) => em.query(`DELETE FROM idempotency_keys WHERE expires_at < now()`));
+    return deleted;
+  }
+}
+```
+
+## Outbox relay
+
+```ts file=src/outbound/postgres/outbox-relay.ts
+import { Injectable, Logger } from "@nestjs/common";
+import { metrics } from "@opentelemetry/api";
+import { DataSource } from "typeorm";
+
+export interface OutboxMessage {
+  readonly id: string;
+  readonly tenantId: string;
+  readonly aggregateId: string;
+  readonly aggregateSeq: number;
+  readonly type: string;
+  readonly version: number;
+  readonly payload: unknown;
+  readonly headers: Readonly<Record<string, string>>;
+  readonly attempts: number;
+}
+
+/** Delivery is at-least-once: consumers dedup by `id`. */
+export abstract class EventPublisher {
+  abstract publish(message: OutboxMessage): Promise<void>;
+}
+
+export class RelayOptions {
+  batchSize = 50;
+  maxAttempts = 10;
+  baseDelayMs = 1_000;
+  maxDelayMs = 300_000;
+  claimMs = 30_000;
+}
+
+const CLAIM = `
+  WITH heads AS (
+    SELECT o.id FROM outbox o
+    WHERE o.published_at IS NULL AND o.dead_lettered_at IS NULL AND o.next_attempt_at <= now()
+      AND NOT EXISTS (SELECT 1 FROM outbox p WHERE p.aggregate_id = o.aggregate_id AND p.aggregate_seq < o.aggregate_seq
+                        AND p.published_at IS NULL AND p.dead_lettered_at IS NULL)
+    ORDER BY o.next_attempt_at, o.id LIMIT $1
+    FOR UPDATE SKIP LOCKED)
+  UPDATE outbox SET next_attempt_at = now() + $2 * interval '1 millisecond' FROM heads WHERE outbox.id = heads.id
+  RETURNING outbox.id, outbox.tenant_id AS "tenantId", outbox.aggregate_id AS "aggregateId",
+    outbox.aggregate_seq AS "aggregateSeq", outbox.event_type AS "type", outbox.event_version AS "version",
+    outbox.payload, outbox.headers, outbox.attempts`;
+
+@Injectable()
+export class OutboxRelay {
+  private readonly logger = new Logger(OutboxRelay.name);
+  private oldestPendingSeconds = 0;
+
+  constructor(
+    private readonly db: DataSource,
+    private readonly publisher: EventPublisher,
+    private readonly options: RelayOptions,
+  ) {
+    metrics
+      .getMeter("outbox")
+      .createObservableGauge("outbox.oldest_pending.age", { unit: "s" })
+      .addCallback((gauge) => gauge.observe(this.oldestPendingSeconds));
+  }
+
+  async runOnce(): Promise<number> {
+    const [claimed]: [OutboxMessage[], number] = await this.db.query(CLAIM, [this.options.batchSize, this.options.claimMs]);
+    for (const message of claimed) {
+      try {
+        await this.publisher.publish(message);
+        await this.db.query(`UPDATE outbox SET published_at = now(), attempts = attempts + 1 WHERE id = $1`, [message.id]);
+      } catch (error) {
+        await this.recordFailure(message, error);
+      }
+    }
+    const [oldest]: { age: number }[] = await this.db.query(
+      `SELECT coalesce(extract(epoch FROM now() - min(created_at)), 0)::float8 AS age
+       FROM outbox WHERE published_at IS NULL AND dead_lettered_at IS NULL`,
+    );
+    this.oldestPendingSeconds = oldest?.age ?? 0;
+    return claimed.length;
+  }
+
+  private async recordFailure(message: OutboxMessage, error: unknown): Promise<void> {
+    const attempts = message.attempts + 1;
+    const dead = attempts >= this.options.maxAttempts;
+    const delayMs = Math.random() * Math.min(this.options.maxDelayMs, this.options.baseDelayMs * 2 ** attempts);
+    await this.db.query(
+      `UPDATE outbox SET attempts = $2, last_error = $3, next_attempt_at = now() + $4 * interval '1 millisecond',
+         dead_lettered_at = CASE WHEN $5::boolean THEN now() END
+       WHERE id = $1`,
+      [message.id, attempts, String(error).slice(0, 2_000), Math.round(delayMs), dead],
+    );
+    if (dead) this.logger.error({ outboxId: message.id, err: error }, "outbox event dead-lettered");
+  }
+}
+```
+
+## Problem documents
+
+The registry and the one renderer every error passes through, used by the filter and by the idempotency interceptor (a stored 4xx is exactly what the filter sends).
+
+```ts file=src/inbound/http/problem.ts
+import { HttpException, type Paramtype } from "@nestjs/common";
+import type { Request } from "express";
+import { METHODS, STATUS_CODES } from "node:http";
+import { DomainError, type ErrorKind } from "../../domain/shared/errors.js";
+
+/** api-design.md § Problem Types: each slug's status and fixed title. */
+const TYPES = {
+  "malformed-request": [400, "Malformed request"],
+  unauthenticated: [401, "Unauthenticated"],
+  forbidden: [403, "Forbidden"],
+  "not-found": [404, "Not found"],
+  "method-not-allowed": [405, "Method not allowed"],
+  "already-exists": [409, "Already exists"],
+  "invalid-transition": [409, "Invalid transition"],
+  "version-conflict": [409, "Version conflict"],
+  "idempotency-in-flight": [409, "Request in progress"],
+  "precondition-failed": [412, "Precondition failed"],
+  "payload-too-large": [413, "Payload too large"],
+  "unsupported-media-type": [415, "Unsupported media type"],
+  "validation-failed": [422, "Validation failed"],
+  "idempotency-key-mismatch": [422, "Idempotency key mismatch"],
+  "precondition-required": [428, "Precondition required"],
+  "rate-limited": [429, "Too many requests"],
+  internal: [500, "Internal error"],
+  unavailable: [503, "Service unavailable"],
+} as const;
+export type ProblemSlug = keyof typeof TYPES;
+
+const BY_KIND = {
+  invalid: "validation-failed",
+  malformed: "malformed-request",
+  forbidden: "forbidden",
+  not_found: "not-found",
+  conflict: "already-exists", // refined by the error's code
+  precondition_failed: "precondition-failed",
+  unavailable: "unavailable",
+} as const satisfies Record<ErrorKind, ProblemSlug>;
+
+/** Statuses with exactly one slug; an exception with any other status renders as about:blank. */
+const BY_STATUS: Partial<Record<number, ProblemSlug>> = {
+  400: "malformed-request", 401: "unauthenticated", 403: "forbidden", 404: "not-found", 405: "method-not-allowed",
+  412: "precondition-failed", 413: "payload-too-large", 415: "unsupported-media-type", 428: "precondition-required",
+  429: "rate-limited", 500: "internal", 503: "unavailable",
+};
+
+const GENERIC = "An unexpected error occurred";
+
+type FieldIssue = { pointer?: string; parameter?: string; detail: string; code: string };
+type Problem = { slug: ProblemSlug | number; detail: string; headers?: Record<string, string>; errors?: FieldIssue[] };
+
+export class ProblemException extends Error {
+  constructor(
+    readonly slug: ProblemSlug,
+    readonly detail: string,
+    readonly headers: Readonly<Record<string, string>> = {},
+  ) {
+    super(detail);
+  }
+}
+
+export class RequestValidationError extends Error {
+  constructor(
+    readonly issues: readonly { message: string; path?: readonly (PropertyKey | { key: PropertyKey })[] | undefined }[],
+    readonly source: Paramtype = "body",
+    readonly parameter = "",
+  ) {
+    super("request validation failed");
+  }
+}
+
+/** Every error becomes one problem document; anything unrecognized is a generic 500. */
+export function renderProblem(error: unknown, req: Request, baseUri: string) {
+  const { slug, detail, headers = {}, errors } = classify(error, req);
+  const [status, title] = typeof slug === "number" ? [slug, STATUS_CODES[slug] ?? "Error"] : TYPES[slug];
+  if (status === 401) headers["WWW-Authenticate"] ??= "Bearer";
+  if (status === 405) headers.Allow ??= allowedMethods(req).filter((method) => method !== req.method).join(", ");
+  if (status === 503 || slug === "idempotency-in-flight") headers["Retry-After"] ??= status === 503 ? "2" : "1";
+  const type = typeof slug === "number" ? "about:blank" : baseUri + slug;
+  const body = { type, title, status, detail, instance: req.originalUrl.split("?")[0], ...(errors && { errors }) };
+  return { status, headers: { "Content-Type": "application/problem+json", ...headers }, body };
+}
+
+function classify(error: unknown, req: Request): Problem {
+  if (error instanceof ProblemException) return { slug: error.slug, detail: error.detail, headers: { ...error.headers } };
+  if (error instanceof DomainError) return fromDomain(error);
+  if (error instanceof RequestValidationError) return fromValidation(error);
+  const status = error instanceof HttpException ? error.getStatus() : exposedStatus(error);
+  if (status === undefined || !(error instanceof Error)) return { slug: "internal", detail: GENERIC };
+  const allowed = status === 404 ? allowedMethods(req) : [];
+  // The router's 404: no route serves this method (a handler's own 404 stays one). Express has no 405.
+  if (status === 404 && !allowed.includes(req.method === "HEAD" ? "GET" : req.method)) {
+    return allowed.length > 0
+      ? { slug: "method-not-allowed", detail: `${req.method} is not supported here` }
+      : { slug: "not-found", detail: `no route for ${req.method} ${req.path}` };
+  }
+  const detail = status < 500 ? error.message : status === 503 ? "Temporarily unable to complete the request" : GENERIC;
+  return { slug: BY_STATUS[status] ?? status, detail };
+}
+
+const isSlug = (code: string): code is ProblemSlug => Object.hasOwn(TYPES, code);
+
+function fromDomain({ kind, code, field, message: detail }: DomainError): Problem {
+  if (kind === "invalid") return { slug: BY_KIND.invalid, detail, errors: [{ pointer: pointer(field ? [field] : []), detail, code }] };
+  return { slug: kind === "conflict" && isSlug(code) ? code : BY_KIND[kind], detail };
+}
+
+function fromValidation({ issues, source, parameter }: RequestValidationError): Problem {
+  if (source === "param") return { slug: "malformed-request", detail: `path parameter '${parameter}' is not a valid identifier` };
+  const errors = issues.flatMap((issue) => {
+    const path = (issue.path ?? []).map((segment) => String(typeof segment === "object" ? segment.key : segment));
+    const code = "code" in issue && typeof issue.code === "string" ? issue.code : "invalid";
+    // Zod reports unknown members on their parent; point at each member instead.
+    const keys = "keys" in issue && Array.isArray(issue.keys) ? issue.keys.map(String) : [undefined];
+    return keys.map((key): FieldIssue => {
+      const at = key === undefined ? path : [...path, key];
+      return source === "query"
+        ? { parameter: at[0] ?? parameter, detail: issue.message, code }
+        : { pointer: pointer(at), detail: issue.message, code };
+    });
+  });
+  return { slug: "validation-failed", detail: `${errors.length} invalid value(s)`, errors };
+}
+
+/** A JSON Pointer as a URI fragment (RFC 6901 § 6): `#` is the whole body. */
+const pointer = (path: readonly string[]) =>
+  path.length === 0 ? "#" : `#/${path.map((s) => s.replaceAll("~", "~0").replaceAll("/", "~1")).join("/")}`;
+
+/** body-parser's errors (`http-errors`) expose client faults: 400, 413, 415. */
+const exposedStatus = (error: unknown) =>
+  typeof error === "object" && error !== null && "expose" in error && error.expose === true &&
+  "status" in error && typeof error.status === "number" ? error.status : undefined;
+
+/** The methods the path's endpoints serve, skipping the catch-alls of module middleware. */
+function allowedMethods(req: Request): string[] {
+  const allowed = req.app.router.stack.flatMap((layer) => {
+    const methods = layer.route?.stack.map((handler) => handler.method.toUpperCase()) ?? [];
+    return methods.length > 0 && methods.length < METHODS.length && matches(layer, req.path) ? methods : [];
+  });
+  return [...new Set(allowed)].toSorted();
+}
+
+// Express 5's Layer#match(path) is missing from @types/express.
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a typed view of a runtime method
+const matches = (layer: object, path: string) => (layer as { match(path: string): boolean }).match(path);
+```
+
+## Filter, validation pipe and edge middleware
+
+```ts file=src/inbound/http/problem.filter.ts
+import { Catch, Logger, type ArgumentsHost, type ExceptionFilter } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { HttpAdapterHost } from "@nestjs/core";
+import type { Request, Response } from "express";
+import type { Env } from "../../config.js";
+import { renderProblem } from "./problem.js";
+
+@Catch()
+export class ProblemFilter implements ExceptionFilter {
+  private readonly logger = new Logger(ProblemFilter.name);
+  private readonly baseUri: string;
+
+  constructor(
+    private readonly adapterHost: HttpAdapterHost,
+    config: ConfigService<Env, true>,
+  ) {
+    this.baseUri = config.get("PROBLEM_BASE_URI", { infer: true });
+  }
+
+  catch(error: unknown, host: ArgumentsHost): void {
+    if (host.getType() !== "http") throw error;
+    const req = host.switchToHttp().getRequest<Request>();
+    const res = host.switchToHttp().getResponse<Response>();
+    if (res.headersSent) return; // the deadline answered first
+    const problem = renderProblem(error, req, this.baseUri);
+    // Once, here. A probe's 503 is expected while starting or draining.
+    if (problem.status >= 500 && !req.path.startsWith("/health")) this.logger.error({ err: error }, "request failed");
+    for (const [name, value] of Object.entries(problem.headers)) res.setHeader(name, value);
+    this.adapterHost.httpAdapter.reply(res, problem.body, problem.status);
+  }
+}
+```
+
+```ts file=src/inbound/http/validation.pipe.ts
+import { StandardSchemaValidationPipe, type ArgumentMetadata } from "@nestjs/common";
+import { RequestValidationError } from "./problem.js";
+
+/** The exception factory never learns the source, so transform() adds it: param → 400, else 422. */
+export class SchemaValidationPipe extends StandardSchemaValidationPipe {
+  constructor() {
+    super({ exceptionFactory: (issues) => new RequestValidationError(issues) });
+  }
+
+  override async transform<T>(value: T, metadata: ArgumentMetadata): Promise<T> {
     try {
-      const { payload } = await jwtVerify(authHeader.slice(7), this.jwks, {
-        // Pin asymmetric algorithms — never accept "none" or symmetric HS*.
-        algorithms: ["ES256"], // or ["EdDSA"]
-        audience: this.audience,
-        issuer: this.issuer,
-      });
-      const validated = JwtPayload.parse(payload);
-      request.userId = validated.sub;
-      return true;
-    } catch {
-      throw new UnauthorizedException("Invalid token");
+      return await super.transform(value, metadata);
+    } catch (error) {
+      if (!(error instanceof RequestValidationError)) throw error;
+      throw new RequestValidationError(error.issues, metadata.type, metadata.data);
     }
   }
 }
 ```
 
-For OAuth / multiple strategies in the same app, layer `@nestjs/passport` on top — the guard above stays as the JWT case.
+```ts file=src/inbound/http/edge.ts
+import { Injectable, type CallHandler, type ExecutionContext, type NestInterceptor } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { NextFunction, Request, Response } from "express";
+import { randomUUID } from "node:crypto";
+import { throwError, timeout, type Observable } from "rxjs";
+import type { Env } from "../../config.js";
+import { ProblemException } from "./problem.js";
 
-### Single-service / dev fallback: HS256 symmetric secret
+export function assignRequestId(req: Request, res: Response, next: NextFunction): void {
+  const inbound = req.header("x-request-id");
+  req.id = inbound !== undefined && /^[A-Za-z0-9._:-]{1,128}$/.test(inbound) ? inbound : randomUUID();
+  res.setHeader("X-Request-Id", req.id);
+  next();
+}
 
-When **one** service both issues and verifies tokens (no JWKS to publish),
-a symmetric secret is acceptable — see api-design.md. Note `createSecretKey`
-and `KeyObject` are exported by **`node:crypto`**, not `jose`; the simplest
-form skips the key object entirely and passes the encoded secret to
-`jwtVerify`:
+export function requireJsonBody(req: Request, _res: Response, next: NextFunction): void {
+  const hasBody = req.headers["transfer-encoding"] !== undefined || Number(req.headers["content-length"] ?? 0) > 0;
+  const json = /^application\/(?:[\w.-]+\+)?json\s*(?:;|$)/i.test(req.headers["content-type"] ?? "");
+  next(hasBody && !json ? new ProblemException("unsupported-media-type", "send the body as application/json") : undefined);
+}
 
-```typescript
-import { jwtVerify } from "jose";
-// Option A — encode the secret inline (simplest):
-const secret = new TextEncoder().encode(config.get("JWT_SECRET"));
-// Option B — a reusable KeyObject (from node:crypto, NOT jose):
-//   import { createSecretKey, type KeyObject } from "node:crypto";
-//   const secret: KeyObject = createSecretKey(config.get("JWT_SECRET"), "utf-8");
+@Injectable()
+export class DeadlineInterceptor implements NestInterceptor {
+  private readonly ms: number;
 
-const { payload } = await jwtVerify(authHeader.slice(7), secret, {
-  algorithms: ["HS256"], // symmetric — single-service / dev only
+  constructor(config: ConfigService<Env, true>) {
+    this.ms = config.get("REQUEST_TIMEOUT_MS", { infer: true });
+  }
+
+  intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    return next.handle().pipe(timeout({ first: this.ms, with: () => throwError(expired) }));
+  }
+}
+
+const expired = () => new ProblemException("unavailable", "the request deadline passed");
+```
+
+## Bearer auth and the Actor
+
+```ts file=src/inbound/http/auth.ts
+import { createParamDecorator, Injectable, type CanActivate, type ExecutionContext } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { Reflector } from "@nestjs/core";
+import type { Request, Response } from "express";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTVerifyGetKey, type JWTVerifyOptions } from "jose";
+import { z } from "zod";
+import type { Env } from "../../config.js";
+import type { Actor } from "../../domain/shared/ports.js";
+import { ProblemException } from "./problem.js";
+
+declare module "express" {
+  interface Request {
+    actor?: Actor;
+  }
+}
+
+export const Public = Reflector.createDecorator<boolean>({ transform: () => true });
+
+const Claims = z.object({
+  sub: z.string().min(1).max(255).refine((sub) => !sub.includes("\u0000")), // stored as author_id
+  tid: z.uuid(),
+  roles: z.array(z.string()).default([]),
+});
+
+@Injectable()
+export class BearerAuthGuard implements CanActivate {
+  private readonly keys: JWTVerifyGetKey;
+  private readonly options: JWTVerifyOptions;
+
+  constructor(
+    private readonly reflector: Reflector,
+    config: ConfigService<Env, true>,
+  ) {
+    const jwt = config.get("jwt", { infer: true });
+    this.options = { issuer: jwt.issuer, audience: jwt.audience, requiredClaims: ["exp", "sub"], clockTolerance: 5 };
+    if (jwt.mode === "jwks") {
+      this.keys = remoteKeys(new URL(jwt.jwksUrl));
+      this.options.algorithms = ["ES256", "EdDSA"];
+    } else {
+      const secret = new TextEncoder().encode(jwt.secret);
+      this.keys = () => Promise.resolve(secret);
+      this.options.algorithms = ["HS256"];
+    }
+  }
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    if (this.reflector.getAllAndOverride(Public, [context.getHandler(), context.getClass()])) return true;
+    const req = context.switchToHttp().getRequest<Request>();
+    const token = /^Bearer +(\S+)$/i.exec(req.header("authorization") ?? "")?.[1];
+    if (token === undefined) throw new ProblemException("unauthenticated", "a bearer token is required");
+    req.actor = await this.verify(token);
+    context.switchToHttp().getResponse<Response>().setHeader("Cache-Control", "no-store");
+    return true;
+  }
+
+  private async verify(token: string): Promise<Actor> {
+    try {
+      const { payload } = await jwtVerify(token, this.keys, this.options);
+      const claims = Claims.parse(payload);
+      return { tenantId: claims.tid, subject: claims.sub, roles: claims.roles };
+    } catch (error) {
+      if (error instanceof KeySetUnavailable) throw new ProblemException("unavailable", "token keys are unavailable");
+      throw new ProblemException("unauthenticated", "the access token is invalid or expired", {
+        "WWW-Authenticate": 'Bearer error="invalid_token"',
+      });
+    }
+  }
+}
+
+class KeySetUnavailable extends Error {}
+
+function remoteKeys(url: URL): JWTVerifyGetKey {
+  const keys = createRemoteJWKSet(url, { timeoutDuration: 2_000, cooldownDuration: 30_000 });
+  return async (header, token) => {
+    try {
+      return await keys(header, token);
+    } catch (error) {
+      const tokenFault = [errors.JWKSNoMatchingKey, errors.JWKSMultipleMatchingKeys, errors.JOSENotSupported];
+      if (tokenFault.some((type) => error instanceof type)) throw error;
+      throw new KeySetUnavailable("the key set could not be fetched", { cause: error });
+    }
+  };
+}
+
+export const CurrentActor = createParamDecorator((_data: unknown, context: ExecutionContext): Actor => {
+  const actor = context.switchToHttp().getRequest<Request>().actor;
+  if (!actor) throw new Error("@CurrentActor() on a route without bearer auth");
+  return actor;
 });
 ```
 
-Prefer the asymmetric guard above for anything multi-service.
+## Idempotency interceptor
 
-### Applying the guard to a protected route
+```ts file=src/inbound/http/idempotency.interceptor.ts
+import { Injectable, type CallHandler, type ExecutionContext, type NestInterceptor } from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import type { Request, Response } from "express";
+import { createHash } from "node:crypto";
+import { from, lastValueFrom, type Observable } from "rxjs";
+import type { Env } from "../../config.js";
+import { IdempotencyStore } from "../../domain/shared/idempotency.js";
+import { UnitOfWork } from "../../domain/shared/ports.js";
+import { ProblemException, renderProblem } from "./problem.js";
 
-`addBearerAuth()` in `main.ts` only *registers* the scheme — Swagger won't mark
-any operation as protected until you decorate it. Apply `@UseGuards(JwtAuthGuard)`
-(enforcement) **and** `@ApiBearerAuth()` (documentation) together on each
-protected handler. The author CRUD routes in this skill are intentionally public;
-a mutation that must be authenticated looks like this:
+@Injectable()
+export class IdempotencyInterceptor implements NestInterceptor {
+  private readonly baseUri: string;
 
-```typescript
-import { UseGuards } from "@nestjs/common";
-import { ApiBearerAuth } from "@nestjs/swagger";
-import { JwtAuthGuard } from "../guards/jwt-auth.guard";
+  constructor(
+    private readonly store: IdempotencyStore,
+    private readonly uow: UnitOfWork,
+    config: ConfigService<Env, true>,
+  ) {
+    this.baseUri = config.get("PROBLEM_BASE_URI", { infer: true });
+  }
 
-@Post()
-@UseGuards(JwtAuthGuard)   // enforce: 401 without a valid bearer token
-@ApiBearerAuth()           // document: shows the lock icon + 401 in OpenAPI
-async create(/* ... */) { /* ... */ }
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+    const req = context.switchToHttp().getRequest<Request>();
+    const res = context.switchToHttp().getResponse<Response>();
+    const key = req.header("idempotency-key");
+    if (key === undefined) return next.handle();
+    if (!req.actor) throw new Error("IdempotencyInterceptor needs an authenticated route");
+    if (!/^[\x21-\x7E]{1,255}$/.test(key)) {
+      throw new ProblemException("malformed-request", "Idempotency-Key must be 1-255 visible ASCII characters");
+    }
+    const scope = `${req.actor.tenantId}:${req.actor.subject}`;
+    const hash = createHash("sha256").update(`${req.method} ${req.path}\n${canonicalJson(req.body ?? null)}`).digest("hex");
+    return from(this.execute(scope, key, hash, req, res, next));
+  }
+
+  private async execute(scope: string, key: string, hash: string, req: Request, res: Response, next: CallHandler) {
+    const acquired = await this.store.acquire(scope, key, hash);
+    switch (acquired.kind) {
+      case "mismatch":
+        throw new ProblemException("idempotency-key-mismatch", "this key was used for a different request");
+      case "in_flight":
+        throw new ProblemException("idempotency-in-flight", "a request with this key is still running");
+      case "replay":
+        res.status(acquired.response.status).setHeader("Idempotent-Replayed", "true");
+        for (const [name, value] of Object.entries(acquired.response.headers)) res.setHeader(name, value);
+        return acquired.response.body;
+    }
+    const { lease } = acquired; // "new": this request won the key
+    try {
+      return await this.uow.run(async () => {
+        const body: unknown = await lastValueFrom(next.handle(), { defaultValue: undefined });
+        if (res.headersSent) throw new Error("the deadline answered first; not storing");
+        const headers: Record<string, string> = { "content-type": "application/json; charset=utf-8" };
+        for (const name of ["location", "etag"]) {
+          const value = res.getHeader(name);
+          if (typeof value === "string") headers[name] = value;
+        }
+        await this.store.complete(scope, key, lease, { status: res.statusCode, headers, body });
+        return body;
+      });
+    } catch (error) {
+      const problem = renderProblem(error, req, this.baseUri);
+      const stored = problem.status < 500 &&
+        (await this.uow.run(() => this.store.complete(scope, key, lease, problem)).then(() => true, () => false));
+      if (!stored) await this.store.release(scope, key, lease).catch(() => undefined);
+      throw error;
+    }
+  }
+}
+
+const canonicalJson = (value: unknown): string =>
+  JSON.stringify(value, (_key, v: unknown) =>
+    v !== null && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v).toSorted(([a], [b]) => (a < b ? -1 : 1)))
+      : v,
+  );
 ```
 
-If *no* route is protected, drop `addBearerAuth()` from `main.ts` so the OpenAPI
-doc doesn't advertise a security scheme nothing uses.
+## Schemas, controller and OpenAPI
 
-## Inbound: Healthcheck
+```ts file=src/inbound/http/articles.schemas.ts
+import type { Response } from "express";
+import { z } from "zod";
+import type { Article } from "../../domain/publishing/article.js";
 
-```typescript
-// src/inbound/http/health/health.controller.ts
-import { Controller, Get } from "@nestjs/common";
+export const ArticleId = z.uuid();
+
+export const CreateArticleBody = z
+  .strictObject({ slug: z.string().max(100), title: z.string().max(200), body: z.string().max(20_000) })
+  .meta({ id: "CreateArticle" });
+export type CreateArticleBody = z.infer<typeof CreateArticleBody>;
+
+/** JSON Merge Patch: absent = unchanged, `body: null` clears, `title: null` is invalid. */
+export const UpdateArticleBody = z
+  .strictObject({ title: z.string().max(200).optional(), body: z.string().max(20_000).nullable().optional() })
+  .meta({ id: "UpdateArticle" });
+export type UpdateArticleBody = z.infer<typeof UpdateArticleBody>;
+
+export const ListArticlesQuery = z.strictObject({
+  limit: z.coerce.number().int().min(1).default(20).transform((limit) => Math.min(limit, 100))
+    .meta({ description: "Page size; a value above 100 is clamped to 100" }),
+  cursor: z.string().optional(), // the adapter decodes it: anything it did not issue is a 400
+});
+export type ListArticlesQuery = z.infer<typeof ListArticlesQuery>;
+
+const ArticleView = z
+  .object({
+    id: z.uuid(),
+    author_id: z.string(),
+    slug: z.string(),
+    title: z.string(),
+    body: z.string(),
+    status: z.enum(["draft", "published", "archived"]),
+    version: z.int(),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime(),
+    published_at: z.iso.datetime().nullable(),
+  })
+  .meta({ id: "Article" });
+
+export const ArticleEnvelope = z.object({ data: ArticleView }).meta({ id: "ArticleEnvelope" });
+export const ArticlePage = z
+  .object({ data: z.array(ArticleView), meta: z.object({ limit: z.int(), next_cursor: z.string().nullable(), has_more: z.boolean() }) })
+  .meta({ id: "ArticlePage" });
+
+export const toView = (a: Article): z.output<typeof ArticleView> => ({
+  id: a.id,
+  author_id: a.authorId,
+  slug: a.slug,
+  title: a.title,
+  body: a.body,
+  status: a.status,
+  version: a.version,
+  created_at: a.createdAt.toISOString(),
+  updated_at: a.updatedAt.toISOString(),
+  published_at: a.publishedAt?.toISOString() ?? null,
+});
+
+export function envelope(res: Response, article: Article) {
+  res.setHeader("ETag", `"${article.version}"`);
+  return { data: toView(article) };
+}
+
+/** If-Match by strong comparison with `"<version>"` (RFC 9110): absent or `*` sets no condition; else the versions listed. */
+export function ifMatchVersions(header: string | undefined): number[] | undefined {
+  if (header === undefined || header.trim() === "*") return undefined;
+  return header.split(",").flatMap((tag) => /^\s*"([1-9]\d{0,8})"\s*$/.exec(tag)?.[1] ?? []).map(Number);
+}
+```
+
+```ts file=src/inbound/http/articles.controller.ts
+import { Body, Controller, Get, Headers, HttpCode, Param, Patch, Post, Query, Res, UseInterceptors } from "@nestjs/common";
+import { ApiBearerAuth, ApiHeader, ApiTags } from "@nestjs/swagger";
+import type { Response } from "express";
+import { ArticleService } from "../../domain/publishing/article-service.js";
+import type { Actor } from "../../domain/shared/ports.js";
 import {
-  HealthCheck,
-  HealthCheckService,
-  TypeOrmHealthIndicator,
-} from "@nestjs/terminus";
-import { ApiTags } from "@nestjs/swagger";
+  ArticleEnvelope, ArticleId, ArticlePage, CreateArticleBody, envelope, ifMatchVersions, ListArticlesQuery, toView,
+  UpdateArticleBody,
+} from "./articles.schemas.js";
+import { CurrentActor } from "./auth.js";
+import { IdempotencyInterceptor } from "./idempotency.interceptor.js";
+import { ApiProblems, ApiResult } from "./openapi.js";
 
-@ApiTags("health")
+@ApiTags("articles")
+@ApiBearerAuth()
+@ApiProblems(401, 404, 500, 503)
+@Controller("v1/articles")
+export class ArticlesController {
+  constructor(private readonly articles: ArticleService) {}
+
+  @Post()
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiHeader({ name: "Idempotency-Key", required: false })
+  @ApiResult(201, ArticleEnvelope, "Location", "ETag", "Idempotent-Replayed")
+  @ApiProblems(400, 409, 413, 415, 422)
+  async create(@CurrentActor() actor: Actor, @Body({ schema: CreateArticleBody }) body: CreateArticleBody, @Res({ passthrough: true }) res: Response) {
+    const article = await this.articles.create(actor, body);
+    res.location(`/v1/articles/${article.id}`);
+    return envelope(res, article);
+  }
+
+  @Get()
+  @ApiResult(200, ArticlePage)
+  @ApiProblems(400, 422)
+  async list(@CurrentActor() actor: Actor, @Query({ schema: ListArticlesQuery }) query: ListArticlesQuery) {
+    const page = await this.articles.list(actor, query.cursor ?? null, query.limit);
+    const meta = { limit: query.limit, next_cursor: page.nextCursor, has_more: page.nextCursor !== null };
+    return { data: page.items.map(toView), meta };
+  }
+
+  @Get(":id")
+  @ApiResult(200, ArticleEnvelope, "ETag")
+  @ApiResult(304, undefined, "ETag")
+  @ApiProblems(400)
+  async get(@CurrentActor() actor: Actor, @Param("id", { schema: ArticleId }) id: string, @Res({ passthrough: true }) res: Response) {
+    return envelope(res, await this.articles.get(actor, id));
+  }
+
+  @Patch(":id")
+  @ApiHeader({ name: "If-Match", required: false })
+  @ApiResult(200, ArticleEnvelope, "ETag")
+  @ApiProblems(400, 403, 409, 412, 413, 415, 422)
+  async update(
+    @CurrentActor() actor: Actor,
+    @Param("id", { schema: ArticleId }) id: string,
+    @Body({ schema: UpdateArticleBody }) patch: UpdateArticleBody,
+    @Headers("if-match") ifMatch: string | undefined,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return envelope(res, await this.articles.update(actor, id, patch, ifMatchVersions(ifMatch)));
+  }
+
+  @Post(":id/publish")
+  @HttpCode(200)
+  @UseInterceptors(IdempotencyInterceptor)
+  @ApiHeader({ name: "Idempotency-Key", required: false })
+  @ApiResult(200, ArticleEnvelope, "ETag", "Idempotent-Replayed")
+  @ApiProblems(400, 403, 409, 422)
+  async publish(@CurrentActor() actor: Actor, @Param("id", { schema: ArticleId }) id: string, @Res({ passthrough: true }) res: Response) {
+    return envelope(res, await this.articles.publish(actor, id));
+  }
+}
+```
+
+```ts file=src/inbound/http/openapi.ts
+import { applyDecorators, type INestApplication } from "@nestjs/common";
+import { ApiResponse, DocumentBuilder, SwaggerModule, type OpenAPIObject, type StandardSchemaObject } from "@nestjs/swagger";
+import { STATUS_CODES } from "node:http";
+import { z } from "zod";
+
+const Problem = z.object({
+  type: z.url(),
+  title: z.string(),
+  status: z.int(),
+  detail: z.string(),
+  instance: z.string(),
+  errors: z.array(z.object({ pointer: z.string().optional(), parameter: z.string().optional(), detail: z.string(), code: z.string() })).optional(),
+});
+
+/** Response headers by name; every response carries X-Request-Id. */
+const headers = (...names: string[]) =>
+  Object.fromEntries(["X-Request-Id", ...names].map((name) => [name, { schema: { type: "string" as const } }]));
+
+export const ApiResult = (status: number, standardSchema?: StandardSchemaObject, ...headerNames: string[]) =>
+  ApiResponse({ status, description: STATUS_CODES[status], standardSchema, headers: headers(...headerNames) });
+
+export const ApiProblems = (...statuses: number[]) =>
+  applyDecorators(
+    ...statuses.map((status) =>
+      ApiResponse({
+        status,
+        description: STATUS_CODES[status],
+        headers: headers(...(status === 409 || status === 503 ? ["Retry-After"] : [])),
+        content: { "application/problem+json": { schema: { $ref: "#/components/schemas/Problem" } } },
+      }),
+    ),
+  );
+
+export function buildOpenApi(app: INestApplication): OpenAPIObject {
+  const document = SwaggerModule.createDocument(app, new DocumentBuilder().setTitle("Publishing API").setVersion("1").addBearerAuth().build());
+  const problem: object = z.toJSONSchema(Problem, { target: "openapi-3.0" });
+  document.components = { ...document.components, schemas: { ...document.components?.schemas, Problem: problem } };
+  return document;
+}
+```
+
+## Moderation webhook
+
+```ts file=src/inbound/webhooks/moderation.webhook.ts
+import {
+  Body, Controller, Headers, HttpCode, Injectable, Logger, Post, UseGuards, type CanActivate, type ExecutionContext,
+  type RawBodyRequest,
+} from "@nestjs/common";
+import { ConfigService } from "@nestjs/config";
+import { ApiExcludeController } from "@nestjs/swagger";
+import type { Request } from "express";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { z } from "zod";
+import type { Env } from "../../config.js";
+import { ModerationService } from "../../domain/publishing/article-service.js";
+import { Clock } from "../../domain/shared/ports.js";
+import { Public } from "../http/auth.js";
+import { ProblemException } from "../http/problem.js";
+
+/** Standard Webhooks; any configured secret may match, for rotation. */
+@Injectable()
+export class WebhookSignatureGuard implements CanActivate {
+  private readonly secrets: Buffer[];
+
+  constructor(
+    config: ConfigService<Env, true>,
+    private readonly clock: Clock,
+  ) {
+    this.secrets = config.get("WEBHOOK_SECRETS", { infer: true }); // decoded and checked by config.ts
+  }
+
+  canActivate(context: ExecutionContext): boolean {
+    const req = context.switchToHttp().getRequest<RawBodyRequest<Request>>();
+    const id = req.header("webhook-id") ?? "";
+    const timestamp = req.header("webhook-timestamp") ?? "";
+    if (!/^[\x21-\x7E]{1,255}$/.test(id) || !/^\d{1,12}$/.test(timestamp) || !req.rawBody) throw reject("missing headers");
+    if (Math.abs(this.clock.now().getTime() / 1000 - Number(timestamp)) > 300) throw reject("timestamp out of range");
+    const signed = Buffer.concat([Buffer.from(`${id}.${timestamp}.`), req.rawBody]);
+    const expected = this.secrets.map((secret) => createHmac("sha256", secret).update(signed).digest());
+    const offered = (req.header("webhook-signature") ?? "")
+      .split(" ")
+      .filter((entry) => entry.startsWith("v1,"))
+      .map((entry) => Buffer.from(entry.slice(3), "base64"));
+    if (!offered.some((sig) => expected.some((mac) => mac.length === sig.length && timingSafeEqual(mac, sig)))) {
+      throw reject("signature mismatch");
+    }
+    return true;
+  }
+}
+
+const reject = (detail: string) =>
+  new ProblemException("unauthenticated", `webhook rejected: ${detail}`, { "WWW-Authenticate": 'Signature realm="webhooks"' });
+
+// Not strict: senders add fields.
+const Verdict = z.object({ tenant_id: z.uuid(), article_id: z.uuid(), verdict: z.enum(["approved", "rejected"]) });
+
+@ApiExcludeController()
+@Public()
+@Controller("internal/webhooks")
+export class ModerationWebhookController {
+  private readonly logger = new Logger(ModerationWebhookController.name);
+
+  constructor(private readonly moderation: ModerationService) {}
+
+  @Post("moderation")
+  @HttpCode(204)
+  @UseGuards(WebhookSignatureGuard)
+  async receive(@Headers("webhook-id") id: string, @Body() body: unknown): Promise<void> {
+    const message = Verdict.safeParse(body);
+    if (!message.success) {
+      // Permanent: record and acknowledge.
+      this.logger.warn({ webhookId: id, issues: message.error.issues }, "moderation payload refused");
+      return;
+    }
+    const { tenant_id: tenantId, article_id: articleId, verdict } = message.data;
+    const outcome = await this.moderation.handle({ id, tenantId, articleId, verdict });
+    this.logger.log({ webhookId: id, outcome }, "moderation verdict");
+  }
+}
+```
+
+## Health probes
+
+```ts file=src/inbound/http/health.ts
+import { Controller, Get, Injectable, type OnApplicationBootstrap } from "@nestjs/common";
+import { ApiExcludeController } from "@nestjs/swagger";
+import { HealthCheck, HealthCheckService, HealthIndicatorService } from "@nestjs/terminus";
+import { DataSource } from "typeorm";
+import { Public } from "./auth.js";
+
+@Injectable()
+export class ReadinessLatch implements OnApplicationBootstrap {
+  private ready = false;
+
+  constructor(
+    private readonly db: DataSource,
+    private readonly indicators: HealthIndicatorService,
+  ) {}
+
+  async onApplicationBootstrap(): Promise<void> {
+    if (await this.db.showMigrations()) throw new Error("pending migrations: run the release step first");
+    this.ready = true;
+  }
+
+  check() {
+    const indicator = this.indicators.check("instance");
+    return this.ready ? indicator.up() : indicator.down({ reason: "starting" });
+  }
+}
+
+@ApiExcludeController()
+@Public()
 @Controller("health")
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
-    private readonly db: TypeOrmHealthIndicator,
+    private readonly latch: ReadinessLatch,
   ) {}
 
-  /** Liveness — the process is up. Always 200. */
   @Get("live")
   live() {
     return { status: "ok" };
   }
 
-  /** Readiness — can it serve traffic? 503 when DB is unreachable. */
   @Get("ready")
   @HealthCheck()
   ready() {
-    return this.health.check([
-      () => this.db.pingCheck("database", { timeout: 1000 }),
-    ]);
+    return this.health.check([() => this.latch.check()]);
   }
 }
 ```
-
-## Inbound: Job Handler (non-HTTP inbound adapter)
-
-```typescript
-// src/inbound/jobs/sync-author.processor.ts
-import { Processor, WorkerHost } from "@nestjs/bullmq";
-import type { Job } from "bullmq";
-import { AuthorName } from "../../domain/authors/models";
-import { AuthorService } from "../../domain/authors/ports";
-
-@Processor("author-sync")
-export class SyncAuthorProcessor extends WorkerHost {
-  constructor(private readonly authorService: AuthorService) {
-    super();
-  }
-
-  async process(job: Job<{ authorName: string; source: string }>) {
-    const domainReq = { name: AuthorName.create(job.data.authorName) };
-    await this.authorService.createAuthor(domainReq);
-  }
-}
-```
-
----
-
-## Outbound: UnitOfWork Adapter (TypeORM + nestjs-cls)
-
-For cross-repository atomicity, the `UnitOfWork` port wraps `DataSource.transaction(...)` and propagates the scoped `EntityManager` to participating repositories via `nestjs-cls`. The service composes the writes; the adapter handles the plumbing.
-
-```typescript
-// src/outbound/typeorm/typeorm-unit-of-work.ts
-import { Injectable } from "@nestjs/common";
-import { DataSource, EntityManager } from "typeorm";
-import { ClsService } from "nestjs-cls";
-import { UnitOfWork } from "../../domain/shared/unit-of-work";
-
-/**
- * CLS key for the active EntityManager. Every CLS-aware repository reads
- * this — if present, the repo participates in the active tx; if absent,
- * the repo uses its default manager (i.e. a fresh connection per call).
- */
-export const TYPEORM_EM_KEY = "typeorm:em";
-
-// Published when a unit of work ends: work that outlives its callback (a handler still
-// running after a timeout) fails loudly instead of falling through to an autocommit connection.
-const CLOSED_EM = new Proxy({} as EntityManager, {
-  get() { throw new Error("unit of work already finished"); },
-});
-
-@Injectable()
-export class TypeOrmUnitOfWork extends UnitOfWork {
-  constructor(
-    private readonly dataSource: DataSource,
-    private readonly cls: ClsService,
-  ) { super(); }
-
-  run<T>(fn: () => Promise<T>): Promise<T> {
-    // REQUIRED propagation: if a UoW is already active (nested uow.run), join
-    // it — run the callback in the SAME transaction rather than opening a
-    // second, independent one. Without this, a nested run() would commit/roll
-    // back on its own boundary and the two writes wouldn't be atomic.
-    const existing = this.cls.get<EntityManager>(TYPEORM_EM_KEY);
-    if (existing) {
-      return fn();
-    }
-
-    // No active UoW → open a fresh transaction and publish its scoped EM.
-    // DataSource.transaction opens the tx and supplies the scoped EM.
-    // cls.run nests a CLS frame inside the tx so this.em() in repos sees it.
-    return this.dataSource.transaction(async (em) =>
-      this.cls.run(async () => {
-        this.cls.set(TYPEORM_EM_KEY, em);
-        try {
-          return await fn();
-        } finally {
-          this.cls.set(TYPEORM_EM_KEY, CLOSED_EM);
-        }
-      }),
-    );
-  }
-}
-```
-
-> **CLS scope:** the request's outer CLS frame (request_id, userId from `ClsModule.forRoot({ middleware: ... })`) propagates *into* `cls.run(...)` automatically — `nestjs-cls` runs nested frames as children of the active store. The new frame just adds the scoped `EntityManager` on top.
-
-## Outbound: Outbox via UoW
-
-The outbox row must commit atomically with the aggregate write. With UoW, the service composes both — no special repository shape needed.
-
-```typescript
-// src/domain/shared/events.ts — plain data, no infra deps
-export interface DomainEvent {
-  readonly aggregateType: string;
-  readonly aggregateId: string;
-  readonly eventType: string;
-  readonly payload: Record<string, unknown>;
-}
-```
-
-```typescript
-// src/domain/shared/outbox.ts — port
-import type { DomainEvent } from "./events";
-
-export abstract class OutboxRepository {
-  abstract enqueue(events: readonly DomainEvent[]): Promise<void>;
-}
-```
-
-```typescript
-// src/outbound/typeorm/tracing.ts
-//
-// Format the active OTel span as a W3C `traceparent` header so the outbox
-// row carries the originating request's trace context. Returns null if no
-// span is active (test runs, scheduled jobs without auto-instrumentation).
-import { trace } from "@opentelemetry/api";
-
-export function currentTraceparent(): string | null {
-  const ctx = trace.getActiveSpan()?.spanContext();
-  if (!ctx) return null;
-  const flags = ctx.traceFlags.toString(16).padStart(2, "0");
-  return `00-${ctx.traceId}-${ctx.spanId}-${flags}`;
-}
-```
-
-```typescript
-// src/outbound/typeorm/typeorm-outbox.repository.ts
-import { Injectable } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { ClsService } from "nestjs-cls";
-import { EntityManager, Repository } from "typeorm";
-import { OutboxEntity } from "./entities/outbox.entity";
-import { TYPEORM_EM_KEY } from "./typeorm-unit-of-work";
-import { currentTraceparent } from "./tracing";
-import { OutboxRepository } from "../../domain/shared/outbox";
-import type { DomainEvent } from "../../domain/shared/events";
-
-@Injectable()
-export class TypeOrmOutboxRepository extends OutboxRepository {
-  constructor(
-    @InjectRepository(OutboxEntity)
-    private readonly repo: Repository<OutboxEntity>,
-    private readonly cls: ClsService,
-  ) { super(); }
-
-  private em(): EntityManager {
-    return this.cls.get<EntityManager>(TYPEORM_EM_KEY) ?? this.repo.manager;
-  }
-
-  async enqueue(events: readonly DomainEvent[]): Promise<void> {
-    if (events.length === 0) return;
-    // Trace context captured at write time, not at relay time, so the
-    // published event carries the originating request's trace.
-    const traceparent = currentTraceparent();
-    await this.em().save(
-      OutboxEntity,
-      events.map((e) => ({
-        aggregateType: e.aggregateType,
-        aggregateId: e.aggregateId,
-        eventType: e.eventType,
-        payload: e.payload,
-        traceparent,
-        publishedAt: null,
-      })),
-    );
-  }
-}
-```
-
-```typescript
-// Application service — composes aggregate write + outbox enqueue inside one UoW.
-async createAuthor(req: CreateAuthorRequest): Promise<Author> {
-  try {
-    const author = await this.uow.run(async () => {
-      const saved = await this.authorRepo.createAuthor(req);
-      await this.outbox.enqueue([{
-        aggregateType: "author",
-        aggregateId: saved.id,
-        eventType: "AuthorCreated",
-        payload: { name: saved.name.value },
-      }]);
-      return saved;
-    });
-    await this.metrics.recordCreationSuccess();
-    return author;
-  } catch (error) {
-    await this.metrics.recordCreationFailure();
-    if (error instanceof DomainError) throw error;
-    throw new UnknownAuthorError(error);
-  }
-}
-```
-
-**Outbox relay**: the most idiomatic NestJS approach is a `@Processor("outbox")` BullMQ worker scheduled by a `@Cron` task that reads `WHERE published_at IS NULL ORDER BY id LIMIT N`, publishes to the broker, then updates `published_at`. Keep the relay in its own module so it can be deployed as a separate process if traffic grows.
-
-### Cross-aggregate orchestration (general UoW pattern)
-
-The same primitive composes any cross-repo flow:
-
-```typescript
-// Transfer post ownership between authors — three writes, one transaction.
-async transferPost(from: AuthorId, to: AuthorId, postId: PostId): Promise<void> {
-  await this.uow.run(async () => {
-    await this.authorRepo.releasePost(from, postId);
-    await this.authorRepo.acquirePost(to, postId);
-    await this.postRepo.reassign(postId, to);
-    // If any of the three throws, all three roll back together.
-  });
-}
-```
-
-### Alternative: `@Transactional` decorator (typeorm-transactional)
-
-If your codebase is already invested in `typeorm-transactional`, its `@Transactional()` decorator gives you the same atomicity guarantee with less per-call-site wiring. It uses AsyncLocalStorage under the hood, just like UoW.
-
-```typescript
-// Same effect as uow.run(...) but the boundary is in the decorator,
-// not visible at the call site.
-@Injectable()
-export class AuthorServiceImpl extends AuthorService {
-  @Transactional()
-  async createAuthor(req: CreateAuthorRequest): Promise<Author> {
-    const author = await this.authorRepo.createAuthor(req);
-    await this.outbox.enqueue([...]);
-    return author;
-  }
-}
-```
-
-**Trade-offs to accept if you pick `@Transactional`:**
-- Tx boundary moves into decorator metadata — less visible at the call site
-- Third-party library — historically uneven maintenance, currently stable
-- Requires `initializeTransactionalContext()` at startup before any DB ops
-- Bootstrap test setup must opt into the lib's CLS wrapper
-
-**When it's a good choice:** existing codebase already uses it; team prefers the brevity; you accept the maintenance risk.
-
-**Pick one pattern and stick to it** — mixing `uow.run(...)` and `@Transactional()` in the same codebase is a debugging nightmare. Both produce the same end state; consistency is what matters.
-
-### Common gotchas (cross-repo tx)
-
-- **Don't** open a fresh `manager.transaction(...)` inside a repo method called from `uow.run()`. You'll get a *nested* tx (SAVEPOINT in Postgres), not the outer one. Repos must always go through `this.em()`.
-- **Don't** make `OutboxRepository` start its own transaction. The whole point of UoW is shared scope.
-- **Don't** rely on TypeORM lifecycle hooks (`@AfterInsert`) to publish events — they fire per row, not per tx, and have no tx context.
-- **Don't** inject `Repository<X>` directly into a service. Always go through a domain port — `Repository<X>` skips the CLS-aware `em()` and silently writes outside any active UoW.
-
----
-
-## Outbound: Idempotency Store
-
-A leased row per `(scope, key)` (rules: `SKILL.md` § Reliability). Only a write grants execution — this request's insert, or a conditional takeover of an expired lease — never a read.
-
-```typescript
-// src/domain/shared/idempotency.ts
-export type Acquire =
-  | { tag: "new"; lease: string }                        // won by this request's write — run it
-  | { tag: "replay"; status: number; response: Buffer }  // completed — replay, never re-run
-  | { tag: "mismatch" }                                  // same key, different request — 422
-  | { tag: "in_flight"; retryAfterSeconds: number };     // live lease elsewhere — 409 + Retry-After
-
-/** complete() matched no row: the lease expired and was taken over — roll the use case back. */
-export class LeaseLostError extends Error {}
-
-export abstract class IdempotencyStore {
-  abstract acquire(scope: string, key: string, requestHash: string): Promise<Acquire>;
-  /** Lease-guarded; only inside `uow.run(...)`: the use case's, or its own for a 4xx that wrote nothing. */
-  abstract complete(scope: string, key: string, lease: string, status: number, response: Buffer): Promise<void>;
-  /** The handler failed before commit: free the key so a corrected retry can run. */
-  abstract release(scope: string, key: string, lease: string): Promise<void>;
-  /** Scheduled job (`@Cron`): delete rows past `expires_at`. */
-  abstract purgeExpired(): Promise<number>;
-}
-```
-
-```typescript
-// src/outbound/typeorm/entities/idempotency.entity.ts
-import { Column, Entity, Index, PrimaryColumn } from "typeorm";
-
-@Entity({ name: "idempotency" })
-export class IdempotencyEntity {
-  @PrimaryColumn({ type: "text" }) scope!: string;
-  @PrimaryColumn({ type: "text" }) key!: string;
-  @Column({ name: "request_hash", type: "text" }) requestHash!: string;
-  @Column({ name: "lease_token", type: "uuid" }) leaseToken!: string;
-  @Column({ name: "locked_until", type: "timestamptz" }) lockedUntil!: Date;
-  @Column({ type: "int", nullable: true }) status!: number | null;
-  @Column({ type: "bytea", nullable: true }) response!: Buffer | null; // body + Location
-  @Column({ name: "completed_at", type: "timestamptz", nullable: true }) completedAt!: Date | null;
-  @Index() // purgeExpired()
-  @Column({ name: "expires_at", type: "timestamptz" }) expiresAt!: Date;
-}
-```
-
-```typescript
-// src/outbound/typeorm/postgres-idempotency.ts
-import { Injectable } from "@nestjs/common";
-import { InjectRepository } from "@nestjs/typeorm";
-import { ClsService } from "nestjs-cls";
-import { randomUUID } from "node:crypto";
-import { EntityManager, IsNull, Repository } from "typeorm";
-import { IdempotencyEntity } from "./entities/idempotency.entity";
-import { TYPEORM_EM_KEY } from "./typeorm-unit-of-work";
-import { type Acquire, IdempotencyStore, LeaseLostError } from "../../domain/shared/idempotency";
-
-// LEASE > the request timeout (your Nest TimeoutInterceptor's timeout(ms); rxjs timeout
-// does not cancel the handler, so leave headroom). TTL >= the longest client retry horizon.
-const LEASE = "interval '60 seconds'";
-const TTL = "interval '24 hours'";
-
-// acquire()/release() autocommit on the base manager, never the CLS tx: a lease must be visible
-// to concurrent retries at once and outlive a rollback. complete() runs only in a uow.run (CLS
-// EntityManager), normally the use case's: the response commits with its writes or not at all.
-@Injectable()
-export class PostgresIdempotencyStore extends IdempotencyStore {
-  constructor(
-    @InjectRepository(IdempotencyEntity)
-    private readonly repo: Repository<IdempotencyEntity>,
-    private readonly cls: ClsService,
-  ) { super(); }
-
-  async acquire(scope: string, key: string, hash: string): Promise<Acquire> {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const inserted = await this.repo.createQueryBuilder().insert()
-        .values({
-          scope, key, requestHash: hash, leaseToken: randomUUID(),
-          lockedUntil: () => `now() + ${LEASE}`, expiresAt: () => `now() + ${TTL}`,
-        })
-        .orIgnore() // ON CONFLICT DO NOTHING
-        .returning("lease_token").execute();
-      // Won only if RETURNING produced a row. Never test result.identifiers: TypeORM
-      // builds them from the input values, so they are set even when nothing was inserted.
-      const [won] = inserted.raw as { lease_token: string }[];
-      if (won) return { tag: "new", lease: won.lease_token };
-
-      const row = await this.repo.findOneBy({ scope, key });
-      if (!row) continue; // released or purged since the insert
-      if (row.requestHash !== hash) return { tag: "mismatch" };
-      if (row.completedAt !== null) return { tag: "replay", status: row.status!, response: row.response! };
-
-      // Not completed: take over only an EXPIRED lease, and only by a conditional write.
-      const took = await this.repo.createQueryBuilder().update()
-        .set({ leaseToken: randomUUID(), lockedUntil: () => `now() + ${LEASE}` })
-        .where("scope = :scope AND key = :key AND completed_at IS NULL AND locked_until < now()", { scope, key })
-        .returning("lease_token").execute();
-      const [taken] = took.raw as { lease_token: string }[];
-      if (taken) return { tag: "new", lease: taken.lease_token };
-      const ms = row.lockedUntil.getTime() - Date.now();
-      return { tag: "in_flight", retryAfterSeconds: Math.max(1, Math.ceil(ms / 1000)) };
-    }
-    return { tag: "in_flight", retryAfterSeconds: 1 };
-  }
-
-  async complete(scope: string, key: string, lease: string, status: number, response: Buffer): Promise<void> {
-    const em = this.cls.get<EntityManager>(TYPEORM_EM_KEY);
-    if (!em) throw new Error("IdempotencyStore.complete() must run inside uow.run()");
-    const { affected } = await em.update(
-      IdempotencyEntity,
-      { scope, key, leaseToken: lease, completedAt: IsNull() },
-      { status, response, completedAt: () => "now()" },
-    );
-    if (affected !== 1) throw new LeaseLostError("idempotency lease lost");
-  }
-
-  async release(scope: string, key: string, lease: string): Promise<void> {
-    await this.repo.delete({ scope, key, leaseToken: lease, completedAt: IsNull() });
-  }
-
-  async purgeExpired(): Promise<number> {
-    const { affected } = await this.repo.createQueryBuilder().delete().where("expires_at < now()").execute();
-    return affected ?? 0;
-  }
-}
-```
-
-Wire it as an interceptor: it acquires before the controller runs and completes inside the handler's transaction, so the controller body stays free of replay logic.
-
-### Inbound: Idempotency Interceptor
-
-```typescript
-// src/inbound/http/interceptors/idempotency.interceptor.ts
-//
-// Replay-safe POST/PATCH for clients that retry. Apply per route (never globally),
-// BEHIND the auth guard (guards run before interceptors), so every key is per caller.
-// Every request timeout must WRAP this interceptor (global, controller-level, or listed
-// before it in @UseInterceptors): a timeout inside it ends the transaction while the
-// handler still runs, the key is released, and a retry repeats the work.
-//   no key → 400 · same key, other request → 422 · live lease → 409 + Retry-After
-//   completed → stored status + body (+ Location) · new → handler + complete() in one uow.run
-// Handlers return their body and throw on failure: @Res() without passthrough can't be
-// captured, and a non-2xx set via res.status() is rolled back, never stored.
-import {
-  BadRequestException, CallHandler, ConflictException, ExecutionContext, Injectable,
-  NestInterceptor, UnauthorizedException, UnprocessableEntityException,
-} from "@nestjs/common";
-import { createHash } from "node:crypto";
-import { Observable, from, lastValueFrom } from "rxjs";
-import type { Request, Response } from "express";
-import { DomainError } from "../../../domain/shared/errors";
-import { IdempotencyStore } from "../../../domain/shared/idempotency";
-import { UnitOfWork } from "../../../domain/shared/unit-of-work";
-import { domainProblem } from "../filters/domain-exception.filter";
-
-// Set by the auth guard: JwtAuthGuard sets userId; set tenantId from your tenant claim.
-type AuthedRequest = Request & { userId?: string; tenantId?: string };
-interface Stored { body: unknown; location?: string }
-
-const problem = (status: number, slug: string, title: string, detail: string) =>
-  ({ type: `https://api.example.com/errors/${slug}`, title, status, detail });
-// Canonical body for the hash: object keys sorted at every depth.
-const sortKeys = (_k: string, v: unknown) =>
-  v && typeof v === "object" && !Array.isArray(v)
-    ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => (a < b ? -1 : 1)))
-    : v;
-
-@Injectable()
-export class IdempotencyInterceptor implements NestInterceptor {
-  constructor(private readonly store: IdempotencyStore, private readonly uow: UnitOfWork) {}
-
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    const req = context.switchToHttp().getRequest<AuthedRequest>();
-    const res = context.switchToHttp().getResponse<Response>();
-    if (!req.userId) { // no principal, no key scope
-      throw new UnauthorizedException(problem(401, "unauthorized", "Unauthorized", "Authentication required"));
-    }
-    const key = req.header("idempotency-key");
-    if (!key) {
-      throw new BadRequestException(problem(400, "idempotency-key-required",
-        "Idempotency-Key Required", "This endpoint requires an Idempotency-Key header"));
-    }
-    // tenant + principal + operation (Class.handler; req.route?.path is unreliable under Express 5).
-    const op = `${context.getClass().name}.${context.getHandler().name}`;
-    const scope = JSON.stringify([req.tenantId ?? null, req.userId, op]);
-    const hash = createHash("sha256")
-      .update(`${req.method} ${req.originalUrl}\n${JSON.stringify(req.body ?? null, sortKeys)}`)
-      .digest("hex");
-
-    // A promise, not rxjs: an outer TimeoutInterceptor's unsubscribe can't skip complete()/release().
-    const run = async (): Promise<unknown> => {
-      const outcome = await this.store.acquire(scope, key, hash);
-      if (outcome.tag === "mismatch") {
-        throw new UnprocessableEntityException(problem(422, "idempotency-key-mismatch",
-          "Idempotency-Key Mismatch", "This Idempotency-Key was already used for a different request"));
-      }
-      if (outcome.tag === "in_flight") {
-        res.header("Retry-After", String(outcome.retryAfterSeconds));
-        throw new ConflictException(problem(409, "idempotency-in-flight",
-          "Request In Progress", "A request with this Idempotency-Key is still being processed"));
-      }
-      if (outcome.tag === "replay") {
-        const stored = JSON.parse(outcome.response.toString("utf8")) as Stored;
-        res.status(outcome.status); // Nest sets the route status before interceptors, never after
-        if (outcome.status >= 400) res.type("application/problem+json");
-        if (stored.location) res.header("Location", stored.location);
-        return stored.body;
-      }
-      const { lease } = outcome;
-      try {
-        // Writes + complete() commit in ONE tx (the service's uow.run joins it). No external call in it:
-        // record an intent, derive the downstream key (software-architecture reliability-patterns.md § 2).
-        return await this.uow.run(async () => {
-          const body = await lastValueFrom(next.handle());
-          // Only a 2xx this handler produced completes; headersSent = a timeout already answered.
-          const status = res.statusCode;
-          if (res.headersSent || status < 200 || status > 299) throw new Error(`not stored: ${status}`);
-          const location = res.getHeader("location");
-          const stored: Stored = { body, location: typeof location === "string" ? location : undefined };
-          await this.store.complete(scope, key, lease, status, Buffer.from(JSON.stringify(stored)));
-          return body;
-        });
-      } catch (err) {
-        // Rolled back. A deterministic 4xx (a DomainError the filter maps) completes in its own tx;
-        // anything else (5xx, timeout, LeaseLostError, ...) frees the key; lease expiry is the backstop.
-        const p = err instanceof DomainError ? domainProblem(err, req.url) : undefined;
-        const completed = p !== undefined && await this.uow
-          .run(() => this.store.complete(scope, key, lease, p.status, Buffer.from(JSON.stringify({ body: p }))))
-          .then(() => true, () => false);
-        if (!completed) await this.store.release(scope, key, lease).catch(() => undefined);
-        throw err; // the filter renders it (a 4xx as the very body just stored)
-      }
-    };
-    return from(run());
-  }
-}
-```
-
-Apply per route behind the guard: `@UseGuards(JwtAuthGuard)` + `@UseInterceptors(IdempotencyInterceptor)`. Register `IdempotencyEntity` (`entities` + `forFeature`), bind and export `{ provide: IdempotencyStore, useClass: PostgresIdempotencyStore }` in the persistence module, and call `purgeExpired()` from a `@Cron` job. The `(scope, key)` primary key is what collapses concurrent first attempts to one winner.
-
----
-
-## Inbound: Rate Limiting (`@nestjs/throttler`)
-
-Wire `ThrottlerModule` in `AppModule` and register `ThrottlerGuard` as a global `APP_GUARD`. Per-route overrides via `@Throttle({ default: { limit: 5, ttl: 60_000 } })` or `@SkipThrottle()` for public reads.
-
-```typescript
-// In app.module.ts (see examples-bootstrap.md for the full module)
-import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
-import { APP_GUARD } from "@nestjs/core";
-
-@Module({
-  imports: [
-    ThrottlerModule.forRoot([
-      // Default: 100 req/min per IP. Tune per route via @Throttle().
-      { name: "default", ttl: 60_000, limit: 100 },
-    ]),
-    // ... other imports
-  ],
-  providers: [
-    { provide: APP_GUARD, useClass: ThrottlerGuard },
-    // ... other providers
-  ],
-})
-export class AppModule {}
-```
-
-> **429 must be `application/problem+json` too.** `ThrottlerException`'s default
-> body is `{ statusCode, message }`, which breaks the error contract. The
-> `DomainExceptionFilter` above already has a `ThrottlerException` branch that
-> re-maps it to a problem document — so as long as the global filter is
-> registered (it catches everything via `@Catch()`), the 429 is uniform with the
-> rest of the API. The throttler still sets `Retry-After` / `X-RateLimit-*`
-> headers itself. (Alternative: subclass `ThrottlerGuard` and override
-> `throwThrottlingException()` to throw a problem-shaped exception — the filter
-> branch is the lower-friction path and keeps all error shaping in one place.)
-
-For Redis-backed limits (multi-instance), swap the storage with `@nest-lab/throttler-storage-redis`.
-
----
-
-## Outbound: Tracer Port (OTel)
-
-Don't import `@opentelemetry/*` into the domain. Define an abstract class (NestJS DI token); the OTel adapter extends it. Tests bind a no-op or capturing implementation.
-
-```typescript
-// src/domain/shared/tracing.ts
-export interface Span {
-  addEvent(name: string, attrs?: Record<string, string>): void;
-  recordError(err: unknown): void;
-  end(): void;
-}
-export abstract class Tracer {
-  abstract startSpan(name: string, attrs?: Record<string, string>): Span;
-}
-```
-
-The OTel adapter (`src/outbound/otel/otel-tracer.ts`) extends `Tracer` and wraps `@opentelemetry/api`. Bind it in the infra module:
-
-```typescript
-@Module({
-  providers: [{ provide: Tracer, useClass: OtelTracer }],
-  exports: [Tracer],
-})
-export class ObservabilityModule {}
-```
-
-This makes vendor swap a one-file change and lets tests run with a no-op `Tracer` provider. NestJS's auto-instrumentation packages still apply at the framework boundary (HTTP, TypeORM); the port is for *application-level* spans the domain wants to emit.
-
-For sampling, cardinality budgets, and span attribute conventions, see `software-architecture/references/observability.md`.

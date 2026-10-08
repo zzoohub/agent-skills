@@ -1,396 +1,144 @@
-# Axum + Hexagonal Architecture
+# Axum guide
 
-Stack guide for the hexagonal-backend skill — the shared contract (layers, errors, pagination, reliability, probes, testing) lives in its `SKILL.md`; this file adds the Axum/Rust specifics.
+How to build and change a hexagonal Axum service so that it honors the contract in `SKILL.md`. This file is the judgment; the code it describes is the publishing slice in `examples-domain.md`, `examples-adapters.md` and `examples-bootstrap.md`, which compiles, passes `clippy -D warnings` and runs its tests on PostgreSQL 18.
 
-**For latest Axum/SQLx APIs, verify against the official docs with a doc-lookup tool if one is available.**
+## 0. Version baseline
 
-> **Version baseline (as of 2026-10):** axum 0.8, sqlx 0.9, utoipa 6 + utoipa-axum 0.3 (requires axum ^0.8.4), tower-http 0.7 (0.6.7+ for `TimeoutLayer::with_status_code`). Check the crates' changelogs before moving a major.
+Verified 2026-10-08 against crates.io. Check newer releases with a doc-lookup tool if one is available, and read docs.rs for axum 0.8: GitHub `main` is the unreleased 0.9.
 
-> **SQLx version (0.8/0.9):** `sqlx 0.9.0` (released 2026-05) is now current; this skill's patterns target **0.8/0.9** and work on both. The `query!`/`query_as!` macros still apply — string-literal queries satisfy 0.9's new `SqlSafeStr` bound automatically. Inside an owned transaction (`let mut tx = pool.begin().await?`) execute on `&mut *tx` (`Transaction` derefs to the connection; `&mut **tx` is only for a `tx: &mut Transaction` parameter) — the `Executor` impl on `Transaction` was removed back in sqlx 0.7. What 0.9 adds: `SqlSafeStr` (dynamic / non-`'static` query strings must now be wrapped in `AssertSqlSafe(...)`), an optional `sqlx.toml` config file (feature `sqlx-toml`), and removal of the `TransactionManager` re-export. (`sqlx::raw_sql()`, for running a string directly against an `Executor`, has existed since 0.7.4.) The `.sqlx/` offline-prepare workflow is unchanged.
-
-## Core Philosophy
-
-```
-[Inbound Adapter: HTTP handler] → [Port: Service trait] → [Domain Logic]
-    → [Port: Repository trait] → [Outbound Adapter: SQLx/Redis/etc.]
-```
-
-**Dependencies always point inward.** Domain code never imports axum, sqlx, or any infrastructure crate.
-
----
-
-## Project Structure
-
-```
-src/
-├── bin/server/main.rs           # Bootstrap only — no axum/sqlx imports
-├── config.rs                    # Config struct, from_env()
-├── composition.rs               # `pub type AppAuthorService = ...` aliases
-├── domain/
-│   └── authors/
-│       ├── models.rs            # Author, AuthorName, CreateAuthorRequest
-│       ├── error.rs             # CreateAuthorError
-│       ├── ports.rs             # AuthorRepository, AuthorService traits
-│       └── service.rs           # Service<R, M, N> impl
-├── inbound/http/
-│   ├── server.rs                # HttpServer wrapper around axum
-│   ├── error.rs                 # ApiError → RFC 9457
-│   ├── response.rs              # ApiSuccess (data envelope + Location), NoContent
-│   └── authors/
-│       ├── handlers.rs          # Parse → call service → map response
-│       ├── request.rs           # CreateAuthorHttpRequestBody
-│       └── response.rs          # AuthorResponseData
-└── outbound/
-    ├── sqlite.rs                # impl AuthorRepository for Sqlite
-    ├── postgres.rs              # impl AuthorRepository for Postgres
-    ├── prometheus.rs            # impl AuthorMetrics
-    └── email_client.rs          # impl AuthorNotifier
-.sqlx/                 # Commit this (one file per query in SQLx 0.8/0.9)
-```
-
----
-
-## Domain Layer
-
-### Models
-- Validate on construction (newtype pattern). Private fields, public getters.
-- Implement `Display` manually for newtypes that need `.to_string()` — std has no `Display` derive.
-- No `serde::Deserialize` — Serde bypasses constructors, creating invalid objects.
-  Exception: Serde is OK if the model performs no validation (any field value is valid).
-
-### Errors
-- Exhaustive enum: one variant per business rule violation + `Unknown(anyhow::Error)`.
-- Don't panic on unexpected errors — poisons mutexes, surprises other devs. Return errors.
-- Domain errors = complete description of what can go wrong in an operation.
-- **Domain ports return `Result<T, E>` exclusively — never panic on business errors.** Adapters map infrastructure errors (e.g. sqlx) into domain error types before returning.
-
-### Ports (Traits)
-
-All port traits require: `Clone + Send + Sync + 'static`
-
-```rust
-fn method(&self, ...) -> impl Future<Output = Result<T, E>> + Send;
-```
-
-> `async fn` in traits doesn't auto-add `Send`. Spell it out for web apps.
-
-### Service
-- Trait declaring business API + struct `Service<R, M, N>` implementing it.
-- Constructor takes all dependencies: `fn new(repo: R, metrics: M, notifier: N) -> Self`.
-- Orchestrates: repo → metrics → notifications → return result.
-
-→ Full domain examples (models, errors, ports, service): `references/axum/examples-domain.md`
-
----
-
-## Inbound Layer
-
-- **HttpServer wrapper** — use `utoipa_axum::router::OpenApiRouter` instead of `axum::Router`.
-  `main` never imports axum. Expose `build_router()` for tests.
-  ```rust
-  // Each domain module returns its own OpenApiRouter
-  pub fn router() -> OpenApiRouter<AppState> {
-      OpenApiRouter::new()
-          .routes(routes!(list_authors, create_author))
-          .routes(routes!(get_author, update_author, delete_author))
-  }
-
-  // Top-level composes modules and splits for axum.
-  // Mount under exactly `/v1` (the API spec standardizes on `/v1/...` —
-  // no extra `/api` segment) so wire paths are `/v1/authors`, `/v1/posts`.
-  let (router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-      .nest("/v1/authors", authors::router())
-      .nest("/v1/posts", posts::router())
-      .split_for_parts();
-  ```
-- **Path params use `{id}` syntax** (not `:id`). Axum 0.8 changed this.
-  Wildcards: `{*path}` (not `*path`). Literal braces: `{{` / `}}`.
-- **DI via State** — services wrapped in `Arc<AppXService>` inside `AppState`, where `AppXService` is a composition-root type alias (`pub type AppAuthorService = AuthorServiceImpl<Sqlite, Prometheus, EmailClient>;`). Concrete (not `dyn`) because (a) port traits use RPITIT which isn't dyn-compatible in stable Rust, (b) `routes!()` needs concrete handler items, (c) a binary has one production composition — type erasure earns nothing here.
-  - **1-2 services:** `AppState { author_service: Arc<AppAuthorService>, ... }`.
-  - **3+ services:** same `AppState`, plus `FromRef` impls so each handler extracts only the alias it needs.
-  - **When native `dyn` async stabilizes** (in flight): switch the alias to `dyn AuthorService` in one place — handlers don't change.
-- **Handlers** annotated with `#[utoipa::path]` for OpenAPI generation. Do three things only: parse input → call service → map response. No SQL.
-- **Request types** decoupled from domain — `try_into_domain()` validates into domain type. Derive `ToSchema` + `Deserialize`.
-- **Response types** built via `From<&Author>` — never expose domain structs. Derive `ToSchema` + `Serialize`.
-- **`ToSchema` / `IntoParams`** are inbound-layer concerns only. Domain models never derive utoipa traits.
-- **API errors** mapped manually from domain errors. Never leak domain strings to users.
-  `Unknown` → log server-side, return generic message. Use RFC 9457 `ProblemDetail`.
-- **API docs** — `utoipa-axum` generates OpenAPI from code via `OpenApiRouter` + `routes!` + `split_for_parts()`. Serve with `utoipa-swagger-ui` or `utoipa-scalar`. Consult `references/api-design.md` for conventions and `references/api-patterns.md` for HTTP patterns.
-- **Middleware (Tower layers)** — lives in inbound layer, invisible to domain.
-  Layers wrap services: `TraceLayer → TimeoutLayer → CompressionLayer → CorsLayer`.
-- **Health checks** live in the inbound layer (not domain), registered outside auth middleware.
-  `/health` (liveness) returns 200 unconditionally — **never check dependencies there**: a liveness
-  probe that touches a flaky DB cascade-restarts every replica. `/ready` (readiness) acquires from
-  the DB pool and returns **503** (not 500) so the load balancer sheds traffic; the pool's
-  `acquire_timeout` bounds the probe, so a hung DB fails fast.
-
-### Non-HTTP Inbound Adapters
-
-Shared rules (parse → service → ack, caller verification, idempotency): `SKILL.md` § Inbound adapters. Axum triggers:
-
-| Trigger | Examples | Still HTTP? |
-|---------|----------|-------------|
-| Task/Job queue | Cloud Tasks, SQS, RabbitMQ | Yes (HTTP callback) or No (consumer) |
-| Webhook | Stripe, GitHub, external service callback | Yes |
-| Cron/Scheduler | Cloud Scheduler, cron | Yes (HTTP) or No (direct invoke) |
-| Event stream | NATS, Kafka, Redis Streams | No (pull/push consumer) |
-
-Register them in HttpServer alongside REST routes — `http/`, `tasks/` and `webhooks/` are all wired into the same HttpServer.
-
-→ Full inbound examples (HttpServer, handlers, request/response, auth, task handlers, API errors): `references/axum/examples-adapters.md`
-
----
-
-## Outbound Layer
-
-- Wrap connection pool in own type (`Sqlite`, `Postgres`).
-- Expose `from_pool()` constructor for tests.
-- **Transactions encapsulated in adapter**, invisible to callers.
-- Keep transactions short. **No external calls (HTTP, queues) inside tx.**
-- **SQLx 0.7+ (incl. 0.8/0.9)**: `Transaction` and `PoolConnection` no longer implement `Executor` directly.
-  Inside an owned transaction (`let mut tx = pool.begin().await?`) execute on `&mut *tx` — it derefs
-  to the connection. (`&mut **tx` only when `tx` is itself a `&mut Transaction` parameter.) The
-  `query!`/`query_as!` macros work identically on 0.8 and 0.9 — string-literal queries satisfy
-  0.9's new `SqlSafeStr` requirement automatically.
-- Map DB-specific errors (e.g. unique constraint codes) to domain error variants.
-- Unknown DB errors wrapped with `anyhow` context.
-- For complex row types or ORM (diesel, sea-orm), use explicit `to_domain()` mapper in outbound.
-  For simple `sqlx::query!` rows, inline mapping in the adapter is fine.
-
-→ Full outbound examples (SQLite, Postgres adapters, row mapper): `references/axum/examples-adapters.md`
-
-### Pagination
-
-**Default to cursor-based pagination.** The pattern flows through all three layers:
-- **Domain port**: `list_authors(&self, cursor: Option<&str>, limit: usize) -> Result<CursorPage<Author>, anyhow::Error>`
-- **Outbound adapter**: `WHERE (created_at, id) > ($1, $2) ORDER BY created_at, id LIMIT $3`
-- **Inbound handler**: return `CursorPageResponse<T>` = `{ data: [...], meta: { limit, next_cursor, has_more } }` (nested `meta`, per the API spec)
-
-Cap `limit` at the handler level (e.g. clamp to 1..100, default 20). The domain doesn't care about max page size — that's a transport concern. Cursor vs offset trade-offs: `SKILL.md` § Pagination.
-
-### Query Method
-
-| Situation | Method |
-|-----------|--------|
-| Must exist | `fetch_one` |
-| May not exist | `fetch_optional` → map to domain `Option` or error |
-| List | `fetch_all` |
-
-### Pool Config
-
-```rust
-PgPoolOptions::new()
-    .max_connections(10)
-    .acquire_timeout(Duration::from_secs(3))  // Always set this
-```
-
----
-
-## Migrations (sqlx)
-
-Migrations are infrastructure — they live in `migrations/` at the crate root, not in any hex layer.
-
-```bash
-sqlx migrate add -r create_authors   # migrations/<ts>_create_authors.{up,down}.sql
-sqlx migrate run                     # apply via CLI
-```
-
-- **Embedded vs CLI — pick one path**: single-binary deploys run `sqlx::migrate!().run(&pool).await?` at startup (the binary carries its migrations); orchestrated platforms run the CLI as a release step before rollout.
-- Re-run `cargo sqlx prepare` after every query change; CI verifies with `cargo sqlx prepare --check`.
-- Schema *design* belongs to a database-design capability; lock-safe execution against live traffic to a migration capability (e.g. the `database-design` skill's PostgreSQL operations) — this skill only wires the mechanism.
-
----
-
-## Logging & Tracing
-
-- The `tracing` facade is Rust's stdlib-logging equivalent — macros (`info!`, `warn!`, `error!`) are fine in any layer, domain included. What stays out of the domain is the *subscriber/exporter* (`tracing-subscriber`, OTel pipeline) — that is infrastructure, initialized once in bootstrap.
-- Production: `tracing_subscriber` with `EnvFilter` (`RUST_LOG`) + JSON formatter to stdout. Dev: human-readable `fmt`.
-- Log **fields, not formatted strings**: `info!(author.id = %id, "author created")` — the string form is unqueryable.
-- Correlation: `SetRequestIdLayer`/`PropagateRequestIdLayer` assign and echo `X-Request-Id`; `TraceLayer` spans every request (see the layer stack in `references/axum/examples-adapters.md`).
-- Span/metric emission the *domain* needs goes through the `Tracer`/`Meter` ports (below) — keeps OTel crates out of `domain/`.
-
----
-
-## Security
-
-| Item | Value |
-|------|-------|
-| Password hashing | `argon2` crate (RustCrypto) |
-| JWT library | `jsonwebtoken` crate |
-| JWT signing | **ES256/EdDSA** (asymmetric) when multiple services verify; `HS256` only for a single service that both issues and verifies (see `api-design.md`) |
-| Refresh token storage | DB table with `jti`, `user_id`, `revoked_at`, `expires_at` |
-| CORS | Explicit origins only |
-
-Token lifetimes and refresh-token rotation: `SKILL.md` § Security baseline.
-
-- **Document the bearer scheme in OpenAPI.** Register a `SecurityScheme::Http(Bearer, "JWT")` via an `OpenApi` modifier (`#[openapi(modifiers(&SecurityAddon))]`) and apply it to protected operations with `security(("bearer_auth" = []))` in `#[utoipa::path]`. See the `SecurityAddon` example in `references/axum/examples-adapters.md`.
-- **Authorization ≠ authentication.** A valid JWT proves *who* is calling, not *whether they may touch this resource*. Add a resource-ownership / policy check (a **policy port**, e.g. `Policy::can_access(user, resource)`) before returning or mutating, or `GET /v1/{resource}/{id}` is an IDOR.
-- **Rate limiting** is cross-cutting: terminate it at the API gateway / load balancer, or — if you must enforce it in-process — add a `tower_governor::GovernorLayer` to the `ServiceBuilder`. Its 429 is emitted as `application/problem+json`, like every other error.
-
----
-
-## Bootstrap (main.rs)
-
-Construct adapters → assemble service → start server. **No axum/sqlx imports.**
-Include graceful shutdown with `SIGINT`/`SIGTERM` handling.
-
-```rust
-// Construct the pool once — used by both the repository AND the readiness probe.
-let pool = SqlitePoolOptions::new().connect(&config.database_url).await?;
-let sqlite = Sqlite::from_pool(pool.clone());
-// Type inferred as Arc<AppAuthorService> — the composition-root alias.
-let service = Arc::new(AuthorServiceImpl::new(sqlite, metrics, notifier));
-let server = HttpServer::new(service, pool, HttpServerConfig {
-    port: &config.server_port,
-    cors_origin: &config.cors_origin,
-}).await?;
-server.run().await
-```
-
-→ Full bootstrap, config, graceful shutdown, and CI examples: `references/axum/examples-bootstrap.md`
-
----
-
-## Graceful Shutdown
-
-- Use `axum::serve(...).with_graceful_shutdown(signal)`.
-- **Always pair with `TimeoutLayer`** — without it, in-flight requests hang forever during drain. Build it with `TimeoutLayer::with_status_code(StatusCode::REQUEST_TIMEOUT, dur)`; `TimeoutLayer::new` is deprecated since tower-http 0.6.7.
-- Handle both `SIGINT` (Ctrl+C) and `SIGTERM` (container orchestration).
-- Shutdown logic lives in `HttpServer::run()` — invisible to domain.
-
-→ Full shutdown signal example: `references/axum/examples-bootstrap.md`
-
----
-
-## Scaling to Multiple Domains
-
-`AppState` holds one concrete composition-root alias per service. When the struct grows beyond ~2 services, add `FromRef` impls so each handler extracts only what it needs:
-
-```rust
-// src/composition.rs
-pub type AppAuthorService  = AuthorServiceImpl<Sqlite, Prometheus, EmailClient>;
-pub type AppBillingService = BillingServiceImpl<Postgres, Prometheus, StripeClient>;
-
-// src/inbound/http/server.rs
-#[derive(Clone)]
-struct AppState {
-    author_service:  Arc<AppAuthorService>,
-    billing_service: Arc<AppBillingService>,
-}
-
-// Each handler extracts only what it needs via FromRef
-impl FromRef<AppState> for Arc<AppAuthorService>  { ... }
-impl FromRef<AppState> for Arc<AppBillingService> { ... }
-```
-
-**Rules:**
-- All merged/nested routers must share the same `AppState` type.
-- Handlers extract substates via `State<Arc<AppAuthorService>>` — still hides adapter combination behind one alias name.
-- Add `FromRef` impls when you have 3+ services or want per-handler state isolation.
-- Reach for `Arc<dyn Trait>` only when you genuinely need type erasure (runtime adapter swap, plugin systems). Until native dyn-async lands, that costs `async-trait`/`trait_variant`. Don't pay it without reason.
-
-→ Full multi-domain example: `references/axum/examples-adapters.md`
-
----
-
-## Enforce the Boundary (CI)
-
-Rust options for the shared CI boundary rule (`SKILL.md` § Enforce the boundary):
-
-- **Compiler as guard (best)**: when the project outgrows one crate, split `domain/` into its own workspace crate whose `Cargo.toml` lists no axum/sqlx/tower deps — violating the boundary becomes a compile error.
-- **Until then**, a crude grep gate is honest and sufficient:
-  `! grep -rE 'use (axum|sqlx|tower|utoipa)' src/domain/`
-- **Baseline CI**: `cargo fmt --check` → `cargo clippy --all-targets -- -D warnings` → `cargo sqlx prepare --check` → `SQLX_OFFLINE=true cargo test`.
-
-→ CI snippet: `references/axum/examples-bootstrap.md`
-
----
-
-## Reliability & Observability Ports
-
-Define each cross-cutting port (shared list: `SKILL.md` § Reliability) as a trait; implement as adapters.
-
-| Port | Purpose | Where it lives |
+| Crate | Version | Why it matters / floor |
 |---|---|---|
-| **Outbox** | Atomic state change + message publish — outbox row written in the **same** sqlx transaction as the aggregate | Outbound (combined with the repository adapter) |
-| **IdempotencyStore** | Leased Idempotency-Key records: replay, mismatch (422), in flight (409) | Outbound; the inbound handler acquires / releases, the use case's adapter completes it inside its sqlx tx |
-| **Tracer** / **Meter** | OTel span / metric emission. Domain depends on the trait, not on `opentelemetry` crates | Outbound (OTel adapter); no-op adapter for tests |
+| axum | 0.8.9 | `/{id}` paths (`/:id` panics), `Sync` handlers, `Option<T>` extractors need `OptionalFromRequestParts`, native `async fn` extractors |
+| tower-http | 0.7.1 | No implicit `tokio` feature: list features. `TimeoutLayer::new` (408) is deprecated: `with_status_code` |
+| tower | 0.5.3 | `ServiceBuilder`; `ServiceExt::oneshot` in tests |
+| tokio | `~1.53` | LTS until September 2027; `~` stays on the LTS line, `1.53` would float past it |
+| tokio-util | 0.7.19 | `CancellationToken`, `TaskTracker` |
+| sqlx | 0.9.0 | MSRV 1.94. Runtime and TLS features are separate (`runtime-tokio`, `tls-rustls-aws-lc-rs`); queries take `SqlSafeStr`: literals pass, dynamic SQL goes through `QueryBuilder` |
+| utoipa, utoipa-axum | 6.0.0, 0.3.0 | OpenAPI 3.1 by default; `routes!` accepts generic handlers, not turbofish (`routes!(h::<S>)` fails) |
+| jsonwebtoken | 11.1.0 | No default crypto backend: enable exactly one (`aws_lc_rs` or `rust_crypto`) or verification panics |
+| opentelemetry, opentelemetry_sdk, -otlp, -http | 0.33.0 | Upgrade as one set with tracing-opentelemetry 0.34.0, or the graph holds two `opentelemetry` versions |
+| tracing, tracing-subscriber | 0.1.44, 0.3.23 | Features `env-filter`, `json` |
+| reqwest | 0.13.5 | `rustls` now means rustls on aws-lc-rs |
+| hmac, sha2 | 0.13.0, 0.11.0 | The digest 0.11 pair: move them together |
+| serde_path_to_error | 0.1.20 | Paths for 422 JSON Pointers |
+| secrecy | 0.10.3 | Redacted `Debug` for secrets |
+| uuid, chrono, base64 | 1.27, 0.4.45, 0.23.1 | `now_v7` (uuid MSRV 1.89); sqlx has no jiff feature |
 
-**Architectural rule**: domain emits **typed domain events** (e.g. an `AuthorEvent` enum — plain data, no `serde_json`); the outbound adapter persists the aggregate AND the outbox rows in a single `sqlx::Transaction` (`&mut *tx`), serializing each event to the JSON payload column in the adapter. A separate **outbox relay** binary polls `outbox` and publishes asynchronously — this is the only safe way to pair a DB write with a broker publish.
+Runtime: Rust ≥ 1.94 (sqlx), CI on 1.99.0, edition 2024 (resolver 3 picks versions that fit `rust-version`), PostgreSQL 18 (`uuidv7()`). One crypto provider, aws-lc-rs, serves sqlx TLS, reqwest and jsonwebtoken; it needs a C compiler, not cmake.
 
-**Why not split outbox into its own port?** sqlx's `Transaction` is not `Send` across multiple owners cleanly, and exposing it across two ports either leaks the type or forces a heavyweight `UnitOfWork` abstraction. The pragmatic Rust answer is: the repository adapter is responsible for both writes within its own tx, and a *typed domain event* (e.g. `AuthorEvent`) is what crosses the port boundary — JSON serialization stays in the adapter, keeping `domain/` free of serde-shaped payloads.
+## 1. Approach a change in Axum
 
-**Optimistic concurrency (lost-update protection)**: any aggregate two clients can update concurrently carries a `version` column. Writes are conditional — `UPDATE authors SET name = $1, version = version + 1 WHERE id = $2 AND version = $3`; `rows_affected() == 0` means someone else won the race → return a domain `VersionConflict` error → **409** (or **412** when the client sent `If-Match`/ETag, per `api-design.md`). Idempotency keys protect against the *same* client retrying; the version column protects against *different* clients racing — payments-grade endpoints need both.
+Answer SKILL.md Step 3 first. These decisions are where Axum services go wrong.
 
-→ Adapter examples: `references/axum/examples-adapters.md`
+**1. A cancelled request is a dropped future.** *Rule:* treat every `.await` in a handler as possibly the last; anything that must happen is written before the commit, in the same transaction (outbox row, idempotency completion, inbox row). *Why:* hyper drops the handler future when the client disconnects and `TimeoutLayer` drops it at the deadline; the code after that await never runs, with no error and no log. A dropped `sqlx::Transaction` rolls back, which is what makes this safe, but the server-side statement keeps running until it ends or the connection closes, hence `statement_timeout` below the request deadline. *Break it* only to make work outlive the request: spawn it on a `TaskTracker` that shutdown drains; that survives disconnects, not crashes.
 
----
+**2. The use case owns the transaction through a port.** *Rule:* `UnitOfWork { type Tx; begin; commit }`, with `Tx = sqlx::Transaction<'static, Postgres>` named by the adapter; repositories, outbox, inbox and idempotency store take `&mut Self::Tx` and never commit. *Why:* one command is one transaction while sqlx stays out of `domain`, and `?` anywhere rolls back. A closure runner (`uow.run(async |tx| …)`) reads better, but stable Rust cannot promise its future is `Send` (`AsyncFnOnce::CallOnceFuture` is not nameable; rustc 1.99 rejects it). *Break it* when database.md chooses SERIALIZABLE: loop `begin..commit` in the use case on 40001/40P01, bounded and jittered.
 
-## Common Gotchas
+**3. Read-modify-write locks the row, then writes conditionally.** *Rule:* load the aggregate `FOR UPDATE` in the transaction, change it through its methods, write `… WHERE version = $read AND status = $from`. *Why:* the in-memory aggregate stays the truth for the response, the `ETag` and the outbox payload (`aggregate_seq` = new version); the condition is the guarded transition and the backstop; `If-Match` compares against the locked version (412). *Break it* for hot rows: drop the lock, write optimistically and re-read on conflict.
 
-| Problem | Cause | Fix |
-|---------|-------|-----|
-| `Future is not Send` | Async trait method missing `+ Send` | Use `impl Future<Output = ...> + Send` |
-| `T is not Clone` | Port trait needs `Clone` bound | Wrap in `Arc` or derive `Clone` |
-| `anyhow::Error` not `Clone` | Used in mock results | Wrap mock result in `Arc<Mutex<R>>` |
-| Compile error on `sqlx::query!` | Missing `.sqlx/` offline data | Run `cargo sqlx prepare` |
-| Handler can't extract `State` | Missing `.with_state(state)` | Add state to router |
-| Middleware not running | Layer order wrong | `route_layer` for per-route, `layer` for global |
-| Mutex poisoned | Panic while holding lock | Never panic — return errors |
-| DB pool exhausted | No acquire timeout | Set `acquire_timeout(Duration::from_secs(3))` |
-| `execute(tx)` won't compile | SQLx 0.7 removed `Executor` on `Transaction` | Use `execute(&mut *tx)` (`&mut **tx` only for a `&mut Transaction` param) |
-| Path `/:id` panics | Axum 0.8 changed syntax | Use `/{id}` (and `{*path}` for wildcards) |
-| Handlers not `Sync` | Axum 0.8 requires `Sync` on all handlers | Ensure all captured state is `Sync` |
-| `Option<T>` extractor won't compile, or now rejects instead of yielding `None` | Axum 0.8 stricter `Option` extraction | Inner type must impl `OptionalFromRequestParts` (or `OptionalFromRequest`) |
+**4. Static dispatch; state generic over the driving port.** *Rule:* ports are traits returning `impl Future + Send`; handlers are generic over `A: Articles` through `AppState<A>` with a hand-written `Clone`; ports carry no `Clone` supertrait. *Why:* no boxing; `derive(Clone)` would demand `A: Clone`; `Clone` makes a trait non-dyn-compatible; tests can serve any `Articles`. `#[axum::debug_handler]` rejects generic handlers: put it on a temporary concrete copy when a handler error is unreadable. *Break it* for runtime-swappable adapters: `dynosaur` or boxed futures, since async methods are not dyn-compatible on stable.
 
----
+**5. One error type, rendered by one layer.** *Rule:* every failure is an `ApiError`; `IntoResponse` only records the problem in a response extension; `render_problems` writes the RFC 9457 body. *Why:* `IntoResponse` sees no request and no config, but `type` needs the configured base and `instance` the path; extractor rejections, fallbacks, the panic hook and the deadline all reach that layer. Box the payload: a large `Err` trips clippy's `result_large_err` in every handler.
 
-## Quick Reference
+## 2. Layout and composition
 
-| Question | Answer |
-|----------|--------|
-| Transactions? | Adapter (repository impl), use `&mut *tx` |
-| Lost updates? | `version` column + conditional UPDATE; `rows_affected() == 0` → 409/412 |
-| Validation? | Domain model constructors |
-| Error mapping? | `From<DomainError> for ApiError` in inbound |
-| Business orchestration? | Service impl |
-| Handler responsibility? | Parse → service → response |
-| main responsibility? | Construct adapters → assemble → start |
-| DI (1-2 services)? | `State<AppState>` with `Arc<AppXService>` (concrete type alias) fields |
-| DI (3+ services)? | `AppState` + `FromRef` impls per service |
-| DB row ↔ domain? | `to_domain()` mapper in outbound |
-| Test app? | `HttpServer::build_router()` + `tower::oneshot` |
-| Health checks? | Inbound layer, not domain |
-| Graceful shutdown? | `with_graceful_shutdown()` + `TimeoutLayer::with_status_code` |
-| OpenAPI generation? | `utoipa-axum`: `OpenApiRouter` + `routes!` + `split_for_parts()` |
-| ToSchema/IntoParams? | Inbound request/response types only, never domain models |
+```
+Cargo.toml          service crate + [workspace] with domain as a member
+domain/             model, errors, ports, use cases: the boundary crate
+migrations/         plain SQL, outside every hex layer
+src/inbound/http/   app factory, problems, extractors, auth, routes, idempotency, probes
+src/inbound/webhooks.rs
+src/outbound/       PostgreSQL store and relay, event publisher, clock, ids
+src/config.rs  src/telemetry.rs  src/main.rs
+tests/api/          one integration-test binary
+```
 
----
+The domain crate's `Cargo.toml` is the boundary: the compiler rejects a `use` of an unlisted crate, and the CI gate rejects listing one. Inside the service crate `inbound` never names `outbound`; only `main` composes concrete types. One image runs three commands: `serve`, `worker` (outbox relay and key purge) and `migrate` (the release step).
 
-## Checklist
+## 3. The HTTP edge
 
-### Architecture
-- [ ] Domain never imports from inbound/ or outbound/
-- [ ] Port traits: `Clone + Send + Sync + 'static`, futures `+ Send`
-- [ ] All handlers (HTTP, tasks, webhooks): parse → service → respond
-- [ ] Transactions in adapters only, `&mut *tx` on an owned SQLx transaction
-- [ ] Errors: domain enum → `From<DomainError> for ApiError` → RFC 9457
-- [ ] Racing aggregates carry a `version` column; 0-rows-affected writes map to 409/412
-- [ ] Boundary enforced in CI: workspace-crate split or grep gate (see Enforce the Boundary)
+**Layer order**, outer to inner, as `Router::layer` applies it to every route and to the fallback (so `MatchedPath` exists for the trace span):
 
-### Framework
-- [ ] Axum wrapped in `HttpServer`, `build_router()` for tests
-- [ ] Path params use `{id}` syntax (not `:id`)
-- [ ] DI via `State<AppState>` with `Arc<AppXService>` (concrete alias) fields (add `FromRef` for 3+ services)
-- [ ] Tower layers: trace, timeout, compression, CORS
-- [ ] `acquire_timeout` set on pool
-- [ ] Graceful shutdown with `SIGINT`/`SIGTERM` + `TimeoutLayer`
-- [ ] Health check endpoint (readiness probe checks DB)
+1. drop an unsafe inbound `X-Request-Id`, then `SetRequestId`: the id exists before anything can answer;
+2. `SetSensitiveRequestHeaders` (the redaction list) and `Trace` (INFO span, route template, request id, parent trace);
+3. `PropagateRequestId`: stamps every response, including those synthesized below;
+4. security headers (`if_not_present`, with `Cache-Control: no-store`);
+5. CORS — and no in-process compression: tower-http 0.7's `CompressionLayer` answers 406 *after* the handler ran when a client refuses every coding (`Accept-Encoding: identity;q=0`), so a committed write reads as a failure; compress at the proxy or CDN;
+6. `render_problems`;
+7. `TimeoutLayer::with_status_code(503)`: drops the handler future;
+8. `CatchPanicLayer::custom`: a panic becomes a 500 problem instead of a closed connection;
+9. routes: `/v1` behind `route_layer(authenticate)`, idempotency layered per route, `DefaultBodyLimit` of 64 KiB.
 
-### Testing
-→ Test mocks (stub, saboteur, spy, noop) and test app helper: `references/axum/examples-bootstrap.md`
+CORS and request id must wrap every layer that can answer by itself; with timeout or panic handling outside CORS, a browser reports a CORS failure instead of the 503. Rate limit at the gateway; an in-process `tower_governor` layer goes below CORS, renders its 429 in `error_handler`, and keys by principal or a trusted proxy header (its default peer-IP key needs `into_make_service_with_connect_info`).
 
-### Setup
-- [ ] `main.rs` has no axum/sqlx imports
-- [ ] `.sqlx/` committed (one file per query in SQLx 0.8/0.9)
-- [ ] `Config` struct with `from_env()` in `config.rs`
+**Errors.** Handlers use `AppJson`, `AppPath` and `AppQuery`, never axum's `Json`, `Path`, `Query`, whose rejections are text/plain. `AppJson` is hand-written because the 422 needs a JSON Pointer that axum only renders into text: `serde_path_to_error` gives the path, and `Deserializer::end` rejects trailing bytes. `fallback` and `method_not_allowed_fallback` make 404 and 405 problems (axum still adds `Allow`). The timeout's empty 503 becomes a problem with `Retry-After` in the renderer.
+
+**400 or 422.** Unreadable input is 400: bad JSON syntax, a path id that is not a UUID, an undecodable cursor, a malformed `Idempotency-Key`. Readable but wrong is 422 with `errors[]`: wrong types, unknown members (`deny_unknown_fields` blocks mass assignment), missing members (serde reports those at the parent; the extractor points at the member), domain violations. Query parameters arrive as strings and are parsed by hand so `limit=abc` is a 422 naming `limit`. A Merge Patch field is `Option<Option<T>>` with `deserialize_with`: a plain `Option` reads `null` as absent.
+
+**Limits and deadline.** `DefaultBodyLimit` binds axum's extractors only; middleware that reads the body passes the same limit to `to_bytes`. The budget is one inequality, checked by `Config`: statement timeout (¾ of the deadline) < request deadline (8 s) < idempotency lease (2×), and shutdown delay + drain (deadline + 1 s) < the platform's grace.
+
+## 4. Authentication and the Actor
+
+Authenticate in a `route_layer` on the `/v1` router: every route is protected by default, unknown paths stay 404 (route layers run only on matched routes), and inner layers see the actor. The `Caller` extractor reads the `Actor` from the extensions and fails closed with 401 on a route mounted outside the layer. Every use case takes `&Actor`; the repository filters by tenant in every query (foreign → 404) and the use case decides author-or-editor (403).
+
+`jsonwebtoken` requires only `exp` by default and allows 60 s of leeway: require `exp`, `iss`, `aud`, `sub`, and set the leeway. In JWKS mode pin the algorithm from the matched key (EC → ES256, OKP → EdDSA), never from the token, and never list two families in one `Validation`. Fetch keys with connect and total timeouts, cache them, refetch on an unknown `kid` at most every 30 s, keep stale keys when the provider is down, and answer 503 while no key was ever fetched. HS256 is for local runs and tests; `Config` refuses it in production. Hash passwords with argon2 0.6 inside `spawn_blocking`.
+
+## 5. Persistence with sqlx
+
+- **Transactions.** An owned transaction executes on `&mut *tx`; a `tx: &mut Transaction` parameter on `&mut **tx`.
+- **Queries.** `query!`/`query_as!` check SQL against the schema at compile time; map rows into one named struct (two `query!` calls in `if`/`else` produce different anonymous types). Commit `.sqlx/` from `cargo sqlx prepare --workspace -- --all-targets`; `prepare --check` in CI needs a live database.
+- **Dynamic SQL.** Allowlist sort and filter names as enums and build with `QueryBuilder::push_bind`; formatting input into SQL, or reaching for `AssertSqlSafe`, is a review finding.
+- **Errors.** Map 23505 by constraint name (`articles_tenant_slug_key` → `SlugTaken`), never by code alone: the primary key and the idempotency table raise 23505 too. Tag pool timeouts, I/O errors and SQLSTATE 08xxx, 40001, 40P01, 57014, 57P01, 53300 as `Unavailable`: those become 503 + `Retry-After`, everything else 500.
+- **Cursor.** Newest first by UUIDv7 id: `WHERE tenant_id = $1 AND id < $2 ORDER BY id DESC LIMIT size + 1`, with `Uuid::max()` for the first page so there is no branch. sqlx binds `timestamptz` as whole microseconds while chrono keeps nanoseconds, so the `Clock` truncates (`trunc_subsecs(6)`) or a POST and a later GET disagree; macOS clocks tick in microseconds and hide this until Linux CI.
+- **Sessions and pool.** `PgConnectOptions::options` sets `statement_timeout`, `idle_in_transaction_session_timeout` and `application_name`; log host and database, never the URL. `acquire_timeout` also bounds opening a connection: sqlx has no separate connect timeout. Pool size × instances must fit the connection budget; a transaction-mode pooler must support prepared statements (PgBouncer ≥ 1.21 with `max_prepared_statements`).
+- **Migrations.** Plain SQL, embedded by `sqlx::migrate!`, applied by `articles migrate` as a release step. sqlx holds an advisory lock while migrating, so concurrent runs wait; a file starting with `-- no-transaction` may use `CONCURRENTLY`; migrations are forward-only. Lock-safe execution: database-design, if available.
+
+## 6. Reliability recipes
+
+**Idempotency.** `routes!(handler).layer(idempotent)` puts the wrapper on idempotent routes only, inside authentication. It validates the key, buffers the body (it can be read once), hashes method, path (not the route template: a key must not replay another resource) and canonical JSON, then acquires. A `Value` round trip sorts keys only while serde_json's `preserve_order` is off everywhere in the graph; a unit test guards it. The handler passes `Idempotency { lease, render }` to the use case, which stores the rendered response in its own transaction; handlers return the same `StoredResponse`, so replays are byte-identical. A deterministic 4xx is stored in its own transaction; a 5xx or a dropped future releases the key through a drop guard. The purge job never deletes a live lease: a takeover extends `expires_at`.
+
+**Outbox relay.** One statement claims: `UPDATE … SET next_attempt_at = now() + lease WHERE id IN (SELECT … FOR UPDATE SKIP LOCKED) RETURNING …`, where `NOT EXISTS` an earlier pending row of the same aggregate makes only heads claimable. Publishing happens outside any transaction under a timeout; failures back off with full jitter computed in SQL and dead-letter after N attempts, which unblocks the aggregate. `RETURNING` does not follow the subquery's `ORDER BY`, which is fine because a pass holds at most one row per aggregate. The relay records the oldest pending age and the dead-letter count as gauges, and stops claiming on shutdown.
+
+**Webhooks.** Take `Bytes`, verify before parsing: HMAC-SHA256 over `id.timestamp.body` through `Mac::verify_slice` (constant time), every configured secret (rotation), and `abs_diff(now, ts) ≤ 300` (no overflow on hostile input). The inbox row commits with the effect inside the use case; a duplicate, an unknown article or a wrong status is a recorded permanent outcome and gets 204; only `Unavailable` gets 503 so the sender retries. Processing is synchronous here because the effect is one guarded update; record and process later when the handler calls out.
+
+**Scheduled work.** The worker purges expired keys with an idempotent `DELETE`, so overlapping replicas are harmless; a job that must not overlap takes an advisory lock or uses the platform scheduler.
+
+## 7. Operability
+
+**Readiness** is a latch: the pool's `connect_with` is the startup round trip, then `/ready` reads two flags and never touches the database. **Liveness** answers 200. Both sit outside authentication.
+
+**Shutdown** (`main.rs`): SIGTERM → readiness 503 → sleep `SHUTDOWN_DELAY_MS` (Kubernetes, while endpoints deregister; 0 on Cloud Run, which already routes elsewhere) → cancel the token that `with_graceful_shutdown` awaits → bound the drain with `tokio::time::timeout` → close the pool → flush telemetry with a timeout. Cloud Run kills 10 s after SIGTERM, Kubernetes after 30 s by default. The worker cancels its relay and purge loops and waits on its `TaskTracker`. axum 0.8's `serve` has no header-read timeout, so keep it behind a proxy that enforces one.
+
+**Logging and tracing.** `tracing` is the tracer port; the domain only adds `#[instrument]` spans. Bootstrap installs a JSON `fmt` layer with an explicit `info` default (with `env-filter` and no `RUST_LOG`, `fmt::init` prints errors only), and the OTel layer and exporters only when `OTEL_EXPORTER_OTLP_ENDPOINT` is set, so tests export nothing. With OTel on, the request span records `trace_id`, so every log line carries it beside `request_id`. `on_failure(())` keeps the trace layer from logging a 5xx that `ApiError` already logged with its cause.
+
+## 8. Testing and CI
+
+`#[sqlx::test]` creates a database per test and applies `migrations/` from empty; it needs `DATABASE_URL` with CREATEDB at run time, even when compiling offline. Keep integration tests in one binary (`tests/api/main.rs` with modules): one link step, one harness. HTTP tests call the production `app` factory with `oneshot`. Force failures with the database rather than mocks: `JoinSet` races for uniqueness and key acquisition, a row lock held by another transaction to push a request past its deadline, a conflicting outbox row as the Saboteur.
+
+CI runs fmt, the boundary gate, migrations from empty, `cargo sqlx prepare --check`, `clippy --all-targets -D warnings` offline, the tests, and `oasdiff breaking` against the base branch's `openapi.json`. The boundary gate allow-lists the domain's direct dependencies through `cargo tree` and greps `src/inbound` for `outbound::`; the grep misses a path built by a macro or re-exported through a third module, which code review must catch. The OpenAPI snapshot test fails on any drift; regenerate with `UPDATE_OPENAPI=1 cargo test openapi` and review the diff.
+
+## 9. Traps
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| A 400, 415 or 422 arrives as text/plain; 404/405 have empty bodies | axum's `Json`, `Path`, `Query` reject outside your error type; no fallbacks | Wrapped extractors, `fallback`, `method_not_allowed_fallback` |
+| A browser sees a CORS error instead of a 503 or 500 | Timeout or panic handling sits outside `CorsLayer` | Order in § 3 |
+| A handler panic closes the connection with 0 bytes | No `CatchPanicLayer` | `CatchPanicLayer::custom` → problem |
+| A create committed, the client got 503, its retry got 409 | Must-happen work awaited after the commit; the future was dropped | Everything inside the transaction or the outbox |
+| A cancelled request still holds a row lock | Dropping the future does not cancel the server-side statement | `statement_timeout` below the deadline |
+| Every JWKS token is rejected with `InvalidAlgorithm` | `Validation::algorithms` lists two families (ES256 and EdDSA) | Pin one algorithm per key |
+| `jsonwebtoken` panics on the first verification | No crypto backend feature | Enable exactly one |
+| POST and GET return different timestamps on Linux only | chrono nanoseconds vs sqlx's microseconds | Truncate in the `Clock` |
+| A retry with the same body gets 422 mismatch | `preserve_order` enabled in the graph | Keep the hash test |
+| `if`/`else` has incompatible types `Record` | Each `query!` makes an anonymous struct | `query_as!` into one named struct |
+| A conflict on another unique index reads as "slug taken" | 23505 mapped by code only | Map by constraint name |
+| `null` in a PATCH leaves the field unchanged | `Option<T>` reads `null` as absent | `Option<Option<T>>` + `deserialize_with` |
+| Every request answers 500 once `tower_governor` is added | Its peer-IP key needs `ConnectInfo` | `into_make_service_with_connect_info`, or a principal key |
+| Readiness flaps on every replica under load | The probe acquires from the shared pool | Latch at startup |
+| The DSN with its password appears in logs | Formatting the URL or `Debug` on config | `secrecy`; log host and database |
+| `#[sqlx::test]` panics: `DATABASE_URL must be set` | PostgreSQL test databases need a server | A service container in CI |
+| No request logs; only errors | `fmt::init` with `env-filter` defaults to ERROR | Explicit `EnvFilter` default |
+| `the trait … is not dyn compatible` | `Clone` supertrait on a port | No `Clone` on ports; `Arc` them |
+| `debug_handler` "doesn't support generic functions" | Generic handlers | Use it on a concrete copy |
+| Errors name a 152-byte `Err` variant | Large `ApiError` in every `Result` | Box its payload |
+| The relay publishes rows in an unexpected order within a pass | `RETURNING` ignores the subquery's `ORDER BY` | One row per aggregate per pass |

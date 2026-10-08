@@ -1,1391 +1,1042 @@
-# Examples: Adapters
+# Hono examples — adapters
 
-Inbound (createApp, handlers, task handlers, auth, errors) and outbound (Drizzle, SQLite, mapper).
+Inbound HTTP and the webhook receiver; outbound PostgreSQL. Each `file=` block is a complete file of the verified project; `createApp` is in `examples-bootstrap.md`.
 
-## Table of Contents
+## Contents
 
-1. [Outbound: Drizzle Schema + Mapper](#outbound-drizzle-schema--mapper)
-2. [Outbound: Cursor Helpers (composite + base64)](#outbound-cursor-helpers-composite--base64)
-3. [Outbound: Drizzle Adapter (ORM + mapper)](#outbound-drizzle-adapter-orm--mapper)
-4. [Outbound: Drizzle Postgres Adapter with Transactions](#outbound-drizzle-postgres-adapter-with-transactions)
-5. [Outbound: Raw SQL Adapter (no ORM)](#outbound-raw-sql-adapter-no-orm)
-6. [Inbound: createApp (wraps Hono)](#inbound-createapp-wraps-hono)
-7. [Inbound: DI Middleware](#inbound-di-middleware)
-8. [Inbound: Auth Middleware](#inbound-auth-middleware)
-9. [Inbound: Request / Response Schemas](#inbound-request--response-schemas)
-10. [Inbound: Handlers (Routes with OpenAPI)](#inbound-handlers-routes-with-openapi)
-11. [Inbound: API Error Handler (RFC 9457)](#inbound-api-error-handler-rfc-9457)
-12. [Inbound: Response Helpers](#inbound-response-helpers)
-13. [Inbound: Healthcheck](#inbound-healthcheck)
-14. [Inbound: Task Handler (non-HTTP inbound adapter)](#inbound-task-handler-non-http-inbound-adapter)
-15. [Outbound: Outbox Adapter (transactional, Drizzle)](#outbound-outbox-adapter-transactional-drizzle)
-16. [Outbound: Idempotency Store](#outbound-idempotency-store)
-17. [Outbound: Tracer Port (OTel)](#outbound-tracer-port-otel)
+1. [Request context and problem documents](#request-context-and-problem-documents)
+2. [Authentication to Actor](#authentication-to-actor)
+3. [Idempotency middleware](#idempotency-middleware)
+4. [Article routes](#article-routes)
+5. [Probes and the moderation webhook](#probes-and-the-moderation-webhook)
+6. [Schema and migration](#schema-and-migration)
+7. [Connection and error translation](#connection-and-error-translation)
+8. [Unit of work and article repository](#unit-of-work-and-article-repository)
+9. [Outbox, inbox and relay](#outbox-inbox-and-relay)
+10. [Idempotency store and system adapters](#idempotency-store-and-system-adapters)
 
----
+## Request context and problem documents
 
-## Outbound: Drizzle Schema + Mapper
+```ts file=src/inbound/http/env.ts
+import type { UnitOfWork } from "../../domain/publishing/ports.ts";
+import type { Publishing } from "../../domain/publishing/use-cases.ts";
+import type { IdempotencyStore } from "../../domain/shared/idempotency.ts";
+import type { Actor } from "../../domain/shared/ports.ts";
 
-```typescript
-// src/outbound/drizzle/schema.ts
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import { sql } from "drizzle-orm";
+export interface Logger {
+  info(fields: object, message: string): void;
+  warn(fields: object, message: string): void;
+  error(fields: object, message: string): void;
+  child(bindings: Record<string, unknown>): Logger;
+}
 
-/**
- * Drizzle table definition — outbound only. Never import in domain.
- * createdAt is required by composite cursor pagination — index on (created_at, id).
- */
-export const authors = sqliteTable("authors", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  createdAt: integer("created_at", { mode: "timestamp" })
-    .notNull()
-    .default(sql`(unixepoch())`),
-});
+export type Services = Readonly<{ publishing: Publishing; uow: UnitOfWork; idempotency: IdempotencyStore }>;
 
-// For Postgres, use pgTable from drizzle-orm/pg-core:
-// import { pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-// export const authors = pgTable("authors", {
-//   id: uuid("id").primaryKey().defaultRandom(),
-//   name: text("name").notNull().unique(),
-//   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-// });
-```
-
-```typescript
-// src/outbound/drizzle/mapper.ts
-import { AuthorName } from "../../domain/authors/models";
-import type { Author } from "../../domain/authors/models";
-
-type AuthorRow = { id: string; name: string; createdAt: Date };
-
-/**
- * DB row <-> domain translation. Keeps domain free from Drizzle.
- * Note: domain Author intentionally omits createdAt — adapters carry it for pagination.
- */
-export class AuthorMapper {
-  static toDomain(row: AuthorRow): Author {
-    return {
-      id: row.id,
-      name: AuthorName.create(row.name),
-    };
-  }
-
-  static toRow(author: Author): { id: string; name: string } {
-    return {
-      id: author.id,
-      name: author.name.value,
-    };
-  }
+export interface AppEnv {
+  Variables: { log: Logger; actor: Actor; services: Services };
 }
 ```
 
-## Outbound: Cursor Helpers (composite + base64)
-
-```typescript
-// src/outbound/cursor.ts
-// Composite cursor (createdAt, id) encoded as opaque base64.
-// Single-column `id > X` cursors skip/duplicate rows under concurrent inserts;
-// composite (createdAt, id) is stable.
-
-// Runtime-agnostic base64url — works in Node, Bun, Deno, and Cloudflare Workers.
-function base64UrlEncode(raw: string): string {
-  if (typeof Buffer !== "undefined") return Buffer.from(raw).toString("base64url");
-  return btoa(raw).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function base64UrlDecode(raw: string): string {
-  if (typeof Buffer !== "undefined") return Buffer.from(raw, "base64url").toString("utf8");
-  const padded = raw.replace(/-/g, "+").replace(/_/g, "/");
-  return atob(padded + "===".slice(0, (4 - (padded.length % 4)) % 4));
-}
-
-export function encodeCursor(createdAt: Date, id: string): string {
-  return base64UrlEncode(`${createdAt.toISOString()}|${id}`);
-}
-
-export function decodeCursor(raw: string): { createdAt: Date; id: string } {
-  const [ts, id] = base64UrlDecode(raw).split("|", 2);
-  return { createdAt: new Date(ts), id };
-}
-```
-
-## Outbound: Drizzle Adapter (ORM + mapper)
-
-```typescript
-// src/outbound/drizzle/repository.ts
-import { and, asc, eq, gt, or } from "drizzle-orm";
-import type { BaseSQLiteDatabase } from "drizzle-orm/sqlite-core";
-import { authors } from "./schema";
-import { AuthorMapper } from "./mapper";
-import { decodeCursor, encodeCursor } from "../cursor";
-import {
-  DuplicateAuthorError,
-  UnknownAuthorError,
-} from "../../domain/authors/errors";
-import type {
-  Author,
-  CreateAuthorRequest,
-  CursorPage,
-} from "../../domain/authors/models";
-import type { AuthorRepository } from "../../domain/authors/ports";
-
-/**
- * Type against the SQLite base, not a concrete driver — `BunSQLiteDatabase`
- * (sync, Bun) and `DrizzleD1Database` (async, Cloudflare D1) are both
- * `BaseSQLiteDatabase`, so one adapter spans both runtimes. The query builder
- * is identical; only the driver differs. `'async'` covers D1's promise-based
- * results (Bun-SQLite's sync results satisfy it too).
- *
- * Postgres uses a SEPARATE adapter (`PostgresAuthorRepository`) — its query
- * builder and base type (`PgDatabase`) differ, so one class does NOT span every
- * runtime. If you only ever target Postgres, type this against `PgDatabase`.
- */
-type SQLiteClient = BaseSQLiteDatabase<"async" | "sync", unknown>;
-
-/**
- * Transactions encapsulated here — invisible to callers.
- */
-export class DrizzleAuthorRepository implements AuthorRepository {
-  constructor(private readonly db: SQLiteClient) {}
-
-  static fromClient(db: SQLiteClient): DrizzleAuthorRepository {
-    return new DrizzleAuthorRepository(db);
-  }
-
-  async createAuthor(req: CreateAuthorRequest): Promise<Author> {
-    const id = crypto.randomUUID();
-    try {
-      await this.db.insert(authors).values({
-        id,
-        name: req.name.value,
-      });
-    } catch (error) {
-      if (this.isUniqueConstraintError(error)) {
-        throw new DuplicateAuthorError(req.name.value);
-      }
-      throw new UnknownAuthorError(error);
-    }
-    return { id, name: req.name };
-  }
-
-  async findAuthor(authorId: string): Promise<Author | null> {
-    const rows = await this.db
-      .select()
-      .from(authors)
-      .where(eq(authors.id, authorId));
-    if (rows.length === 0) return null;
-    return AuthorMapper.toDomain(rows[0]);
-  }
-
-  async listAuthors(
-    cursor: string | null,
-    limit: number,
-  ): Promise<CursorPage<Author>> {
-    // Fetch limit+1 to detect whether more rows exist beyond the boundary.
-    const fetchLimit = limit + 1;
-
-    // Drizzle has no native tuple-comparison operator — emulate
-    // (createdAt, id) > (cursorAt, cursorId) via OR + AND.
-    const rows = cursor
-      ? await (() => {
-          const { createdAt, id } = decodeCursor(cursor);
-          return this.db
-            .select()
-            .from(authors)
-            .where(
-              or(
-                gt(authors.createdAt, createdAt),
-                and(eq(authors.createdAt, createdAt), gt(authors.id, id)),
-              ),
-            )
-            .orderBy(asc(authors.createdAt), asc(authors.id))
-            .limit(fetchLimit);
-        })()
-      : await this.db
-          .select()
-          .from(authors)
-          .orderBy(asc(authors.createdAt), asc(authors.id))
-          .limit(fetchLimit);
-
-    // Drop overflow row; cursor points at the LAST RETURNED row so the
-    // next page resumes AFTER it (no duplicates, no skips).
-    const hasMore = rows.length > limit;
-    const pageRows = rows.slice(0, limit);
-    const items = pageRows.map(AuthorMapper.toDomain);
-    const last = pageRows[pageRows.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
-
-    return { items, nextCursor, hasMore };
-  }
-
-  private isUniqueConstraintError(error: unknown): boolean {
-    // drizzle-orm >= 0.44 wraps driver errors in DrizzleQueryError
-    // ("Failed query: ..."); the driver's own error is on `.cause`.
-    const e = error instanceof Error && error.cause instanceof Error ? error.cause : error;
-    if (e instanceof Error) {
-      // SQLite: UNIQUE constraint failed
-      // Postgres: SQLSTATE 23505 on the driver error's `code` (not in the message)
-      return (
-        e.message.includes("UNIQUE constraint failed") ||
-        (e as { code?: string }).code === "23505"
-      );
-    }
-    return false;
-  }
-}
-```
-
-## Outbound: Drizzle Postgres Adapter with Transactions
-
-```typescript
-// src/outbound/drizzle/postgres-repository.ts
-import { and, asc, eq, gt, or } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { authors } from "./schema";
-import { AuthorMapper } from "./mapper";
-import { decodeCursor, encodeCursor } from "../cursor";
-import {
-  DuplicateAuthorError,
-  UnknownAuthorError,
-} from "../../domain/authors/errors";
-import type {
-  Author,
-  CreateAuthorRequest,
-  CursorPage,
-} from "../../domain/authors/models";
-import type { AuthorRepository } from "../../domain/authors/ports";
-
-export class PostgresAuthorRepository implements AuthorRepository {
-  constructor(private readonly db: NodePgDatabase) {}
-
-  static fromClient(db: NodePgDatabase): PostgresAuthorRepository {
-    return new PostgresAuthorRepository(db);
-  }
-
-  async createAuthor(req: CreateAuthorRequest): Promise<Author> {
-    const id = crypto.randomUUID();
-    try {
-      // Transaction scoped to adapter — domain doesn't know
-      await this.db.transaction(async (tx) => {
-        await tx.insert(authors).values({
-          id,
-          name: req.name.value,
-        });
-      });
-    } catch (error) {
-      if (this.isUniqueConstraintError(error)) {
-        throw new DuplicateAuthorError(req.name.value);
-      }
-      throw new UnknownAuthorError(error);
-    }
-    return { id, name: req.name };
-  }
-
-  async findAuthor(authorId: string): Promise<Author | null> {
-    const rows = await this.db
-      .select()
-      .from(authors)
-      .where(eq(authors.id, authorId));
-    if (rows.length === 0) return null;
-    return AuthorMapper.toDomain(rows[0]);
-  }
-
-  async listAuthors(
-    cursor: string | null,
-    limit: number,
-  ): Promise<CursorPage<Author>> {
-    const fetchLimit = limit + 1;
-
-    const rows = cursor
-      ? await (() => {
-          const { createdAt, id } = decodeCursor(cursor);
-          return this.db
-            .select()
-            .from(authors)
-            .where(
-              or(
-                gt(authors.createdAt, createdAt),
-                and(eq(authors.createdAt, createdAt), gt(authors.id, id)),
-              ),
-            )
-            .orderBy(asc(authors.createdAt), asc(authors.id))
-            .limit(fetchLimit);
-        })()
-      : await this.db
-          .select()
-          .from(authors)
-          .orderBy(asc(authors.createdAt), asc(authors.id))
-          .limit(fetchLimit);
-
-    const hasMore = rows.length > limit;
-    const pageRows = rows.slice(0, limit);
-    const items = pageRows.map(AuthorMapper.toDomain);
-    const last = pageRows[pageRows.length - 1];
-    const nextCursor = hasMore && last ? encodeCursor(last.createdAt, last.id) : null;
-
-    return { items, nextCursor, hasMore };
-  }
-
-  private isUniqueConstraintError(error: unknown): boolean {
-    // drizzle-orm >= 0.44 wraps driver errors in DrizzleQueryError; node-postgres
-    // puts SQLSTATE 23505 on the driver error's `code` (on `.cause`), not in the message.
-    const e = error instanceof Error && error.cause instanceof Error ? error.cause : error;
-    return (e as { code?: string } | null)?.code === "23505";
-  }
-}
-```
-
-## Outbound: Raw SQL Adapter (no ORM)
-
-```typescript
-// src/outbound/sqlite/repository.ts
-import { Database } from "bun:sqlite";
-import { AuthorName } from "../../domain/authors/models";
-import type {
-  Author,
-  CreateAuthorRequest,
-  CursorPage,
-} from "../../domain/authors/models";
-import type { AuthorRepository } from "../../domain/authors/ports";
-import {
-  DuplicateAuthorError,
-  UnknownAuthorError,
-} from "../../domain/authors/errors";
-import { decodeCursor, encodeCursor } from "../cursor";
-
-type AuthorRow = { id: string; name: string; created_at: number };
-
-/**
- * Raw SQL — demonstrates that adapters choose their own data access strategy.
- * SQLite stores timestamps as unix epoch integers (seconds).
- */
-export class SqliteAuthorRepository implements AuthorRepository {
-  constructor(private readonly db: Database) {}
-
-  static fromClient(db: Database): SqliteAuthorRepository {
-    return new SqliteAuthorRepository(db);
-  }
-
-  async createAuthor(req: CreateAuthorRequest): Promise<Author> {
-    const id = crypto.randomUUID();
-    try {
-      // created_at uses DEFAULT (unixepoch()) declared in schema.
-      this.db
-        .prepare("INSERT INTO authors (id, name) VALUES (?, ?)")
-        .run(id, req.name.value);
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        error.message.includes("UNIQUE constraint failed")
-      ) {
-        throw new DuplicateAuthorError(req.name.value);
-      }
-      throw new UnknownAuthorError(error);
-    }
-    return { id, name: req.name };
-  }
-
-  async findAuthor(authorId: string): Promise<Author | null> {
-    const row = this.db
-      .prepare("SELECT id, name, created_at FROM authors WHERE id = ?")
-      .get(authorId) as AuthorRow | null;
-    if (!row) return null;
-    return { id: row.id, name: AuthorName.create(row.name) };
-  }
-
-  async listAuthors(
-    cursor: string | null,
-    limit: number,
-  ): Promise<CursorPage<Author>> {
-    const fetchLimit = limit + 1;
-    const rows = (cursor
-      ? (() => {
-          const { createdAt, id } = decodeCursor(cursor);
-          // Composite (created_at, id) tuple comparison via SQLite row-value syntax.
-          return this.db
-            .prepare(
-              "SELECT id, name, created_at FROM authors " +
-                "WHERE (created_at, id) > (?, ?) " +
-                "ORDER BY created_at ASC, id ASC LIMIT ?",
-            )
-            .all(Math.floor(createdAt.getTime() / 1000), id, fetchLimit);
-        })()
-      : this.db
-          .prepare(
-            "SELECT id, name, created_at FROM authors ORDER BY created_at ASC, id ASC LIMIT ?",
-          )
-          .all(fetchLimit)) as AuthorRow[];
-
-    const hasMore = rows.length > limit;
-    const pageRows = rows.slice(0, limit);
-    const items = pageRows.map((r) => ({
-      id: r.id,
-      name: AuthorName.create(r.name),
-    }));
-    const last = pageRows[pageRows.length - 1];
-    const nextCursor = hasMore && last
-      ? encodeCursor(new Date(last.created_at * 1000), last.id)
-      : null;
-
-    return { items, nextCursor, hasMore };
-  }
-}
-```
-
----
-
-## Inbound: createApp (wraps Hono)
-
-```typescript
-// src/inbound/http/app.ts
-import { OpenAPIHono } from "@hono/zod-openapi";
-import { swaggerUI } from "@hono/swagger-ui";
-import { cors } from "hono/cors";
-import { secureHeaders } from "hono/secure-headers";
-import { logger } from "hono/logger";
-import { requestId } from "hono/request-id";
-
-import type { AuthorService } from "../../domain/authors/ports";
-import { authorRoutes } from "./authors/routes";
-import { problem, problemHeaders, registerErrorHandler } from "./errors";
-import { withFieldErrorsFrom } from "./problem";
-import { healthRoutes, type HealthPing } from "./health";
-import { injectServices } from "./middleware";
-
-/**
- * App-wide type for context variables.
- * Handlers access services via c.var.authorService — fully typed.
- * requestId() populates c.var.requestId (typed via hono/request-id's RequestIdVariables).
- */
-export type AppEnv = {
-  Variables: {
-    authorService: AuthorService;
-    requestId: string;
-  };
-};
-
-export type AppContext = OpenAPIHono<AppEnv>;
-
-/** Subset of config the inbound layer needs. Keeps server.ts free of Hono types. */
-export type AppHttpConfig = {
-  corsOrigins: string[];
-};
-
-export type AppDeps = {
-  authorService: AuthorService;
-  /** HTTP-relevant config (CORS origins, etc.) — driven from loadConfig(). */
-  config: AppHttpConfig;
-  /** Readiness ping — typically `() => db.execute(sql`SELECT 1`)`. */
-  healthPing: HealthPing;
-};
-
-/**
- * Creates the Hono app. Bootstrap (server.ts) never imports Hono/OpenAPIHono.
- *
- * NOTE: for OpenAPIHono the shared validation hook is the constructor
- * `defaultHook` (set it on every OpenAPIHono instance — sub-apps mounted with
- * app.route() don't inherit it). `app.openapi(route, handler, hook)` also takes
- * an optional per-route hook that overrides `defaultHook`. The hook converts
- * every failed Zod validation into an RFC 9457 problem document so validation
- * errors share the same content type/shape as domain errors.
- */
-export function createApp(deps: AppDeps): OpenAPIHono<AppEnv> {
-  const app = new OpenAPIHono<AppEnv>({
-    defaultHook: (result, c) => {
-      if (!result.success) {
-        return c.json(
-          problem(
-            "validation-error",
-            "Unprocessable Entity",
-            422,
-            "Request validation failed",
-            { instance: c.req.path, ...withFieldErrorsFrom(result.error) },
-          ),
-          422,
-          problemHeaders(),
-        );
-      }
-    },
-  });
-
-  // Request id first — every downstream log line + the response echo the same id.
-  app.use("*", requestId());
-
-  // Health endpoints BEFORE auth/DI middleware: a global requireAuth must not
-  // 401 the liveness/readiness probes, and they need no services.
-  app.route("/", healthRoutes(deps.healthPing));
-
-  // Global middleware — order matters: CORS must come first.
-  // Origins are config-driven (no hardcoded localhost).
-  app.use("*", cors({ origin: deps.config.corsOrigins }));
-  app.use("*", secureHeaders());
-  app.use("*", logger());
-
-  // DI middleware — sets services on context for all downstream handlers
-  app.use("*", injectServices(deps.authorService));
-
-  // Bearer security scheme — registered once, attached to protected routes.
-  app.openAPIRegistry.registerComponent("securitySchemes", "bearerAuth", {
-    type: "http",
-    scheme: "bearer",
-    bearerFormat: "JWT",
-  });
-
-  // Domain routes — generates OpenAPI from createRoute() definitions
-  app.route("/v1/authors", authorRoutes());
-
-  // OpenAPI document + Swagger UI. doc31 emits OAS 3.1 — nullable schemas are
-  // lossless (`type: ["string","null"]`) instead of the 3.0 `nullable: true` hack.
-  app.doc31("/openapi.json", {
-    openapi: "3.1.0",
-    info: { title: "Authors API", version: "1.0.0" },
-  });
-  app.get("/docs", swaggerUI({ url: "/openapi.json" }));
-
-  // Error handler — runs after routes
-  registerErrorHandler(app);
-
-  return app;
-}
-
-/**
- * For tests: same app, no server binding. Pass a stub ping that always resolves.
- */
-export function createTestApp(deps: AppDeps): OpenAPIHono<AppEnv> {
-  return createApp(deps);
-}
-```
-
-The `withFieldErrorsFrom` helper turns a `ZodError` into the RFC 9457
-`errors[]` extension member. Keep it next to `problem()`:
-
-```typescript
-// src/inbound/http/problem.ts
-import type { ZodError } from "@hono/zod-openapi";
-
-/** RFC 9457 `errors[]` extension member, populated from a Zod failure. */
-export function withFieldErrorsFrom(error: ZodError): {
-  errors: { field: string; code: string; message: string }[];
-} {
-  return {
-    errors: error.issues.map((issue) => ({
-      field: issue.path.join(".") || "(root)",
-      code: issue.code,
-      message: issue.message,
-    })),
-  };
-}
-```
-
-## Inbound: DI Middleware
-
-```typescript
-// src/inbound/http/middleware.ts
-import { createMiddleware } from "hono/factory";
-import type { AuthorService } from "../../domain/authors/ports";
-import type { AppEnv } from "./app";
-
-/**
- * Sets services on context variables for downstream handlers.
- * Type-safe: c.var.authorService is typed via AppEnv.
- */
-export function injectServices(authorService: AuthorService) {
-  return createMiddleware<AppEnv>(async (c, next) => {
-    c.set("authorService", authorService);
-    await next();
-  });
-}
-```
-
-## Inbound: Auth Middleware
-
-```typescript
-// src/inbound/http/auth.ts
-/**
- * Auth lives entirely in the inbound layer. Domain never handles tokens.
- */
-import { createMiddleware } from "hono/factory";
-import { HTTPException } from "hono/http-exception";
-import { verify } from "hono/jwt";
-
-import type { AppEnv } from "./app";
-
-type AuthEnv = AppEnv & {
-  Variables: AppEnv["Variables"] & {
-    userId: string;
-  };
-};
-
-export function requireAuth(secret: string) {
-  return createMiddleware<AuthEnv>(async (c, next) => {
-    const authHeader = c.req.header("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      throw new HTTPException(401, { message: "Missing token" });
-    }
-
-    const token = authHeader.slice(7);
-    let payload: Awaited<ReturnType<typeof verify>>;
-    try {
-      // The algorithm argument is required by hono/jwt `verify` (hono 4.13+) —
-      // pin it explicitly; never let the token header pick the algorithm.
-      // HS256 = single-service fallback; use ES256/EdDSA when several services verify.
-      payload = await verify(token, secret, "HS256");
-    } catch {
-      throw new HTTPException(401, { message: "Invalid token" });
-    }
-
-    // `sub` is `string | undefined` on the JWT payload — guard, don't cast.
-    if (typeof payload.sub !== "string") {
-      throw new HTTPException(401, { message: "Invalid token" });
-    }
-    c.set("userId", payload.sub);
-
-    await next();
-  });
-}
-```
-
-## Inbound: Request / Response Schemas
-
-```typescript
-// src/inbound/http/authors/request.ts
-// `z` from @hono/zod-openapi is the same Zod with .openapi() metadata extension.
-import { z } from "@hono/zod-openapi";
-import { AuthorName, type CreateAuthorRequest } from "../../../domain/authors/models";
-
-/**
- * Zod schema for HTTP request body — decoupled from domain.
- * Validates shape at transport boundary. Domain validates business rules.
- */
-export const createAuthorBodySchema = z.object({
-  name: z.string().min(1, "name is required"),
-});
-
-export type CreateAuthorBody = z.infer<typeof createAuthorBodySchema>;
-
-/**
- * Convert validated HTTP body into domain type.
- * AuthorName.create() enforces domain invariants (trimming, non-empty).
- */
-export function toDomain(body: CreateAuthorBody): CreateAuthorRequest {
-  return { name: AuthorName.create(body.name) };
-}
-
-/**
- * Pagination query params schema — maps to domain pagination.
- */
-export const paginationSchema = z.object({
-  cursor: z.string().nullish().transform(v => v ?? null),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-```
-
-```typescript
-// src/inbound/http/authors/response.ts
-import type { Author } from "../../../domain/authors/models";
-
-/**
- * Public API representation — never expose domain models directly.
- */
-export interface AuthorResponse {
-  id: string;
-  name: string;
-}
-
-export function fromDomain(author: Author): AuthorResponse {
-  return {
-    id: author.id,
-    name: author.name.value,
-  };
-}
-```
-
-## Inbound: Handlers (Routes with OpenAPI)
-
-Routes use `@hono/zod-openapi` (`OpenAPIHono` + `createRoute`) so the OpenAPI
-spec is generated from the same schemas that validate requests — no
-separate API spec to drift from the implementation.
-
-```typescript
-// src/inbound/http/authors/routes.ts
-import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
-
-import type { AppEnv } from "../app";
-import { problem, problemHeaders } from "../errors";
-import { withFieldErrorsFrom } from "../problem";
-import { AuthorNotFoundError } from "../../../domain/authors/errors";
-import {
-  createAuthorBodySchema,
-  paginationSchema,
-  toDomain,
-} from "./request";
-import { fromDomain } from "./response";
-
-const AuthorSchema = z.object({
-  id: z.string().openapi({ example: "f47ac10b-58cc-4372-a567-0e02b2c3d479" }),
-  name: z.string().openapi({ example: "Ada Lovelace" }),
-}).openapi("Author");
-
-const AuthorResultSchema = z.object({ data: AuthorSchema }).openapi("AuthorResult");
-
-// Collection: pagination nested under `meta`, with `limit` echoed back.
-const AuthorPageSchema = z.object({
-  data: z.array(AuthorSchema),
-  meta: z.object({
-    limit: z.number().int(),
-    next_cursor: z.string().nullable(),
-    has_more: z.boolean(),
-  }),
-}).openapi("AuthorPage");
-
-// RFC 9457 problem document. `instance` stays in the body; the correlation id
-// lives in the X-Request-Id response header (not the body). `errors[]` is the
-// field-level validation extension member.
-const ProblemSchema = z.object({
-  type: z.string(),
-  title: z.string(),
-  status: z.number(),
-  detail: z.string(),
-  instance: z.string().optional(),
-  errors: z.array(z.object({
-    field: z.string(),
-    code: z.string(),
-    message: z.string(),
-  })).optional(),
-}).openapi("ProblemDetails");
-
-// Ids are opaque server-generated UUIDs — constrain so a malformed id 400s at
-// the boundary instead of reaching the service and returning a misleading 404.
-const authorParams = z.object({
-  id: z.uuid().openapi({ param: { name: "id", in: "path" } }),
-});
-
-const createAuthorRoute = createRoute({
-  method: "post",
-  path: "/",
-  tags: ["authors"],
-  security: [{ bearerAuth: [] }],
-  request: {
-    body: { content: { "application/json": { schema: createAuthorBodySchema } } },
-  },
-  responses: {
-    201: {
-      content: { "application/json": { schema: AuthorResultSchema } },
-      description: "Created",
-      headers: z.object({
-        Location: z.string().openapi({ example: "/v1/authors/<id>" }),
-      }),
-    },
-    400: { content: { "application/problem+json": { schema: ProblemSchema } }, description: "Malformed request" },
-    409: { content: { "application/problem+json": { schema: ProblemSchema } }, description: "Duplicate" },
-    422: { content: { "application/problem+json": { schema: ProblemSchema } }, description: "Validation failed" },
-    500: { content: { "application/problem+json": { schema: ProblemSchema } }, description: "Internal error" },
-  },
-});
-
-const listAuthorsRoute = createRoute({
-  method: "get",
-  path: "/",
-  tags: ["authors"],
-  security: [{ bearerAuth: [] }],
-  request: { query: paginationSchema },
-  responses: {
-    200: { content: { "application/json": { schema: AuthorPageSchema } }, description: "Page of authors" },
-  },
-});
-
-const getAuthorRoute = createRoute({
-  method: "get",
-  path: "/{id}",
-  tags: ["authors"],
-  security: [{ bearerAuth: [] }],
-  request: { params: authorParams },
-  responses: {
-    200: { content: { "application/json": { schema: AuthorResultSchema } }, description: "Author" },
-    404: { content: { "application/problem+json": { schema: ProblemSchema } }, description: "Not found" },
-  },
-});
-
-export function authorRoutes() {
-  // Per-feature instance also needs the defaultHook so its zValidator
-  // failures become problem documents (the hook is per-instance, not inherited
-  // from the parent app it is mounted on).
-  const app = new OpenAPIHono<AppEnv>({
-    defaultHook: (result, c) => {
-      if (!result.success) {
-        return c.json(
-          problem(
-            "validation-error",
-            "Unprocessable Entity",
-            422,
-            "Request validation failed",
-            { instance: c.req.path, ...withFieldErrorsFrom(result.error) },
-          ),
-          422,
-          problemHeaders(),
-        );
-      }
-    },
-  });
-
-  app.openapi(createAuthorRoute, async (c) => {
-    const body = c.req.valid("json");
-    const author = await c.var.authorService.createAuthor(toDomain(body));
-    c.header("Location", `/v1/authors/${author.id}`);
-    return c.json({ data: fromDomain(author) }, 201);
-  });
-
-  app.openapi(listAuthorsRoute, async (c) => {
-    const { cursor, limit } = c.req.valid("query");
-    const page = await c.var.authorService.listAuthors(cursor, limit);
-    return c.json(
-      {
-        data: page.items.map(fromDomain),
-        meta: {
-          limit,
-          next_cursor: page.nextCursor,
-          has_more: page.hasMore,
-        },
-      },
-      200,
-    );
-  });
-
-  app.openapi(getAuthorRoute, async (c) => {
-    const { id } = c.req.valid("param");
-    const author = await c.var.authorService.findAuthor(id);
-    if (!author) {
-      // Throw a domain error; the central handler maps it to a 404 problem
-      // document via the same problem() builder (no hand-built inline body).
-      throw new AuthorNotFoundError(id);
-    }
-    return c.json({ data: fromDomain(author) }, 200);
-  });
-
-  return app;
-}
-```
-
-## Inbound: API Error Handler (RFC 9457)
-
-```typescript
-// src/inbound/http/errors.ts
-import type { Hono } from "hono";
+```ts file=src/inbound/http/problem.ts
+import { STATUS_CODES } from "node:http";
+import type { z } from "@hono/zod-openapi";
+import type { Context } from "hono";
 import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
-import {
-  AuthorNameEmptyError,
-  AuthorNotFoundError,
-  DuplicateAuthorError,
-  UnknownAuthorError,
-} from "../../domain/authors/errors";
-import type { AppEnv } from "./app";
+import { DomainError, type ErrorCode } from "../../domain/shared/errors.ts";
 
-export interface ProblemDetails {
-  type: string;
-  title: string;
-  status: number;
-  detail: string;
-  /** Request-specific URI (RFC 9457). The correlation id is the X-Request-Id header, not here. */
-  instance?: string;
-  /** RFC 9457 extension member: field-level validation detail. */
-  errors?: { field: string; code: string; message: string }[];
+/** api-design.md § Problem Types: each type's status and fixed title. */
+const TYPES = {
+  "malformed-request": [400, "Malformed request"],
+  unauthenticated: [401, "Unauthenticated"],
+  forbidden: [403, "Forbidden"],
+  "not-found": [404, "Not found"],
+  "method-not-allowed": [405, "Method not allowed"],
+  "not-acceptable": [406, "Not acceptable"],
+  "already-exists": [409, "Already exists"],
+  "invalid-transition": [409, "Invalid transition"],
+  "version-conflict": [409, "Version conflict"],
+  "idempotency-in-flight": [409, "Request in progress"],
+  "precondition-failed": [412, "Precondition failed"],
+  "payload-too-large": [413, "Payload too large"],
+  "unsupported-media-type": [415, "Unsupported media type"],
+  "validation-failed": [422, "Validation failed"],
+  "idempotency-key-mismatch": [422, "Idempotency key mismatch"],
+  "precondition-required": [428, "Precondition required"],
+  "rate-limited": [429, "Too many requests"],
+  internal: [500, "Internal error"],
+  unavailable: [503, "Service unavailable"],
+} as const satisfies Record<string, readonly [ContentfulStatusCode, string]>;
+
+export type ProblemType = keyof typeof TYPES;
+export type ProblemIssue = Readonly<{ pointer?: string; parameter?: string; detail: string; code: string }>;
+
+/** A registry type, or a bare status outside the registry (rendered as about:blank). */
+export class ProblemError extends Error {
+  override readonly name = "ProblemError";
+  readonly type: ProblemType | ContentfulStatusCode;
+  readonly headers: Record<string, string>;
+  readonly errors: readonly ProblemIssue[];
+
+  constructor(type: ProblemType | ContentfulStatusCode, detail: string, init: { headers?: Record<string, string>; errors?: ProblemIssue[]; cause?: unknown } = {}) {
+    super(detail, { cause: init.cause });
+    this.type = type;
+    this.headers = init.headers ?? {};
+    this.errors = init.errors ?? [];
+  }
 }
 
-export function problem(
-  typeSlug: string,
-  title: string,
-  status: number,
-  detail: string,
-  extra?: Partial<Pick<ProblemDetails, "instance" | "errors">>,
-): ProblemDetails {
-  return {
-    type: `https://api.example.com/errors/${typeSlug}`,
-    title,
-    status,
-    detail,
-    ...extra,
-  };
+const BY_CODE = {
+  invalid: "validation-failed",
+  malformed: "malformed-request",
+  not_found: "not-found",
+  forbidden: "forbidden",
+  already_exists: "already-exists",
+  invalid_transition: "invalid-transition",
+  version_conflict: "version-conflict",
+  precondition_failed: "precondition-failed",
+  unavailable: "unavailable",
+} as const satisfies Record<ErrorCode, ProblemType>;
+
+const isType = (t: string): t is ProblemType => Object.hasOwn(TYPES, t);
+const retry = (type: ProblemType | number) => (type === "unavailable" || type === "rate-limited" ? { "Retry-After": "2" } : {});
+
+export function toProblem(err: Error): ProblemError {
+  if (err instanceof ProblemError) return err;
+  if (err instanceof DomainError) {
+    const type = BY_CODE[err.code];
+    const errors = err.issues.map((i) => ({ pointer: `#/${i.field}`, detail: i.detail, code: i.code }));
+    return new ProblemError(type, err.message, { errors, headers: retry(type) });
+  }
+  if (err instanceof HTTPException && err.status !== 500) {
+    // Keep the status (its type when exactly one has it, else about:blank) and the headers.
+    const [only, ...more] = Object.keys(TYPES).filter((t) => isType(t)).filter((t) => TYPES[t][0] === err.status);
+    const type = only !== undefined && more.length === 0 ? only : err.status;
+    const headers = new Headers(retry(type));
+    for (const [name, value] of err.getResponse().headers) if (!name.startsWith("content-")) headers.set(name, value);
+    return new ProblemError(type, err.message, { headers: Object.fromEntries(headers) });
+  }
+  return new ProblemError("internal", "An unexpected error occurred", { cause: err });
 }
 
-/** Every error body is application/problem+json (RFC 9457). */
-export function problemHeaders(): { "content-type": string } {
-  return { "content-type": "application/problem+json" };
+export function renderProblem(c: Context, base: string, p: ProblemError): Response {
+  const [status, title] = typeof p.type === "number" ? ([p.type, STATUS_CODES[p.type] ?? "Error"] as const) : TYPES[p.type];
+  const type = typeof p.type === "number" ? "about:blank" : `${base}${p.type}`;
+  const body = { type, title, status, detail: p.message === "" ? title : p.message, instance: c.req.path };
+  const headers = { ...p.headers, "Content-Type": "application/problem+json" };
+  return c.json(p.errors.length > 0 ? { ...body, errors: p.errors } : body, status, headers);
 }
 
-export function registerErrorHandler(app: Hono<AppEnv>): void {
-  app.onError((err, c) => {
-    // Genuinely-thrown transport exceptions (e.g. auth middleware). Validation
-    // failures never reach here — the OpenAPIHono defaultHook converts them to
-    // problem documents before onError runs.
-    if (err instanceof HTTPException) {
-      // err.status is already ContentfulStatusCode; the import keeps the
-      // annotation honest under strict mode.
-      const status: ContentfulStatusCode = err.status;
-      return c.json(
-        problem("request-error", err.message || "Request Error", status, err.message, {
-          instance: c.req.path,
-        }),
-        status,
-        problemHeaders(),
-      );
-    }
+/** RFC 6901 in URI-fragment form; "#" is the whole body. */
+const pointer = (path: readonly PropertyKey[]) => ["#", ...path.map((p) => String(p).replaceAll("~", "~0").replaceAll("/", "~1"))].join("/");
 
-    // Domain errors — match on tag for exhaustive handling
-    if (err instanceof AuthorNotFoundError) {
-      return c.json(
-        problem("not-found", "Not Found", 404, err.message, { instance: c.req.path }),
-        404,
-        problemHeaders(),
-      );
-    }
-
-    if (err instanceof DuplicateAuthorError) {
-      return c.json(
-        problem("duplicate-author", "Conflict", 409, err.message, { instance: c.req.path }),
-        409,
-        problemHeaders(),
-      );
-    }
-
-    if (err instanceof AuthorNameEmptyError) {
-      return c.json(
-        problem("validation-error", "Unprocessable Entity", 422, err.message, {
-          instance: c.req.path,
-        }),
-        422,
-        problemHeaders(),
-      );
-    }
-
-    if (err instanceof UnknownAuthorError) {
-      console.error(`[${c.var.requestId}] Unexpected error:`, err.cause);
-    } else {
-      console.error(`[${c.var.requestId}] Unhandled error:`, err);
-    }
-
-    return c.json(
-      problem("internal-error", "Internal Server Error", 500, "An unexpected error occurred", {
-        instance: c.req.path,
-      }),
-      500,
-      problemHeaders(),
+/** For the defaultHook: an unparseable path parameter is 400; any other failed validation is 422. */
+export function validationProblem(error: z.ZodError, target: string): ProblemError {
+  if (target === "param") return new ProblemError("malformed-request", "A path parameter is not a valid identifier");
+  const errors = error.issues.flatMap((issue) => {
+    const unknown = issue.code === "unrecognized_keys";
+    const code = unknown ? "unknown_field" : issue.code;
+    return (unknown ? issue.keys.map((k) => [...issue.path, k]) : [issue.path]).map((path) =>
+      target === "json" ? { pointer: pointer(path), detail: issue.message, code } : { parameter: String(path[0] ?? target), detail: issue.message, code },
     );
   });
+  return new ProblemError("validation-failed", `${String(errors.length)} invalid value(s)`, { errors });
 }
 ```
 
-## Inbound: Response Helpers
+## Authentication to Actor
 
-```typescript
-// src/inbound/http/response.ts
+```ts file=src/inbound/http/auth.ts
+import { createMiddleware } from "hono/factory";
+import { createRemoteJWKSet, errors, jwtVerify, type JWTPayload } from "jose";
+import { z } from "zod";
+import type { AppEnv } from "./env.ts";
+import { ProblemError } from "./problem.ts";
 
-/**
- * Standard response wrappers.
- * Use these types for documenting the API contract — not required at runtime
- * since Hono's c.json() handles serialization directly.
- */
-export interface ApiSuccess<T> {
-  data: T;
-}
+export type AuthConfig = Readonly<
+  { issuer: string; audience: string } & ({ mode: "jwks"; jwksUrl: URL } | { mode: "hs256"; secret: string })
+>;
 
-export interface CursorPageResponse<T> {
-  data: T[];
-  meta: {
-    limit: number;
-    next_cursor: string | null;
-    has_more: boolean;
-  };
-}
-```
+const Claims = z.object({ sub: z.string().regex(/^[^\0]+$/u), tid: z.uuid(), roles: z.array(z.string()).default([]) }); // sub is stored: no NUL
+const BEARER = /^Bearer +([\w.~+/-]+=*)$/iu;
+/** Key-source outages; jose throws a plain JOSEError for a non-200 or non-JSON reply. */
+const KEY_SOURCE_DOWN = new Set(["ERR_JOSE_GENERIC", "ERR_JWKS_TIMEOUT", "ERR_JWKS_INVALID"]);
 
-## Inbound: Healthcheck
-
-```typescript
-// src/inbound/http/health.ts
-/**
- * Healthcheck is infrastructure — not a domain concern.
- * Wire directly in createApp. The readiness probe takes a small
- * "ping" callback so the inbound layer doesn't import drizzle/postgres directly.
- */
-import { Hono } from "hono";
-
-export type HealthPing = () => Promise<void>;
-
-/** Reject after `ms` so a hung DB connection can't stall the readiness probe. */
-function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error(`timed out after ${ms}ms`)), ms),
-    ),
-  ]);
-}
-
-export function healthRoutes(ping: HealthPing) {
-  const app = new Hono();
-
-  // Liveness — is the process alive?
-  app.get("/healthz", (c) => c.json({ status: "ok" }));
-
-  // Readiness — can it serve traffic? Returns 503 if the DB is unreachable
-  // so k8s/load balancers can drain a node before it accepts more traffic.
-  // Wrap the ping in a timeout for a fast 503 instead of hanging the probe.
-  app.get("/readyz", async (c) => {
-    try {
-      await withTimeout(ping(), 1000);
-      return c.json({ status: "ready" });
-    } catch (err) {
-      console.error("readiness check failed:", err);
-      return c.json({ status: "not ready" }, 503);
-    }
+const unauthenticated = (detail: string, tokenSent: boolean) =>
+  new ProblemError("unauthenticated", detail, {
+    headers: { "WWW-Authenticate": `Bearer realm="api"${tokenSent ? ', error="invalid_token"' : ""}` },
   });
 
-  return app;
+function verifier(cfg: AuthConfig): (token: string) => Promise<JWTPayload> {
+  const options = { issuer: cfg.issuer, audience: cfg.audience, requiredClaims: ["exp", "sub"] };
+  if (cfg.mode === "jwks") {
+    const keys = createRemoteJWKSet(cfg.jwksUrl, { timeoutDuration: 2_000 }); // cached 10 min; refetch cooldown 30 s
+    return async (token) => (await jwtVerify(token, keys, { ...options, algorithms: ["ES256", "EdDSA"] })).payload;
+  }
+  const secret = new TextEncoder().encode(cfg.secret);
+  return async (token) => (await jwtVerify(token, secret, { ...options, algorithms: ["HS256"] })).payload;
 }
 
-// In createApp(): pass a ping function constructed at bootstrap.
-// e.g. `() => db.execute(sql`SELECT 1`).then(() => undefined)`
+export function authenticate(cfg: AuthConfig) {
+  const verify = verifier(cfg);
+  return createMiddleware<AppEnv>(async (c, next) => {
+    const token = BEARER.exec(c.req.header("authorization") ?? "")?.[1];
+    if (token === undefined) throw unauthenticated("A bearer token is required", false);
+    const payload = await verify(token).catch((err: unknown) => {
+      if (err instanceof errors.JOSEError && !KEY_SOURCE_DOWN.has(err.code)) throw unauthenticated("The access token is invalid or expired", true);
+      throw new ProblemError("unavailable", "The token issuer's keys are unreachable", { headers: { "Retry-After": "5" }, cause: err });
+    });
+    const claims = Claims.safeParse(payload);
+    if (!claims.success) throw unauthenticated("The access token lacks a valid tenant or subject", true);
+    c.set("actor", { tenantId: claims.data.tid, subject: claims.data.sub, roles: claims.data.roles });
+    await next();
+    c.header("Cache-Control", "no-store");
+  });
+}
 ```
 
-## Inbound: Task Handler (non-HTTP inbound adapter)
+## Idempotency middleware
 
-```typescript
-// src/inbound/tasks/handler.ts
-/**
- * Task queue handler — inbound adapter.
- * Same pattern as HTTP: typed payload -> toDomain() -> service -> ack.
- */
-import { Hono } from "hono";
-import { zValidator } from "@hono/zod-validator";
-// Import `z` from @hono/zod-openapi everywhere — importing from "zod" directly
-// risks two Zod instances (a "split-Zod" type mismatch) when zod-openapi
-// re-exports its own v4-compatible `z`.
-import { z } from "@hono/zod-openapi";
-import { AuthorName } from "../../domain/authors/models";
-import type { AppEnv } from "../http/app";
-import { problem, problemHeaders } from "../http/errors";
-import { withFieldErrorsFrom } from "../http/problem";
+Applied per route, after auth; never in a handler.
 
-const syncAuthorPayloadSchema = z.object({
-  author_name: z.string().min(1),
-  source: z.string(),
+```ts file=src/inbound/http/idempotency.ts
+import { createMiddleware } from "hono/factory";
+import { DomainError } from "../../domain/shared/errors.ts";
+import { LeaseLostError, type StoredResponse } from "../../domain/shared/idempotency.ts";
+import type { AppEnv } from "./env.ts";
+import { ProblemError } from "./problem.ts";
+
+const KEY = /^[!-~]{1,255}$/u; // visible ASCII
+/** Decided by headers outside the hash (Accept, Content-Type, If-Match): never stored, the key is released. */
+const HEADER_DECIDED = new Set([406, 412, 415, 428]);
+const storable = (status: number) => status < 500 && !HEADER_DECIDED.has(status);
+class Rollback extends Error {}
+
+const sortKeys = (_key: string, v: unknown): unknown =>
+  v !== null && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.entries(v).toSorted(([a], [b]) => (a < b ? -1 : 1))) : v;
+
+/** Method, path with query, and the body with keys sorted at every depth; a body that is not JSON hashes as sent. */
+async function requestHash(method: string, target: string, body: string): Promise<string> {
+  let canonical = body;
+  try {
+    canonical = JSON.stringify(JSON.parse(body), sortKeys);
+  } catch {
+    // not JSON: validation answers 400 after the key is taken, and that 400 is replayed
+  }
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${method} ${target}\n${canonical}`));
+  return Buffer.from(digest).toString("hex");
+}
+
+async function snapshot(res: Response): Promise<StoredResponse> {
+  const headers = Object.fromEntries([...res.headers].filter(([name]) => ["content-type", "location", "etag"].includes(name)));
+  return { status: res.status, headers, body: new Uint8Array(await res.clone().arrayBuffer()) };
+}
+
+export const idempotent = createMiddleware<AppEnv>(async (c, next) => {
+  const key = c.req.header("idempotency-key");
+  if (key === undefined) return next();
+  if (!KEY.test(key)) throw new ProblemError("malformed-request", "Idempotency-Key must be 1-255 visible ASCII characters");
+  const { actor, services } = c.var;
+  const scope = `${actor.tenantId}:${actor.subject}`;
+  const { pathname, search } = new URL(c.req.url);
+  const acquired = await services.idempotency.acquire(scope, key, await requestHash(c.req.method, pathname + search, await c.req.text()));
+  if (acquired.kind === "replay") {
+    const { body, status, headers } = acquired.response;
+    return new Response(body, { status, headers: { ...headers, "Idempotent-Replayed": "true" } });
+  }
+  if (acquired.kind === "mismatch") throw new ProblemError("idempotency-key-mismatch", "This key was used for another request");
+  if (acquired.kind === "in_flight") {
+    throw new ProblemError("idempotency-in-flight", "A request with this key is still running", { headers: { "Retry-After": "1" } });
+  }
+  const { lease } = acquired;
+  const release = () => services.idempotency.release(scope, key, lease).catch(() => {});
+  try {
+    await services.uow.run(async (tx) => {
+      await next();
+      if (c.error !== undefined || !storable(c.res.status)) throw new Rollback();
+      await tx.idempotency.complete(scope, key, lease, await snapshot(c.res));
+    });
+  } catch (err) {
+    if (!(err instanceof Rollback)) {
+      await release();
+      throw err instanceof LeaseLostError ? new DomainError("unavailable", "The idempotency lease expired", { cause: err }) : err;
+    }
+    // The handler's writes rolled back: store the 4xx in a fresh unit, or free the key.
+    if (storable(c.res.status)) await services.uow.run(async (tx) => tx.idempotency.complete(scope, key, lease, await snapshot(c.res))).catch(release);
+    else await release();
+  }
+});
+```
+
+## Article routes
+
+```ts file=src/inbound/http/articles.ts
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
+import { type Article, LIMITS, SLUG_PATTERN } from "../../domain/publishing/article.ts";
+import { MAX_PAGE } from "../../domain/publishing/use-cases.ts";
+import type { AppEnv } from "./env.ts";
+import { idempotent } from "./idempotency.ts";
+
+const ArticleData = z
+  .object({
+    id: z.uuid(),
+    slug: z.string(),
+    title: z.string(),
+    body: z.string(),
+    status: z.enum(["draft", "published", "archived"]),
+    version: z.int(),
+    author_id: z.string(),
+    created_at: z.iso.datetime(),
+    updated_at: z.iso.datetime(),
+    published_at: z.iso.datetime().nullable(),
+  })
+  .openapi("Article");
+const Single = z.object({ data: ArticleData }).openapi("ArticleResponse");
+const Meta = z.object({ limit: z.int(), next_cursor: z.string().nullable(), has_more: z.boolean() });
+const PageOf = z.object({ data: z.array(ArticleData), meta: Meta }).openapi("ArticlePage");
+const Issue = z.looseObject({ detail: z.string(), code: z.string() });
+const Problem = z
+  .object({ type: z.url(), title: z.string(), status: z.int(), detail: z.string(), instance: z.string(), errors: z.array(Issue).optional() })
+  .openapi("Problem");
+
+const Create = z
+  .strictObject({
+    slug: z.string().openapi({ pattern: SLUG_PATTERN, maxLength: LIMITS.slug }),
+    title: z.string().openapi({ minLength: 1, maxLength: LIMITS.title }),
+    body: z.string().openapi({ maxLength: LIMITS.body }),
+  })
+  .openapi("CreateArticle");
+const Patch = z.strictObject({ title: z.string().optional(), body: z.string().nullable().optional() }).openapi("UpdateArticle");
+const params = z.object({ id: z.uuid().openapi({ param: { name: "id", in: "path" } }) });
+/** Decimal digits: 0, 1.5 and 1e3 are 422; above 100 clamps to 100, 2^64 too. */
+const limit = z.string().regex(/^\d+$/u, "must be an integer").transform((s) => Math.min(Number(s), MAX_PAGE)).pipe(z.number().min(1)).default(20);
+const query = z.strictObject({ limit: limit.openapi({ type: "integer", minimum: 1, default: 20 }), cursor: z.string().optional() });
+const none = z.strictObject({});
+const keyHeader = z.object({ "idempotency-key": z.string().optional() });
+const json = <S extends z.ZodType>(schema: S) => ({ "application/json": { schema } });
+
+const security = [{ bearerAuth: [] }];
+const ok = (schema: z.ZodType) => ({ description: "Success", content: json(schema) });
+const problem = { description: "Problem", content: { "application/problem+json": { schema: Problem } } };
+
+const routes = {
+  create: createRoute({
+    method: "post",
+    path: "/",
+    security,
+    middleware: [idempotent] as const,
+    request: { query: none, headers: keyHeader, body: { required: true, content: json(Create) } },
+    responses: { 201: ok(Single), default: problem },
+  }),
+  list: createRoute({ method: "get", path: "/", security, request: { query }, responses: { 200: ok(PageOf), default: problem } }),
+  get: createRoute({ method: "get", path: "/{id}", security, request: { query: none, params }, responses: { 200: ok(Single), default: problem } }),
+  update: createRoute({
+    method: "patch",
+    path: "/{id}",
+    security,
+    request: {
+      query: none,
+      params,
+      headers: z.object({ "if-match": z.string().optional() }),
+      body: { required: true, content: { ...json(Patch), "application/merge-patch+json": { schema: Patch } } },
+    },
+    responses: { 200: ok(Single), default: problem },
+  }),
+  publish: createRoute({
+    method: "post",
+    path: "/{id}/publish",
+    security,
+    middleware: [idempotent] as const,
+    request: { query: none, params, headers: keyHeader },
+    responses: { 200: ok(Single), default: problem },
+  }),
+};
+
+const etag = (version: number) => `"${String(version)}"`;
+const TAG = /(W\/)?"[!#-~\u0080-\u00FF]*"/gu;
+
+/** RFC 9110 § 13.1.1: absent or `*` is unconditional; otherwise only an exactly equal strong tag matches. */
+function ifMatch(header: string | undefined): ((version: number) => boolean) | undefined {
+  if (header === undefined || header.trim() === "*") return undefined;
+  const wellFormed = header.replaceAll(TAG, "").replaceAll(/[\s,]/gu, "") === "";
+  const strong = new Set([...header.matchAll(TAG)].filter((m) => m[1] === undefined).map((m) => m[0]));
+  return (version) => wellFormed && strong.has(etag(version));
+}
+
+const wire = (a: Article) => ({
+  id: a.id,
+  slug: a.slug,
+  title: a.title,
+  body: a.body,
+  status: a.status,
+  version: a.version,
+  author_id: a.authorId,
+  created_at: a.createdAt.toISOString(),
+  updated_at: a.updatedAt.toISOString(),
+  published_at: a.publishedAt?.toISOString() ?? null,
 });
 
-export function taskRoutes() {
-  const app = new Hono<AppEnv>();
-
-  app.post(
-    "/tasks/sync-author",
-    // Plain Hono + zValidator takes the hook as its 3rd arg (OpenAPIHono uses
-    // the constructor defaultHook, or a per-route 3rd arg to app.openapi()).
-    zValidator("json", syncAuthorPayloadSchema, (result, c) => {
-      if (!result.success) {
-        return c.json(
-          problem("validation-error", "Unprocessable Entity", 422, "Request validation failed", {
-            instance: c.req.path,
-            ...withFieldErrorsFrom(result.error),
-          }),
-          422,
-          problemHeaders(),
-        );
-      }
-    }),
-    async (c) => {
-      const payload = c.req.valid("json");
-      const domainReq = { name: AuthorName.create(payload.author_name) };
-      await c.var.authorService.createAuthor(domainReq);
-      return c.json({ status: "ok" });
-    },
-  );
-
+export function articleRoutes() {
+  const app = new OpenAPIHono<AppEnv>();
+  app.openapi(routes.create, async (c) => {
+    const a = await c.var.services.publishing.create(c.var.actor, c.req.valid("json"));
+    return c.json({ data: wire(a) }, 201, { Location: `/v1/articles/${a.id}`, ETag: etag(a.version) });
+  });
+  app.openapi(routes.list, async (c) => {
+    const { limit: used, cursor } = c.req.valid("query");
+    const page = await c.var.services.publishing.list(c.var.actor, { cursor, limit: used });
+    return c.json({ data: page.items.map(wire), meta: { limit: used, next_cursor: page.nextCursor, has_more: page.hasMore } }, 200);
+  });
+  app.openapi(routes.get, async (c) => {
+    const a = await c.var.services.publishing.get(c.var.actor, c.req.valid("param").id);
+    return c.json({ data: wire(a) }, 200, { ETag: etag(a.version) });
+  });
+  app.openapi(routes.update, async (c) => {
+    const { title, body } = c.req.valid("json"); // merge patch: absent stays, a null body clears it
+    const precondition = ifMatch(c.req.header("if-match"));
+    const a = await c.var.services.publishing.update(c.var.actor, c.req.valid("param").id, { title, body: body === null ? "" : body }, precondition);
+    return c.json({ data: wire(a) }, 200, { ETag: etag(a.version) });
+  });
+  app.openapi(routes.publish, async (c) => {
+    const a = await c.var.services.publishing.publish(c.var.actor, c.req.valid("param").id);
+    return c.json({ data: wire(a) }, 200, { ETag: etag(a.version) });
+  });
   return app;
 }
-
-// In createApp():
-// app.route("/", taskRoutes());    // task queue endpoints
-// app.route("/", webhookRoutes()); // webhook endpoints
 ```
 
----
+## Probes and the moderation webhook
 
-## Outbound: Outbox Adapter (transactional, Drizzle)
+```ts file=src/inbound/http/health.ts
+import { Hono } from "hono";
+import type { AppEnv } from "./env.ts";
+import { ProblemError } from "./problem.ts";
 
-The outbox row must be inserted inside the same `db.transaction` callback as the aggregate write. Drizzle's tx callback is the natural unit-of-work scope.
+export class Readiness {
+  state: "starting" | "ready" | "draining" = "starting";
 
-```typescript
-// src/domain/shared/events.ts — plain data, no infra deps
-export interface DomainEvent {
-  readonly aggregateType: string;
-  readonly aggregateId: string;
-  readonly eventType: string;
-  readonly payload: Record<string, unknown>;
+  ready(): void {
+    if (this.state === "starting") this.state = "ready";
+  }
+
+  drain(): void {
+    this.state = "draining";
+  }
 }
-```
 
-This is an **alternate** outbound adapter implementing an **alternate
-(events-carrying) port shape** — NOT the canonical `AuthorRepository` above.
-Keep exactly one canonical contract per port; if you adopt the events-carrying
-variant, swap the whole stack (port + service + adapter) to it, don't run two
-conflicting `AuthorRepository` definitions side by side.
-
-```typescript
-// src/domain/authors/ports.ts — ALTERNATE port that carries events to persist atomically.
-// Distinct name so it never collides with the canonical AuthorRepository.
-export interface OutboxAuthorRepository {
-  createAuthor(
-    author: Author,
-    events: readonly DomainEvent[],
-  ): Promise<Author>;
-  // ...
-}
-```
-
-```typescript
-// src/outbound/outbox-postgres-author-repository.ts
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { authors, outbox } from "./schema";
-import { AuthorMapper } from "./drizzle/mapper";
-import { currentTraceparent } from "./tracing";
-import type { Author, CreateAuthorRequest } from "../domain/authors/models";
-import type { DomainEvent } from "../domain/shared/events";
-import type { OutboxAuthorRepository } from "../domain/authors/ports";
-
-/**
- * ALTERNATE implementation of the events-carrying OutboxAuthorRepository port.
- * Named distinctly so it never collides with the canonical
- * DrizzleAuthorRepository / PostgresAuthorRepository above.
- */
-export class OutboxPostgresAuthorRepository implements OutboxAuthorRepository {
-  constructor(private readonly db: NodePgDatabase) {}
-
-  async createAuthor(
-    author: Author,
-    events: readonly DomainEvent[],
-  ): Promise<Author> {
-    return this.db.transaction(async (tx) => {
-      const [row] = await tx
-        .insert(authors)
-        .values({ id: author.id, name: author.name.value })
-        .returning();
-
-      if (events.length > 0) {
-        // Trace context captured at write time, not at relay time.
-        const traceparent = currentTraceparent();
-        await tx.insert(outbox).values(
-          events.map((e) => ({
-            id: crypto.randomUUID(),
-            aggregateType: e.aggregateType,
-            aggregateId: e.aggregateId,
-            eventType: e.eventType,
-            payload: e.payload,
-            traceparent,
-          })),
-        );
-      }
-
-      // Author is an interface — use the mapper, not a (non-existent) static.
-      // `returning()` yields { id, name, createdAt }, the shape AuthorMapper expects.
-      return AuthorMapper.toDomain(row);
+export function probes(readiness: Readiness | undefined) {
+  const app = new Hono<AppEnv>();
+  app.get("/health", (c) => c.json({ status: "ok" }));
+  if (readiness) {
+    app.get("/ready", (c) => {
+      if (readiness.state === "ready") return c.json({ status: "ready" });
+      throw new ProblemError("unavailable", `Instance is ${readiness.state}`, { headers: { "Retry-After": "5" } });
     });
   }
+  return app;
 }
 ```
 
-```typescript
-// Application service composes the events. It generates the id so the outbox
-// aggregateId is the real entity id (not the name) and the persisted row id matches.
-async createAuthor(req: CreateAuthorRequest): Promise<Author> {
-  const author: Author = { id: crypto.randomUUID(), name: req.name };
-  const events: DomainEvent[] = [{
-    aggregateType: "author",
-    aggregateId: author.id,
-    eventType: "AuthorCreated",
-    payload: { name: author.name.value },
-  }];
-  try {
-    const created = await this.repo.createAuthor(author, events);
-    await this.metrics.recordCreationSuccess();
-    return created;
-  } catch (error) {
-    await this.metrics.recordCreationFailure();
-    throw error;
-  }
+```ts file=src/inbound/webhooks/moderation.ts
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { Hono } from "hono";
+import { z } from "zod";
+import { DomainError } from "../../domain/shared/errors.ts";
+import { systemActor } from "../../domain/shared/ports.ts";
+import type { AppEnv } from "../http/env.ts";
+import { ProblemError } from "../http/problem.ts";
+
+const PERMANENT = new Set<string>(["not_found", "invalid_transition"]);
+const Verdict = z.object({ tenant_id: z.uuid(), article_id: z.uuid(), verdict: z.enum(["approved", "rejected"]) });
+
+/** Standard Webhooks: any configured secret may match any `v1,` entry; ±300 s. */
+export function verifySignature(secrets: readonly string[], h: Record<"id" | "ts" | "sig", string>, body: Uint8Array): boolean {
+  if (!/^\d+$/u.test(h.ts) || Math.abs(Date.now() / 1000 - Number(h.ts)) > 300) return false;
+  const sent = h.sig.split(" ").flatMap((e) => (e.startsWith("v1,") ? [Buffer.from(e.slice(3), "base64")] : []));
+  return secrets.some((secret) => {
+    const expected = createHmac("sha256", Buffer.from(secret.replace(/^whsec_/u, ""), "base64")).update(`${h.id}.${h.ts}.`).update(body).digest();
+    return sent.some((s) => s.length === expected.length && timingSafeEqual(s, expected));
+  });
+}
+
+export function moderationWebhook(secrets: readonly string[]) {
+  const app = new Hono<AppEnv>();
+  app.post("/internal/webhooks/moderation", async (c) => {
+    const h = { id: c.req.header("webhook-id") ?? "", ts: c.req.header("webhook-timestamp") ?? "", sig: c.req.header("webhook-signature") ?? "" };
+    if (h.id === "" || !verifySignature(secrets, h, await c.req.bytes())) {
+      throw new ProblemError("unauthenticated", "Invalid or stale signature", { headers: { "WWW-Authenticate": 'Webhook realm="moderation"' } });
+    }
+    const message = Verdict.safeParse(await c.req.json().catch(() => null)); // parsed only after the raw bytes verified
+    const { uow, publishing } = c.var.services;
+    const outcome = await uow.run(async (tx) => {
+      if (!(await tx.inbox.claim("moderation", h.id))) return "duplicate";
+      if (!message.success) return "invalid_payload";
+      if (message.data.verdict === "approved") return "approved";
+      try {
+        await publishing.archive(systemActor(message.data.tenant_id, "moderation"), message.data.article_id);
+        return "archived";
+      } catch (err) {
+        if (err instanceof DomainError && PERMANENT.has(err.code)) return err.code; // recorded and acked, never retried
+        throw err;
+      }
+    });
+    c.var.log.info({ webhook_id: h.id, outcome }, "moderation webhook");
+    return c.body(null, 204);
+  });
+  return app;
 }
 ```
 
-**Outbox relay** is a separate worker (a Node process, a Cloudflare Cron Worker, or a queue consumer). It polls `WHERE published_at IS NULL` in insertion order (`ORDER BY` a `created_at`/sequence column — `crypto.randomUUID()` ids don't sort by insertion) `LIMIT N`, publishes to the broker, and updates `published_at` on success. Failures move to a `outbox_dead` table after N attempts.
+## Schema and migration
 
-### Edge runtime gotcha (Cloudflare D1)
+```sql file=migrations/0000_init.sql
+CREATE TABLE articles (
+  id uuid PRIMARY KEY,
+  tenant_id uuid NOT NULL,
+  author_id text NOT NULL,
+  slug text NOT NULL,
+  title text NOT NULL,
+  body text NOT NULL,
+  status text NOT NULL,
+  version integer NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  published_at timestamptz,
+  CONSTRAINT articles_tenant_slug_key UNIQUE (tenant_id, slug),
+  CONSTRAINT articles_status_check CHECK (status IN ('draft', 'published', 'archived')),
+  CONSTRAINT articles_slug_check CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$' AND char_length(slug) <= 100),
+  CONSTRAINT articles_title_check CHECK (char_length(title) BETWEEN 1 AND 200),
+  CONSTRAINT articles_body_check CHECK (char_length(body) <= 20000),
+  CONSTRAINT articles_version_check CHECK (version >= 1)
+);
+CREATE INDEX articles_tenant_id_idx ON articles (tenant_id, id);
 
-D1's transaction model is per-request and not transferable across `waitUntil` boundaries. If you defer the broker publish into `waitUntil`, the publish runs *outside* any tx — which is exactly what the outbox is for. Don't try to skip the outbox by using `waitUntil` directly; it loses durability if the worker is evicted before the publish completes.
+CREATE TABLE outbox (
+  id uuid PRIMARY KEY DEFAULT uuidv7(),
+  tenant_id uuid NOT NULL,
+  aggregate_type text NOT NULL,
+  aggregate_id uuid NOT NULL,
+  aggregate_seq integer NOT NULL,
+  event_type text NOT NULL,
+  event_version integer NOT NULL,
+  payload jsonb NOT NULL,
+  headers jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  published_at timestamptz,
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  last_error text,
+  dead_lettered_at timestamptz,
+  CONSTRAINT outbox_aggregate_seq_key UNIQUE (aggregate_id, aggregate_seq)
+);
+CREATE INDEX outbox_pending_idx ON outbox (created_at) WHERE published_at IS NULL AND dead_lettered_at IS NULL;
+CREATE INDEX outbox_dead_letter_idx ON outbox (dead_lettered_at) WHERE dead_lettered_at IS NOT NULL;
 
-### Common gotchas
+CREATE TABLE idempotency_keys (
+  scope text NOT NULL,
+  key text NOT NULL,
+  request_hash text NOT NULL,
+  lease_token uuid NOT NULL,
+  locked_until timestamptz NOT NULL,
+  status integer,
+  headers jsonb,
+  body bytea,
+  completed_at timestamptz,
+  expires_at timestamptz NOT NULL,
+  PRIMARY KEY (scope, key)
+);
+CREATE INDEX idempotency_keys_expires_at_idx ON idempotency_keys (expires_at);
 
-- Don't make `Outbox` a separate port that takes a `tx` parameter — leaks Drizzle types into the domain. Keep both writes in the same adapter method.
-- Don't publish to the broker inside the tx. Outbox relay is the only thing that talks to the broker.
+CREATE TABLE inbox (
+  consumer text NOT NULL,
+  message_id text NOT NULL,
+  received_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (consumer, message_id)
+);
+```
 
----
-
-## Outbound: Idempotency Store
-
-One leased row per `(scope, key)`, scope = tenant + principal + operation. Only a write — this request's `INSERT` or the takeover of an expired lease — grants execution; `complete` stores the response inside the use case's transaction.
-
-```typescript
-// src/domain/shared/idempotency.ts
-export type Acquire =
-  | { tag: "new_execution"; lease: string }             // our write won — run the use case
-  | { tag: "replay"; status: number; body: Uint8Array } // completed — return the stored response
-  | { tag: "mismatch" }                                 // same key, different request hash → 422
-  | { tag: "in_flight"; retryAfterSeconds: number };    // live lease → 409 + Retry-After, never re-run
-
-export class LeaseLostError extends Error {
-  readonly tag = "LeaseLostError" as const; // complete() matched no row: a retry took the lease
-  override name = "LeaseLostError";
-}
-
-/** Tx = the adapter's transaction handle; generic, so no Drizzle type enters the domain. */
-export interface IdempotencyStore<Tx> {
-  acquire(scope: string, key: string, requestHash: string): Promise<Acquire>;
-  // 2xx or deterministic 4xx, inside the use case's transaction; LeaseLostError → roll back.
-  complete(tx: Tx, scope: string, key: string, lease: string, status: number, body: Uint8Array): Promise<void>;
-  // Throw, 5xx or timeout before commit: frees the key so a corrected retry can run.
-  release(scope: string, key: string, lease: string): Promise<void>;
-  purgeExpired(): Promise<void>; // scheduled job: delete rows past expires_at
+```json file=migrations/meta/_journal.json
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [{ "idx": 0, "version": "7", "when": 1791446400000, "tag": "0000_init", "breakpoints": true }]
 }
 ```
 
-```typescript
-// src/outbound/drizzle/schema.ts — idempotency table (Postgres dialect shown)
-import { customType, index, integer, pgTable, primaryKey, text, timestamp, uuid } from "drizzle-orm/pg-core";
+```ts file=src/outbound/postgres/schema.ts
+import { sql } from "drizzle-orm";
+import { customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import type { ArticleStatus } from "../../domain/publishing/article.ts";
 
-// Raw response bytes; `bytea` in Postgres.
-const bytea = customType<{ data: Uint8Array }>({ dataType: () => "bytea" });
+const tz = (name: string) => timestamp(name, { withTimezone: true });
+const bytea = customType<{ data: Uint8Array; driverData: Uint8Array }>({ dataType: () => "bytea" });
 
-export const idempotency = pgTable(
-  "idempotency",
+export const articles = pgTable(
+  "articles",
+  {
+    id: uuid("id").primaryKey(),
+    tenantId: uuid("tenant_id").notNull(),
+    authorId: text("author_id").notNull(),
+    slug: text("slug").notNull(),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    status: text("status").$type<ArticleStatus>().notNull(),
+    version: integer("version").notNull(),
+    createdAt: tz("created_at").notNull(),
+    updatedAt: tz("updated_at").notNull(),
+    publishedAt: tz("published_at"),
+  },
+  (t) => [unique("articles_tenant_slug_key").on(t.tenantId, t.slug), index("articles_tenant_id_idx").on(t.tenantId, t.id)],
+);
+
+export const outbox = pgTable(
+  "outbox",
+  {
+    id: uuid("id").primaryKey().default(sql`uuidv7()`),
+    tenantId: uuid("tenant_id").notNull(),
+    aggregateType: text("aggregate_type").notNull(),
+    aggregateId: uuid("aggregate_id").notNull(),
+    aggregateSeq: integer("aggregate_seq").notNull(),
+    eventType: text("event_type").notNull(),
+    eventVersion: integer("event_version").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    headers: jsonb("headers").$type<Record<string, string>>().notNull().default({}),
+    createdAt: tz("created_at").notNull().defaultNow(),
+    publishedAt: tz("published_at"),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: tz("next_attempt_at").notNull().defaultNow(),
+    lastError: text("last_error"),
+    deadLetteredAt: tz("dead_lettered_at"),
+  },
+  (t) => [
+    unique("outbox_aggregate_seq_key").on(t.aggregateId, t.aggregateSeq),
+    index("outbox_pending_idx").on(t.createdAt).where(sql`published_at IS NULL AND dead_lettered_at IS NULL`),
+    index("outbox_dead_letter_idx").on(t.deadLetteredAt).where(sql`dead_lettered_at IS NOT NULL`),
+  ],
+);
+
+export const idempotencyKeys = pgTable(
+  "idempotency_keys",
   {
     scope: text("scope").notNull(),
     key: text("key").notNull(),
     requestHash: text("request_hash").notNull(),
     leaseToken: uuid("lease_token").notNull(),
-    lockedUntil: timestamp("locked_until", { withTimezone: true }).notNull(),
-    status: integer("status"), // status, response, completed_at: null until complete()
-    response: bytea("response"),
-    completedAt: timestamp("completed_at", { withTimezone: true }),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lockedUntil: tz("locked_until").notNull(),
+    status: integer("status"),
+    headers: jsonb("headers").$type<Record<string, string>>(),
+    body: bytea("body"),
+    completedAt: tz("completed_at"),
+    expiresAt: tz("expires_at").notNull(),
   },
-  // Composite PK = the unique (scope, key) races collapse on; expires_at serves purgeExpired().
-  (t) => [primaryKey({ columns: [t.scope, t.key] }), index("idempotency_expires_at_idx").on(t.expiresAt)],
+  (t) => [
+    primaryKey({ name: "idempotency_keys_pkey", columns: [t.scope, t.key] }),
+    index("idempotency_keys_expires_at_idx").on(t.expiresAt),
+  ],
+);
+
+export const inbox = pgTable(
+  "inbox",
+  {
+    consumer: text("consumer").notNull(),
+    messageId: text("message_id").notNull(),
+    receivedAt: tz("received_at").notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ name: "inbox_pkey", columns: [t.consumer, t.messageId] })],
 );
 ```
 
-```typescript
-// src/outbound/drizzle/idempotency.ts
-import { and, eq, isNull, lt, sql } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
-import { idempotency } from "./schema";
-import { LeaseLostError, type Acquire, type IdempotencyStore } from "../../domain/shared/idempotency";
+## Connection and error translation
 
-// LEASE > the longest a request can run (the `hono/timeout` duration if mounted, the 10 s drain
-// failsafe in server.ts), or a live request gets taken over. TTL ≥ the longest client retry horizon.
-const LEASE = sql`interval '60 seconds'`;
-const TTL = sql`interval '24 hours'`;
-const retryAfter = sql<number>`greatest(1, ceil(extract(epoch from ${idempotency.lockedUntil} - now())))::int`;
+```ts file=src/outbound/postgres/db.ts
+import { drizzle, type NodePgDatabase, type NodePgQueryResultHKT } from "drizzle-orm/node-postgres";
+import type { PgDatabase } from "drizzle-orm/pg-core";
+import { Pool } from "pg";
+import { DomainError } from "../../domain/shared/errors.ts";
 
-/** The tx `db.transaction` hands its callback — complete() joins the use case's transaction. */
-export type PgTx = Parameters<Parameters<NodePgDatabase["transaction"]>[0]>[0];
+export type Db = NodePgDatabase;
+/** The pool-backed database or a transaction: the same query builder. */
+export type Executor = PgDatabase<NodePgQueryResultHKT>;
+export type PostgresConfig = Readonly<{ url: string; poolMax: number; statementTimeoutMs: number; transactionTimeoutMs: number; applicationName: string }>;
 
-const at = (scope: string, key: string) => and(eq(idempotency.scope, scope), eq(idempotency.key, key));
-// Still ours: lease not taken over, row not completed.
-const owned = (scope: string, key: string, lease: string) =>
-  and(at(scope, key), eq(idempotency.leaseToken, lease), isNull(idempotency.completedAt));
+export function connectPostgres(cfg: PostgresConfig, onIdleError: (err: Error) => void): { pool: Pool; db: Db } {
+  const pool = new Pool({
+    connectionString: cfg.url,
+    max: cfg.poolMax,
+    connectionTimeoutMillis: 2_000, // bounds acquire and connect
+    application_name: cfg.applicationName,
+    statement_timeout: cfg.statementTimeoutMs,
+    idle_in_transaction_session_timeout: cfg.statementTimeoutMs,
+    options: `-c transaction_timeout=${String(cfg.transactionTimeoutMs)} -c TimeZone=UTC`,
+  });
+  pool.on("error", onIdleError);
+  return { pool, db: drizzle(pool) };
+}
 
-export class PostgresIdempotencyStore implements IdempotencyStore<PgTx> {
-  constructor(private readonly db: NodePgDatabase) {}
+export class DatabaseError extends Error {
+  override readonly name = "DatabaseError";
+}
 
-  async acquire(scope: string, key: string, hash: string): Promise<Acquire> {
-    // Only a write (our INSERT or the takeover UPDATE) grants execution, never a read: on Workers a
-    // client disconnect can cancel a request before release(), and Hyperdrive may serve a cached SELECT.
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const [won] = await this.db
-        .insert(idempotency)
-        .values({ scope, key, requestHash: hash, leaseToken: crypto.randomUUID(),
-          lockedUntil: sql`now() + ${LEASE}`, expiresAt: sql`now() + ${TTL}` })
-        .onConflictDoNothing({ target: [idempotency.scope, idempotency.key] })
-        .returning({ lease: idempotency.leaseToken }); // a RETURNING row = our INSERT won
-      if (won) return { tag: "new_execution", lease: won.lease };
+const CONFLICTS: Record<string, string | undefined> = { articles_tenant_slug_key: "An article with this slug already exists" };
+const UNAVAILABLE = /^(08|53|57P0|57014|25P0[34]|40001|40P01)/u;
+const CONNECTION = /^E[A-Z]+$|timeout exceeded when trying to connect|Connection terminated|not queryable/u;
 
-      const [row] = await this.db
-        .select({ hash: idempotency.requestHash, completedAt: idempotency.completedAt,
-          status: idempotency.status, body: idempotency.response, retryAfter })
-        .from(idempotency)
-        .where(at(scope, key));
-      if (!row) continue; // purged or raced since our INSERT: insert again, never run
-      if (row.hash !== hash) return { tag: "mismatch" };
-      // completed_at, not a truthy body: an empty body is a valid completed response.
-      if (row.completedAt !== null) return { tag: "replay", status: row.status!, body: row.body! };
+/** Drizzle wraps pg's error: walk the cause chain to the SQLSTATE or socket code. */
+function driverError(err: unknown): { code: string; constraint: string; message: string } | undefined {
+  let e = err;
+  for (let depth = 0; depth < 5 && e instanceof Error; depth++) {
+    const code = "code" in e && typeof e.code === "string" ? e.code : "";
+    const constraint = "constraint" in e && typeof e.constraint === "string" ? e.constraint : "";
+    if (code !== "" || CONNECTION.test(e.message)) return { code, constraint, message: e.message };
+    e = e.cause;
+  }
+  return undefined;
+}
 
-      // Expired lease (owner crashed or was cancelled): conditional takeover, one racer wins.
-      const [took] = await this.db
-        .update(idempotency)
-        .set({ leaseToken: crypto.randomUUID(), lockedUntil: sql`now() + ${LEASE}` })
-        .where(and(at(scope, key), isNull(idempotency.completedAt),
-          lt(idempotency.lockedUntil, sql`now()`)))
-        .returning({ lease: idempotency.leaseToken });
-      if (took) return { tag: "new_execution", lease: took.lease };
-      return { tag: "in_flight", retryAfterSeconds: row.retryAfter };
+/** Domain or sanitized errors, never Drizzle's message (it holds the SQL and its parameters). */
+export function translate(err: unknown): Error {
+  if (!(err instanceof Error)) return new Error(String(err));
+  const driver = err instanceof DomainError ? undefined : driverError(err);
+  if (!driver) return err;
+  const conflict = driver.code === "23505" ? CONFLICTS[driver.constraint] : undefined;
+  if (conflict !== undefined) return new DomainError("already_exists", conflict);
+  const summary = new DatabaseError(`database error ${driver.code || "(connection)"} ${driver.constraint}`.trim());
+  const down = UNAVAILABLE.test(driver.code) || CONNECTION.test(driver.code) || CONNECTION.test(driver.message);
+  return down ? new DomainError("unavailable", "The database is temporarily unavailable", { cause: summary }) : summary;
+}
+
+/** For `.catch(rethrow)` outside a unit of work. */
+export const rethrow = (err: unknown): never => {
+  throw translate(err);
+};
+```
+
+## Unit of work and article repository
+
+```ts file=src/outbound/postgres/unit-of-work.ts
+import { AsyncLocalStorage } from "node:async_hooks";
+import type { Tx, UnitOfWork } from "../../domain/publishing/ports.ts";
+import { PgArticles } from "./articles.ts";
+import { type Db, type Executor, rethrow } from "./db.ts";
+import { pgCompletion } from "./idempotency.ts";
+import { pgInbox, pgOutbox } from "./outbox.ts";
+
+/** READ COMMITTED, no retry loop: a deadlock surfaces as unavailable (503). */
+export class PgUnitOfWork implements UnitOfWork {
+  readonly #db: Db;
+  readonly #open = new AsyncLocalStorage<{ tx: Tx; finished: () => boolean }>();
+
+  constructor(db: Db) {
+    this.#db = db;
+  }
+
+  run<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
+    const outer = this.#open.getStore();
+    if (outer?.finished() === true) return Promise.reject(new Error("The unit of work already finished; this work would escape it"));
+    if (outer) return work(outer.tx).catch(rethrow);
+    return this.#db
+      .transaction(async (dtx) => {
+        let finished = false;
+        const q = (): Executor => {
+          if (finished) throw new Error("Transaction finished; late work refused");
+          return dtx;
+        };
+        const tx: Tx = { articles: new PgArticles(q), outbox: pgOutbox(q), inbox: pgInbox(q), idempotency: pgCompletion(q) };
+        try {
+          return await this.#open.run({ tx, finished: () => finished }, () => work(tx));
+        } finally {
+          finished = true;
+        }
+      })
+      .catch(rethrow);
+  }
+}
+```
+
+One class serves the reader (pool accessor) and the transaction-bound repository.
+
+```ts file=src/outbound/postgres/articles.ts
+import { and, desc, eq, lt, type SQL, sql } from "drizzle-orm";
+import { type Article, type ArticleStatus, rehydrate } from "../../domain/publishing/article.ts";
+import type { ArticleReader, ArticleRepository } from "../../domain/publishing/ports.ts";
+import { MAX_PAGE } from "../../domain/publishing/use-cases.ts";
+import { DomainError } from "../../domain/shared/errors.ts";
+import type { Page, PageRequest } from "../../domain/shared/ports.ts";
+import { type Executor, rethrow } from "./db.ts";
+import { articles } from "./schema.ts";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const encodeCursor = (id: string) => Buffer.from(`v1:${id}`).toString("base64url");
+
+function decodeCursor(cursor: string): string {
+  const raw = /^[\w-]{1,64}$/u.test(cursor) ? Buffer.from(cursor, "base64url").toString("utf8") : "";
+  const id = raw.startsWith("v1:") ? raw.slice(3) : "";
+  if (!UUID.test(id)) throw new DomainError("malformed", "The cursor is not valid for this list");
+  return id;
+}
+
+export class PgArticles implements ArticleReader, ArticleRepository {
+  readonly #q: () => Executor;
+
+  constructor(q: () => Executor) {
+    this.#q = q;
+  }
+
+  async get(tenantId: string, id: string): Promise<Article | null> {
+    const where = and(eq(articles.tenantId, tenantId), eq(articles.id, id));
+    const [row] = await this.#q().select().from(articles).where(where).catch(rethrow);
+    return row ? rehydrate(row) : null;
+  }
+
+  async list(tenantId: string, page: PageRequest): Promise<Page<Article>> {
+    const limit = Math.min(page.limit, MAX_PAGE);
+    const after = page.cursor === undefined ? undefined : lt(articles.id, decodeCursor(page.cursor));
+    const rows = await this.#q()
+      .select()
+      .from(articles)
+      .where(and(eq(articles.tenantId, tenantId), after))
+      .orderBy(desc(articles.id))
+      .limit(limit + 1)
+      .catch(rethrow);
+    const items = rows.slice(0, limit).map((row) => rehydrate(row));
+    const last = items.at(-1);
+    const hasMore = rows.length > limit;
+    return { items, hasMore, nextCursor: hasMore && last ? encodeCursor(last.id) : null };
+  }
+
+  async insert(article: Article): Promise<void> {
+    await this.#q().insert(articles).values(article);
+  }
+
+  update(next: Article, expectedVersion: number): Promise<Article | null> {
+    return this.#write({ title: next.title, body: next.body }, next, eq(articles.version, expectedVersion));
+  }
+
+  transition(next: Article, from: ArticleStatus): Promise<Article | null> {
+    return this.#write({ status: next.status, publishedAt: next.publishedAt }, next, eq(articles.status, from));
+  }
+
+  async #write(set: Partial<Article>, next: Article, guard: SQL): Promise<Article | null> {
+    const [row] = await this.#q()
+      .update(articles)
+      .set({ ...set, updatedAt: next.updatedAt, version: sql`${articles.version} + 1` })
+      .where(and(eq(articles.tenantId, next.tenantId), eq(articles.id, next.id), guard))
+      .returning();
+    return row ? rehydrate(row) : null;
+  }
+}
+```
+
+## Outbox, inbox and relay
+
+```ts file=src/outbound/postgres/outbox.ts
+import { context, propagation } from "@opentelemetry/api";
+import { and, eq, sql } from "drizzle-orm";
+import type { Inbox, Outbox } from "../../domain/publishing/ports.ts";
+import type { EventPublisher, OutboxMessage } from "../../domain/shared/ports.ts";
+import type { Db, Executor } from "./db.ts";
+import { inbox, outbox } from "./schema.ts";
+
+export const pgOutbox = (q: () => Executor): Outbox => ({
+  async append(e) {
+    const headers: Record<string, string> = { "tenant-id": e.tenantId };
+    propagation.inject(context.active(), headers); // traceparent, continued by the relay
+    await q().insert(outbox).values({
+      tenantId: e.tenantId,
+      aggregateType: e.aggregateType,
+      aggregateId: e.aggregateId,
+      aggregateSeq: e.aggregateSeq,
+      eventType: e.type,
+      eventVersion: e.version,
+      payload: e.payload,
+      headers,
+    });
+  },
+});
+
+export const pgInbox = (q: () => Executor): Inbox => ({
+  async claim(consumer, messageId) {
+    const rows = await q().insert(inbox).values({ consumer, messageId }).onConflictDoNothing().returning();
+    return rows.length === 1;
+  },
+});
+
+export const RELAY_DEFAULTS = { batchSize: 50, maxAttempts: 10, leaseSeconds: 30, backoffBaseMs: 1_000, backoffCapMs: 300_000 };
+
+export class OutboxRelay {
+  readonly #db: Db;
+  readonly #publisher: EventPublisher;
+  readonly #opts: typeof RELAY_DEFAULTS;
+
+  constructor(db: Db, publisher: EventPublisher, opts = RELAY_DEFAULTS) {
+    this.#db = db;
+    this.#publisher = publisher;
+    this.#opts = opts;
+  }
+
+  /** One pass. Outcomes are fenced on the claim's `attempts`, so an expired claim cannot overwrite a newer one. */
+  async runOnce(stop?: AbortSignal): Promise<number> {
+    const { batchSize, leaseSeconds, maxAttempts, backoffBaseMs, backoffCapMs } = this.#opts;
+    const { rows } = await this.#db.execute<OutboxMessage & { attempts: number }>(sql`
+      UPDATE outbox SET attempts = attempts + 1, next_attempt_at = now() + make_interval(secs => ${leaseSeconds})
+      WHERE id IN (
+        SELECT o.id FROM outbox o
+        WHERE o.published_at IS NULL AND o.dead_lettered_at IS NULL AND o.next_attempt_at <= now()
+          AND NOT EXISTS (
+            SELECT 1 FROM outbox e
+            WHERE e.aggregate_id = o.aggregate_id AND e.aggregate_seq < o.aggregate_seq
+              AND e.published_at IS NULL AND e.dead_lettered_at IS NULL)
+        ORDER BY o.created_at LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED)
+      RETURNING id, event_type AS type, event_version AS version, tenant_id AS "tenantId", aggregate_type AS "aggregateType",
+        aggregate_id AS "aggregateId", aggregate_seq AS "aggregateSeq", payload, headers, attempts`);
+    for (const row of rows) {
+      const claim = and(eq(outbox.id, row.id), eq(outbox.attempts, row.attempts));
+      if (stop?.aborted === true) {
+        // Stopping: hand the claim back instead of letting its lease run out.
+        await this.#db.update(outbox).set({ attempts: row.attempts - 1, nextAttemptAt: sql`now()` }).where(claim);
+        continue;
+      }
+      try {
+        await this.#publisher.publish(row);
+        await this.#db.update(outbox).set({ publishedAt: sql`now()` }).where(claim);
+      } catch (err) {
+        const delay = (Math.random() * Math.min(backoffCapMs, backoffBaseMs * 2 ** row.attempts)) / 1000;
+        await this.#db
+          .update(outbox)
+          .set({
+            lastError: err instanceof Error ? err.message.slice(0, 500) : "publish failed",
+            nextAttemptAt: sql`now() + make_interval(secs => ${delay})`,
+            deadLetteredAt: row.attempts >= maxAttempts ? sql`now()` : null,
+          })
+          .where(claim);
+      }
     }
-    return { tag: "in_flight", retryAfterSeconds: 1 };
+    return rows.length;
   }
 
-  async complete(tx: PgTx, scope: string, key: string, lease: string, status: number, body: Uint8Array) {
-    const done = await tx
-      .update(idempotency)
-      .set({ status, response: body, completedAt: sql`now()` })
+  async stats(): Promise<{ oldestPendingSeconds: number; deadLettered: number }> {
+    const { rows } = await this.#db.execute<{ age: number | null; dead: number }>(sql`
+      SELECT extract(epoch FROM now() - (SELECT min(created_at) FROM outbox
+          WHERE published_at IS NULL AND dead_lettered_at IS NULL))::float8 AS age,
+        (SELECT count(*) FROM outbox WHERE dead_lettered_at IS NOT NULL)::int AS dead`);
+    return { oldestPendingSeconds: rows[0]?.age ?? 0, deadLettered: rows[0]?.dead ?? 0 };
+  }
+}
+```
+
+## Idempotency store and system adapters
+
+```ts file=src/outbound/postgres/idempotency.ts
+import { and, eq, isNull, lt, type SQL, sql } from "drizzle-orm";
+import { type Acquired, type IdempotencyCompletion, type IdempotencyStore, LeaseLostError } from "../../domain/shared/idempotency.ts";
+import { type Db, type Executor, rethrow } from "./db.ts";
+import { idempotencyKeys as keys } from "./schema.ts";
+
+const at = (scope: string, key: string) => and(eq(keys.scope, scope), eq(keys.key, key));
+const owned = (scope: string, key: string, lease: string) => and(at(scope, key), eq(keys.leaseToken, lease), isNull(keys.completedAt));
+
+export class PgIdempotencyStore implements IdempotencyStore {
+  readonly #db: Db;
+  readonly #lease: SQL;
+  readonly #ttl: SQL;
+
+  /** Lease > request deadline and transaction bound; TTL > every client's retry horizon. */
+  constructor(db: Db, opts: { leaseMs: number; ttlHours?: number }) {
+    this.#db = db;
+    this.#lease = sql`now() + make_interval(secs => ${opts.leaseMs / 1000})`;
+    this.#ttl = sql`now() + make_interval(hours => ${opts.ttlHours ?? 24})`;
+  }
+
+  async acquire(scope: string, key: string, requestHash: string): Promise<Acquired> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const [won] = await this.#db
+        .insert(keys)
+        .values({ scope, key, requestHash, leaseToken: crypto.randomUUID(), lockedUntil: this.#lease, expiresAt: this.#ttl })
+        .onConflictDoNothing()
+        .returning()
+        .catch(rethrow);
+      if (won) return { kind: "execute", lease: won.leaseToken };
+      const [row] = await this.#db.select().from(keys).where(at(scope, key)).catch(rethrow);
+      if (!row) continue; // released or purged since our INSERT: race again
+      if (row.requestHash !== requestHash) return { kind: "mismatch" };
+      if (row.completedAt !== null && row.status !== null && row.body !== null) {
+        return { kind: "replay", response: { status: row.status, headers: row.headers ?? {}, body: row.body } };
+      }
+      const [took] = await this.#db
+        .update(keys)
+        .set({ leaseToken: crypto.randomUUID(), lockedUntil: this.#lease })
+        .where(and(at(scope, key), isNull(keys.completedAt), lt(keys.lockedUntil, sql`now()`)))
+        .returning()
+        .catch(rethrow);
+      return took ? { kind: "execute", lease: took.leaseToken } : { kind: "in_flight" };
+    }
+    return { kind: "in_flight" };
+  }
+
+  async release(scope: string, key: string, lease: string): Promise<void> {
+    await this.#db.delete(keys).where(owned(scope, key, lease)).catch(rethrow);
+  }
+
+  async purgeExpired(): Promise<number> {
+    const result = await this.#db.delete(keys).where(lt(keys.expiresAt, sql`now()`)).catch(rethrow);
+    return result.rowCount ?? 0;
+  }
+}
+
+/** Inside the use case's transaction: completes only under this request's live lease. */
+export const pgCompletion = (q: () => Executor): IdempotencyCompletion => ({
+  async complete(scope, key, lease, r) {
+    const done = await q()
+      .update(keys)
+      .set({ status: r.status, headers: r.headers, body: r.body, completedAt: sql`now()` })
       .where(owned(scope, key, lease))
-      .returning({ key: idempotency.key });
-    if (done.length === 0) throw new LeaseLostError(); // thrown inside db.transaction → rollback
+      .returning({ key: keys.key });
+    if (done.length === 0) throw new LeaseLostError("The idempotency lease was taken over");
+  },
+});
+```
+
+```ts file=src/outbound/system.ts
+import { context, propagation, ROOT_CONTEXT } from "@opentelemetry/api";
+import type { Clock, EventPublisher, IdGenerator, OutboxMessage } from "../domain/shared/ports.ts";
+
+export const systemClock: Clock = { now: () => new Date() };
+
+/** RFC 9562 UUIDv7 on Web Crypto: node:crypto's randomUUIDv7 does not exist on workerd. */
+export const uuidv7Ids: IdGenerator = {
+  next: () => {
+    const bytes = crypto.getRandomValues(new Uint8Array(16));
+    const view = new DataView(bytes.buffer);
+    const now = Date.now();
+    view.setUint32(0, Math.floor(now / 2 ** 16));
+    view.setUint16(4, now % 2 ** 16);
+    view.setUint8(6, 0x70 | (view.getUint8(6) & 0x0f));
+    view.setUint8(8, 0x80 | (view.getUint8(8) & 0x3f));
+    const hex = Buffer.from(bytes).toString("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  },
+};
+
+export class HttpEventPublisher implements EventPublisher {
+  readonly #url: string;
+
+  constructor(url: string) {
+    this.#url = url;
   }
 
-  async release(scope: string, key: string, lease: string) {
-    await this.db.delete(idempotency).where(owned(scope, key, lease));
-  }
-
-  async purgeExpired() {
-    await this.db.delete(idempotency).where(lt(idempotency.expiresAt, sql`now()`));
+  async publish(m: OutboxMessage): Promise<void> {
+    // Continue the trace captured at insert; the fetch instrumentation injects traceparent.
+    const res = await context.with(propagation.extract(ROOT_CONTEXT, m.headers), () =>
+      fetch(this.#url, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": m.id, "tenant-id": m.tenantId },
+        body: JSON.stringify({ id: m.id, type: m.type, version: m.version, subject: m.aggregateId, sequence: m.aggregateSeq, data: m.payload }),
+        signal: AbortSignal.timeout(5_000),
+      }),
+    );
+    await res.body?.cancel();
+    if (!res.ok) throw new Error(`event endpoint answered ${String(res.status)}`);
   }
 }
 ```
-
-**Wiring** — inbound middleware on idempotent routes:
-
-- Missing `Idempotency-Key` where required → 400; otherwise hash method + path + canonical body.
-- `replay` → the stored status and body (`application/problem+json` for a stored 4xx); `mismatch` → 422 `problem("idempotency-key-mismatch", …)` with no `errors`; `in_flight` → 409 `problem("idempotency-in-flight", …)` + `Retry-After`.
-- `new_execution` → run the use case; its adapter calls `complete(tx, …)` inside the `db.transaction` that holds its writes (like the outbox rows above), and a deterministic 4xx completes in a transaction of its own. A throw or 5xx (incl. a `hono/timeout` 504) → `release`.
-- External calls never run inside that tx: record the intent and derive the downstream idempotency key first (software-architecture `reliability-patterns.md` § 2).
-
----
-
-## Outbound: Tracer Port (OTel)
-
-Don't import `@opentelemetry/*` into the domain. Define a minimal interface; the OTel adapter implements it. Tests use a no-op or capturing adapter.
-
-```typescript
-// src/domain/shared/tracing.ts
-export interface Span {
-  addEvent(name: string, attrs?: Record<string, string>): void;
-  recordError(err: unknown): void;
-  end(): void;
-}
-export interface Tracer {
-  startSpan(name: string, attrs?: Record<string, string>): Span;
-}
-```
-
-The Node adapter (`src/outbound/otel.ts`) wraps `@opentelemetry/api`'s tracer.
-
-**Edge variant** (Cloudflare Workers): wrap `otel-cf-workers` instead, or implement a minimal `Tracer` that emits spans via `fetch` to the OTel Collector. Same port, different adapter — no domain code changes. This is exactly the kind of swap the port abstraction earns its keep on.
-
-For sampling, cardinality budgets, and span attribute conventions, see `software-architecture/references/observability.md`.

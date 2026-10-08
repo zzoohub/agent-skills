@@ -1,225 +1,172 @@
 ---
 name: hexagonal-backend
 description: |
-  Hexagonal (ports & adapters) backend implementation: one shared contract plus stack guides for Axum (Rust, utoipa-axum, sqlx), FastAPI (Python, Pydantic, SQLAlchemy, Alembic), Hono (TypeScript, @hono/zod-openapi, Zod, Drizzle; Bun/Node/Cloudflare Workers/Deno) and NestJS (@nestjs/*, TypeORM, nestjs-zod, @nestjs/swagger, @nestjs/terminus).
-  Use when: building or modifying a backend API, domain logic, DB adapters or workers in any of these stacks — domain modeling, ports & adapters, service layer, RFC 9457 errors, OpenAPI, cursor pagination, outbox/idempotency, healthchecks, migrations, testing. Picks the stack from build files; greenfield default: Axum for container services, Hono for Workers/edge/multi-runtime, FastAPI only when Python-only libraries are required (LangGraph, PyTorch, transformers), NestJS for modular DI teams.
-  Do not use for: database schema design or lock-safe migration execution (use database-design).
+  Hexagonal (ports & adapters) backend implementation: one shared contract plus stack guides for Axum (Rust), FastAPI (Python), Hono (TypeScript on Node, Bun, Deno or Cloudflare Workers) and NestJS (TypeScript).
+  Use when: building or changing a backend API, domain logic, DB adapters, queue / webhook / cron handlers or workers in these stacks — domain invariants, ports & adapters, transactions, authorization and tenant scoping, RFC 9457 errors, OpenAPI, cursor pagination, outbox, idempotency keys, timeouts and retries, health probes and shutdown, migration wiring, tests. Picks the stack from build files.
+  Do not use for: system architecture or technology selection (use software-architecture), schema design or lock-safe migration execution (use database-design), or pre-landing code review (use review-checklists).
 ---
 
 # Hexagonal Backend
 
-One contract for every backend this library builds — layers, errors, pagination, reliability, probes, testing — plus a stack guide per framework that carries the framework-specific mechanics and traps. **The contract alone is not enough to write code: Step 3 is mandatory.**
+One contract for every backend this library builds, plus a guide per stack with the mechanics and traps the contract leaves out. **The contract alone is not enough to write code: Step 3 is mandatory.**
 
 ## Step 1 — Read the binding inputs
 
-**The project's architecture doc is binding** (default `docs/arch/system.md`; caller may redirect): read its cross-cutting / reliability / observability rules, not just the stack line, and apply them in the reliability and observability sections below. If absent, apply this skill's defaults.
+The architecture doc is binding (default `docs/arch/system.md`; caller may redirect): §1 Service Pattern, §2 Core Technology and Published Contracts, §3 Data and Tenancy, §4 Release Model, §5 Cross-cutting (Write-path Integrity, Observability Contract, Security, Resilience). Also read `docs/arch/database.md` and the feature spec. Anything absent: apply this skill's defaults and list the assumptions.
 
-## Step 2 — Select the stack (from build files, not docs)
+**Existing code and published contracts win.** Mirror the project's conventions (paths, envelopes, error shape, versioning); these defaults apply only to new surfaces. Changing a published contract is a versioned change, never a cleanup.
 
-**Confirm the stack from the build files**, not from docs alone — on an existing project the framework is already fixed.
+## Step 2 — Select the stack
 
-| Build-file signal | Stack | Guide |
+The manifest of the package being changed decides; never add a second web framework to a service.
+
+| Manifest signal | Stack | Guide |
 |---|---|---|
 | `Cargo.toml` depends on `axum` | Axum (Rust) | `references/axum/guide.md` |
 | `pyproject.toml` depends on `fastapi` | FastAPI (Python) | `references/fastapi/guide.md` |
-| `package.json` depends on `hono` or `@hono/*` | Hono (TypeScript) | `references/hono/guide.md` |
-| `package.json` depends on `@nestjs/*` | NestJS (TypeScript) | `references/nestjs/guide.md` |
+| `package.json` depends on `hono` | Hono (TypeScript) | `references/hono/guide.md` |
+| `package.json` depends on `@nestjs/core` | NestJS (TypeScript) | `references/nestjs/guide.md` |
 
-If the build files show a framework with no guide here (Express, Actix, Django, …), apply this contract and mirror the project's existing conventions. If no stack can be determined and nothing below decides it, ask the caller.
+A framework without a guide (Express, Actix, Django, …): apply this contract in its idiom.
 
-**Greenfield** (no build files yet): follow the architecture doc's stack line. If it names none and the caller states no preference:
+**Greenfield**, first match wins: the arch doc's Core Technology row and ADRs → explicit caller or organization constraints, runtime target included → the adopted house profile (software-architecture's `references/house-stack.md`, if available) → fallback: Workers or edge → Hono; a core on the Python ML / data stack → FastAPI; other container services → Axum (NestJS when the team asks for framework DI and modules). Still open → ask; a subagent takes the fallback and reports it as an open question.
 
-- **Container service → Axum** (the default backend).
-- **Cloudflare Workers, edge, or multi-runtime (Bun / Node / Deno) → Hono.**
-- **Python-only libraries required** (LangGraph, PyTorch, transformers, PydanticAI, …) **→ FastAPI**; otherwise default to Axum.
-- **A team that wants a modular framework with built-in DI → NestJS.**
+## Step 3 — Plan the change, then load the guide
 
-(A project that adopts the software-architecture skill's house profile — `references/house-stack.md`, if available — takes the framework defaults from that profile instead; it changes independently of this skill.)
+Answer in the change summary before writing code — plain answers, not a template:
 
-## Step 3 — Load the stack guide (mandatory, before writing any code)
+1. **Contract** — which published surfaces (routes, events, schemas) change: additive, or versioned?
+2. **Invariants** — each rule, and where it is enforced (§ Domain).
+3. **Write path** per command — transaction, concurrency control, idempotency, must-happen vs best-effort effects, actor and tenant scope.
+4. **Dependencies** — deadline, the one retry layer, behavior when slow or down.
+5. **Data** — expand-contract steps; code that works on both schema versions.
+6. **Proof** — tests and telemetry that show it works (§ Testing).
+7. **Rollout and rollback.**
 
-Read `references/<stack>/guide.md` in full, then that stack's examples — `references/<stack>/examples-domain.md`, `examples-adapters.md` and `examples-bootstrap.md` — before writing code. The guide holds the traps this contract deliberately leaves out: e.g. Axum `/{id}` paths, owned-transaction `&mut *tx` and concrete `Arc<AppXService>` state; FastAPI lifespan DI and async safety; per-instance `defaultHook` on OpenAPIHono; NestJS abstract-class DI tokens and the TypeORM 1.0 rules. When defining routes, also consult `references/api-design.md` (REST conventions) and `references/api-patterns.md` (HTTP request/response patterns).
+Then read `references/<stack>/guide.md` in full and load example sections by task from each file's table of contents: domain and use cases → `examples-domain.md`; routes, error mapping, auth, persistence, transactions, outbox, idempotency, webhooks → `examples-adapters.md`; config, middleware order, probes, shutdown, telemetry, tests, CI → `examples-bootstrap.md`. The guides hold the traps this contract leaves out — e.g. Axum extractor rejections bypassing your error type, FastAPI's catch-all handler running outside your middleware, D1 having no interactive transactions, NestJS built-in exceptions carrying Nest's own body. For routes, also consult `references/api-design.md` (conventions, problem types) and `references/api-patterns.md` (worked exchanges).
 
 ---
 
-## Layers, ports and adapters
-
-Separate **business domain** from **infrastructure**. Domain defines *what*; adapters decide *how*.
-
-```
-[Inbound adapter: HTTP route / task / webhook] → [Port: service] → [Domain logic]
-    → [Port: repository / metrics / notifier] → [Outbound adapter: DB / broker / HTTP client]
-```
+## Structure
 
 | Location | Holds |
 |---|---|
-| `domain/<feature>/` | models, errors, ports, service |
-| `inbound/http/` | app factory, routes, request/response mappers, error mapping, health |
-| `inbound/tasks/`, `inbound/webhooks/` | non-HTTP triggers (below) |
-| `outbound/<db>/` | client, schema / ORM models, mapper, repository; plus broker, metrics, notifier adapters |
-| bootstrap (`main` / `server`) | construct adapters → assemble service → start; no framework / ORM imports where the stack wraps them |
+| `domain/<context>/` | models, errors, ports, use cases |
+| `inbound/http/`, `inbound/tasks/`, `inbound/webhooks/` | routes, mappers, error handler, auth, probes; non-HTTP triggers |
+| `outbound/<store>/` | ORM models, mappers, repositories, unit of work, outbox, idempotency store; broker and HTTP clients |
+| bootstrap (`main` / `app`) | config validation, wiring, start, shutdown |
 | migrations | outside every hex layer |
 
-**Rule:** `domain/` never imports from `inbound/` or `outbound/` — nor any web framework, ORM, DB driver or OTel SDK. Dependencies always point inward. (NestJS's single `@Injectable()` concession is spelled out in its guide.)
+**Dependencies point inward.** `domain/` never imports `inbound/` or `outbound/`, nor a web framework, ORM, driver or telemetry SDK.
 
-## Domain modeling
+**Shape follows the declared style** (system.md §1 Service Pattern). Full hexagonal — domain model, ports, use cases — for core contexts and anything that moves money, decides authorization or has irreversible effects. Supporting CRUD gets the lite shape: handler → use-case function → repository, reads through a query port, no per-feature metrics or notifier ports. Both keep the non-negotiables: dependency direction, actor and tenant scoping, one transaction per command, the error contract. Upgrade to full when a second adapter, real business rules or a second consumer appears.
 
-- **Models** validate on construction (value objects / newtypes) so invalid states can't exist. Separate `CreateAuthorRequest` from `Author` — they WILL diverge as app grows.
-- **Errors**: one error type per business-rule violation plus a generic Unknown error wrapping the cause. The domain never raises transport exceptions or status codes; adapters translate infrastructure errors into domain errors before returning.
-- **Ports** are shaped by use cases. Three categories: **Repository** (data), **Metrics** (observability), **Notifier** (side effects). Cross-cutting ports are listed under Reliability.
-- **Service** orchestrates repo → metrics → notifications → result. Handlers call Service, never Repository directly.
-- **Evolution path:** Direct calls (repo → metrics → notifier) keep the flow visible in one place — good for simple apps. As side effects grow, the service has to know about every consequence, raising coupling. When this becomes a pain, refactor to domain events: the service emits `AuthorCreatedEvent`, independent handlers react. Adding a new side effect no longer requires touching the service. Trade-off: flow is spread across files, harder to trace.
+## Domain
 
-### Domain boundaries
-
-1. **Domain = tangible arm of your business** (blogging, billing, identity)
-2. **Entities that change atomically → same domain**
-3. **Cross-domain operations are never atomic** — service calls or async events
-4. **Start large, decompose when friction is observed**
-
-> If you leak transactions into business logic for cross-domain atomicity, your boundaries are wrong.
+- **Invariants live in the narrowest place that can hold them**: the type (value objects validated on construction); an aggregate method (transitions such as `publish()`, never setters); a DB constraint or conditional write for anything two requests can race on; reconciliation across services.
+- **Boundary value types**: money as integer minor units or decimal, never float; instants in UTC; 64-bit ids and amounts as JSON strings (JavaScript rounds above 2^53); text without U+0000 (PostgreSQL rejects it), lengths in code points.
+- **Errors** are a closed set of kinds — not found, conflict, invalid, forbidden, precondition failed — plus Unknown wrapping the cause. The domain never raises transport errors; adapters translate infrastructure errors. Stored rows rehydrate through a trusted path, not creation-time validation.
+- **Ports are shaped by use cases.** Every use case takes an explicit `Actor` (tenant, subject, roles) from the inbound auth adapter — never ambient state. Clock and id generation enter through ports.
+- **Side effects**: one that must happen is written in the command's transaction (outbox or job row). A direct call after commit only where losing it is acceptable — in its own try-and-log, never changing the result.
+- **Boundaries**: entities that change atomically share a domain; cross-domain operations are never atomic (calls or events); start large, split on observed friction.
 
 ## Inbound adapters
 
-- **Handlers do three things only**: parse input → call service → map response. No SQL, no ORM.
-- **Request types** are decoupled from domain and convert via `try_into_domain()` / `toDomain()`; **responses** are built via `from_domain()` / `From<&T>` — never expose domain models or ORM entities. OpenAPI / schema derives live on inbound types only.
-- **Wrap the framework** in an app factory or server type so bootstrap never imports it, and expose a test builder that returns the app without binding a port.
+- **Handlers parse → call the use case → map the result.** No SQL, no ORM, no domain models or entities on the wire; OpenAPI derives from inbound types only. An app factory wraps the framework, with a test builder that serves the app without binding a port.
+- **Input boundary**: an explicit body limit per route; max items, length and depth in schemas; write schemas and query strings reject unknown members (422), so owner, tenant and role never come from the request; sort and filter fields are allowlisted and map to indexed columns; PATCH is JSON Merge Patch (RFC 7396: absent = unchanged, `null` = clear).
+- **Authentication** builds the `Actor` at the edge. **Authorization** is decided in the use case (a policy port when it depends on resource state), and the repository filters by tenant / owner inside every query as the second enforcement point (plus RLS where database.md chose it) — by-id, lists, search, export, bulk, sub-resources, job payloads (the worker re-establishes the tenant) and cache keys. Foreign resources return 404.
+- **Non-HTTP triggers** (queues, webhooks, cron, streams) are inbound adapters on an internal router, outside public auth and OpenAPI:
+  - verify the caller cryptographically — a signature with a timestamp window, or an OIDC token with an audience check; queue headers are not identity;
+  - ack (2xx) only after the effect, or its inbox / job row, has committed; transient failure → 429 / 503 so the sender backs off; permanent (including a signed payload that fails its schema) → record and ack, or dead-letter; third-party payload schemas tolerate unknown fields;
+  - dedup by message id (an inbox row in the same transaction, or an idempotent upsert), so a redelivery acks 2xx;
+  - webhooks: a quick effect commits with its inbox row; a slow one is recorded and processed asynchronously, so the sender's timeout never decides the outcome; scheduled jobs: one instance at a time, explicit timezone, lease above p99 run time (software-architecture `operational-patterns.md` § Background Jobs, § Webhook Reliability, if available).
 
-**Non-HTTP inbound adapters.** The inbound layer isn't limited to REST API routes. Any external trigger that drives the domain is an inbound adapter — task / job queues, webhooks, cron / schedulers, event streams (each guide lists its stack's options). All follow the same pattern: **parse input → call service → respond.**
+## HTTP contract
 
-Key differences from REST routes:
-- Verify caller identity (task queue headers, webhook signatures) instead of user auth.
-- Return simple ack (200 OK) — no user-facing response body.
-- Must be idempotent — task queues retry on failure.
-
-```
-src/inbound/
-├── http/            # User-facing REST API
-├── tasks/           # Task queue handlers
-└── webhooks/        # External service callbacks
-```
-
-Domain doesn't know which triggered it.
-
-## HTTP mapping (inbound only)
-
-- Mount routes under exactly **`/v1`** — no extra `/api` segment.
-- Envelopes: single resource `{ "data": {...} }`; collection `{ "data": [...], "meta": { "limit", "next_cursor", "has_more" } }`.
-- POST create → **201 + `Location`**; DELETE → 204; async work → 202 + `Location`.
-- **`X-Request-Id`**: echo the inbound value or generate one, return it as a response header and stamp it into logs — never in the body.
-- **CORS**: explicit origins from config, no wildcard (and never with credentials). Security headers (HSTS, `nosniff`, frame-deny) via the stack's middleware.
-- Full conventions (naming, status codes, ETag, versioning, rate-limit headers): `references/api-design.md`; worked HTTP exchanges: `references/api-patterns.md`.
+- New APIs mount under `/v1`. Single resource `{ "data": {...} }`; collection `{ "data": [...], "meta": { "limit", "next_cursor", "has_more" } }`.
+- POST create → 201 + `Location`; DELETE → 204; async work → 202 + `Location`.
+- **`X-Request-Id`** on every response, 2xx and 204 included: echo an inbound value only if it is a bounded token (1–128 chars of `[A-Za-z0-9._:-]`), else generate one; log it beside the trace id; never in success bodies.
+- CORS from configured origins (no wildcard with credentials), exposing `Location`, `ETag`, `Retry-After`, `X-Request-Id`; CORS and request id wrap every layer that can synthesize a response. Security headers via middleware; authenticated responses default to `Cache-Control: no-store`.
 
 ## Errors — RFC 9457
 
-- Every error is `application/problem+json` with `type`, `title`, `status`, `detail`, `instance` (request path). Field-level validation adds the `errors: [{ field, code, message }]` extension member.
-- Map in **one inbound error handler** / filter: unparseable input the framework rejects before the handler (malformed JSON, a path segment that isn't a valid id) → **400**; validation that parsed but failed → **422** with `errors[]`; missing or other-tenant resource → **404**; unique violation, version conflict or invalid state transition → **409** (**412** under `If-Match`).
-- **Unknown** errors → log server-side with the request id, return a generic 500 ("An unexpected error occurred"). Never leak domain strings or exception text to users.
-- The limiter's **429** is a problem document too, with `Retry-After`.
+- Every error — domain, validation and framework-generated (401, 404, 405, 413, 415, 429) — is `application/problem+json` with `type` (an absolute URI from the API's problem registry), `title`, `status`, `detail`, `instance` (the request path, no query string). Validation adds `errors: [{ detail, pointer | parameter, code }]` (`pointer` is a JSON Pointer into the body in fragment form: `#/title`; `#` for the whole body). A framework-raised status takes its registry type when exactly one type has that status; otherwise it keeps its code with `type` `about:blank` and the status phrase as `title`. Only protocol-level rejections before the app sees the request (malformed HTTP, a refused CORS preflight) are exempt.
+- **One** error handler maps: malformed JSON, a path id that cannot be an id, an undecodable cursor, a malformed or missing required `Idempotency-Key` → **400**; wrong media type → **415**; oversize → **413**; well-formed input failing validation → **422** with `errors[]`; unauthenticated → **401** + `WWW-Authenticate`; visible but forbidden → **403**; missing or not visible to this actor → **404**; conflict with current state (uniqueness, invalid transition, version) → **409**, or **412** under `If-Match`; rate limited → **429** + `Retry-After`; dependency unavailable or deadline exceeded → **503** + `Retry-After`.
+- **Unknown** → log once with the request id; generic 500 ("An unexpected error occurred"), never exception text or SQL.
 
 ## Pagination
 
-**Default to cursor-based pagination.** The pattern flows through all three layers: the domain port takes `(cursor, limit)` and returns a `CursorPage` (items, next_cursor, has_more); the adapter runs the keyset query; the handler returns the collection envelope.
+- **Cursor by default.** The port takes `(cursor, limit)` and returns `{ items, next_cursor, has_more }`; the adapter runs a keyset query for `limit + 1` rows; `next_cursor` points at the last returned row, `null` on the last page.
+- **The cursor carries every sort key at full DB precision** — a JavaScript `Date` drops PostgreSQL's microseconds, and pages repeat or loop. Creation order: keyset on a unique time-ordered id (UUIDv7) alone. Other orders: `(sort_key, id)` with a row-value predicate whose operator and index follow the sort direction (database-design query patterns, if available).
+- The cursor is an opaque base64url token bound to its sort and filters, decoded only in the adapter; one that fails to decode → 400.
+- `limit` defaults to 20; any larger integer is clamped to 100 (`meta.limit` reports the value used); below 1 or not an integer → 422; the port enforces a hard maximum too. A decodable cursor is only a position — the tenant filter still applies.
+- Offset (`page`, `total`) only for admin views over small data. A list cursor is not a change feed: sync consumers follow commit order (software-architecture `reliability-patterns.md` § 3 Ordering, if available).
 
-- Keyset on **`(created_at, id)`** with a row-value predicate — `WHERE (created_at, id) > ($1, $2) ORDER BY created_at, id LIMIT $3` — fetching **`limit + 1`** to compute `has_more`; `next_cursor` points at the last *returned* row.
-- The cursor is an **opaque base64(url) string** in the API; decode it in the adapter only.
-- Clamp `limit` at the transport boundary (1..100, default 20). The domain doesn't care about max page size — that's a transport concern.
+## Write path (binding: the arch doc's Write-path Integrity rows win)
 
-### Cursor vs Offset
+Method: software-architecture `reliability-patterns.md` §§ 1–4, if available.
 
-**Cursor** (default) — `WHERE (created_at, id) > ($1, $2) ORDER BY created_at, id LIMIT $3`.
-Consistent performance regardless of dataset size. Ideal for feeds, timelines, and large/mutable data. Always use a **composite cursor** `(sort_field, id)`. Cursor is an opaque base64-encoded string in the API; decode in the adapter only.
+- **One command = one transaction, owned by the use case** through a unit-of-work port typed on an adapter-defined transaction; repositories, the outbox and the idempotency store run inside it and never begin or commit. No external calls inside. Isolation per database.md; where it runs SERIALIZABLE, the runner retries the whole unit on 40001 / 40P01, bounded, with jittered backoff; elsewhere they map to 503 + `Retry-After`. Reads that must see the write go to the primary.
+- **Concurrency, by the shape of the write**: uniqueness → a UNIQUE constraint, its violation (Postgres `23505`) mapped by constraint name to the matching domain conflict; new value from old (counter, balance, stock) → a conditional atomic update; state change → a guarded transition (`… AND status = 'draft'`; 0 rows = conflict); read-modify-write of an aggregate → a `version` column, conditional on the version the client saw (`If-Match`: strong tags or `*`, evaluated after the 404 / 403 decision); invariant across rows → a constraint, a lock on the invariant's rows, or serializable with retry. App-side check-then-insert alone is a race.
+- **Outbox**: domain events become outbox rows in the aggregate's transaction, carrying `aggregate_seq`, trace context and attempts; a relay claims pending rows (`FOR UPDATE SKIP LOCKED`, one owner per aggregate, in `aggregate_seq` order), publishes outside the transaction, backs off and dead-letters. Event payloads are published contracts: additive changes only; a breaking change ships as a new event type or version beside the old.
+- **Idempotency keys**: a row per `(scope, key)` — scope = tenant + principal — with a hash of method, path with query string, and canonical body, a lease longer than the request deadline and an expiry longer than any client's retry horizon. Malformed key (not 1–255 visible ASCII), or required and missing → **400**; completed (2xx, or a 4xx decided by the body or state) → replay the stored status, body and defining headers (`Location`, `Content-Type`, `ETag`) — outcomes decided by headers outside the hash (e.g. 415, 406, 412, 428) are never stored; different hash → **422** with its own problem `type`; live lease → **409** + `Retry-After` (the expected completion, ~1–2 s, not the remaining lease). Only this request's insert or a conditional takeover of an expired lease grants execution — never a read; the result commits in the use case's transaction under the lease; a failure before commit releases the key. One wrapper applies it, never per-handler code (external side effects: `reliability-patterns.md` § 2).
+- **Bounded work**: every list, include and bulk path has a hard limit in the port contract; related data loads in batches (JOIN, `IN`, a dataloader), never per item; includes are capped and authorized per item; bulk declares max items and atomic vs per-item semantics.
 
-**Offset** — `LIMIT` / `OFFSET` + `COUNT(*)`.
-Use for admin panels and small/static datasets. Provides `total` count for page number UIs. Downside: deeper pages get slower, and row mutations between requests cause duplicates or skips.
+## Dependencies and overload (binding: the arch doc's Resilience rows win)
 
-## Reliability (binding: the architecture doc's rules win)
+- Each request gets a deadline at the edge, below the idempotency lease; outbound calls get connect and total timeouts inside the remaining budget. A deadline never undoes a commit, so must-happen work after commit goes through the outbox.
+- DB sessions carry `statement_timeout`, `idle_in_transaction_session_timeout` and `TimeZone` UTC; pools set acquire and connect timeouts; pool size (overflow included) × instances fits the DB's connection budget.
+- Retry in exactly one layer, idempotent operations only — exponential backoff, full jitter, a retry budget, `Retry-After` honored — never inside an open transaction.
+- Cap concurrency per dependency; shed early with 429 / 503 + `Retry-After` (software-architecture `operational-patterns.md` § Dependency Protection & Overload, if available).
 
-Cross-cutting infrastructure that must not leak into the domain. Define each as a port; implement as adapters. The architecture-level pattern lives in the software-architecture skill's references (`reliability-patterns.md`, `observability.md`) if installed; otherwise apply standard patterns — outbox, idempotency keys, retry/backoff, structured logging, RED/USE — inline.
+## Probes and shutdown
 
-| Port | Purpose |
-|---|---|
-| **UnitOfWork** | Scopes one transaction across several repositories (where the stack shares a session / entity manager) |
-| **Outbox** | Atomic state change + message publish — outbox row written in the **same** transaction as the aggregate |
-| **IdempotencyStore** | Replay safe responses for `Idempotency-Key`-bearing requests |
-| **Tracer** / **Meter** | Span / metric emission; the domain depends on the port, not on OTel packages |
-
-- **Transactions** are encapsulated in the adapter (or the UnitOfWork), invisible to callers. Keep them short. **No external calls (HTTP, queues) inside tx.**
-- **Uniqueness** is enforced by a DB `UNIQUE` constraint (the race-safe backstop); the adapter maps the unique-violation (Postgres `23505`, SQLite `UNIQUE constraint failed`) to a domain conflict → 409. An app-side check-then-insert alone is TOCTOU.
-- **Outbox**: the domain emits typed domain events; the adapter writes them as outbox rows in the aggregate's transaction; a separate relay publishes them with retry/backoff and dead-letters after N attempts. Never publish to a broker inside the transaction or "right after commit".
-- **Idempotency keys**: a row per `(scope, key)` — scope = tenant + principal + operation — with a hash of method, path and canonical body, a lease longer than the request timeout and an expiry longer than any client's retry horizon. Completed (2xx or a deterministic 4xx) → replay the stored status and body; different hash → **422** with its own problem `type`; live lease → **409** + `Retry-After`. Only this request's insert or a conditional takeover of an expired lease grants execution — never a read; the result commits in the use case's transaction under the lease, and a failure before commit releases the key (external calls: software-architecture `reliability-patterns.md` § 2).
-- **Optimistic concurrency (lost-update protection)**: any aggregate two clients can update concurrently carries a `version` column; writes are conditional (`… WHERE id = $id AND version = $expected`, setting `version = version + 1`); 0 rows affected → domain conflict → **409** (or **412** with `If-Match` / ETag). Idempotency keys cover the *same* client retrying; the version column covers *different* clients racing — you usually need both.
-- **Authorization ≠ authentication.** Every by-id read and write is scoped to the caller's tenant / ownership (a policy port, or an owner/org filter in the repository); foreign resources return 404. Otherwise `GET /v1/{resource}/{id}` is an IDOR.
-- **Pools** always set an acquire / connect timeout.
-
-## Healthchecks and shutdown
-
-- **Liveness** (`/health`, `/healthz` or `/health/live`) returns 200 unconditionally — **never check dependencies there**: a liveness probe that touches a flaky DB cascade-restarts every replica.
-- **Readiness** (`/ready`, `/readyz` or `/health/ready`) pings the DB under a short timeout (~1 s, or the pool's acquire timeout) and returns **503** (not 500) so the load balancer sheds traffic.
-- Both live in the inbound layer, bypass the domain, and are registered before auth / throttling.
-- **Graceful shutdown**: handle SIGTERM and SIGINT, drain in-flight requests, then close the pool — paired with a request timeout or failsafe timer so a hung request can't stall the drain.
+- **Liveness** (`/health`, `/healthz` or `/health/live`): 200 if the process can answer — no dependency checks.
+- **Readiness** (`/ready`, `/readyz` or `/health/ready`) is instance-local: at startup validate config and make one DB round-trip (plus any schema-version check), then latch ready; afterwards report only local state — initialized, not draining — with **503** from shutdown onward. Shared-dependency health feeds metrics, alerts and degraded mode, never probes (software-architecture `observability.md` § Health Checks, if available). Without probes (Workers, other serverless): no readiness route; dependency metrics plus an external synthetic check that touches the DB.
+- Probes live in the inbound layer, bypass the domain, and are registered before auth and rate limiting.
+- **Shutdown** on SIGTERM / SIGINT: mark draining (readiness 503) → keep serving through load-balancer deregistration where it is asynchronous (Kubernetes) → stop accepting and close idle keep-alive connections (or answer `Connection: close`) → drain in-flight requests under the deadline → stop workers and relays (finish or release leases) → close pools → flush telemetry → exit. Deadline + drain + pool close + flush stays below the platform's grace period (Cloud Run 10 s; Kubernetes default 30 s).
 
 ## Migrations
 
-Migrations are infrastructure. They sit alongside the app, not inside any hex layer; the migration tool reads schema definitions from `outbound/`. Pick one path — embedded at startup or a CLI release step before rollout. Schema *design* and lock-safe execution against live traffic belong to the database-design skill (including its PostgreSQL operations), if available — this skill only wires the mechanism.
+Outside every hex layer. One source of truth: database-design's SQL migrations win when they exist, ORM models mirror them, and autogeneration is a drafting aid whose diff must be empty in CI. Run them as a release step before the code that needs them (at startup only for single-instance or dev), with per-migration no-transaction support for `CONCURRENTLY`. Code works on both schema versions; the contract step waits until all code has moved; backfills run as batched jobs. Schema design and lock-safe execution: database-design, if available.
 
 ## Observability
 
-- Structured logs — fields, not formatted strings — JSON in production; the correlation id on every line.
-- Logger / exporter / OTel SDK setup happens once in bootstrap; the domain emits spans and metrics only through the Tracer / Meter ports.
-- Apply the architecture doc's observability rules (sampling, cardinality, RED/USE).
+Day one: instrumentation libraries for server spans (route template, never the raw path), DB and HTTP-client spans and RED metrics, the SDK and exporter configured once in bootstrap; JSON logs with `request_id`, `trace_id`, `span_id` as fields and a redaction list at the logger; freshness metrics per async path (oldest pending outbox row, queue lag, DLQ depth); trace context through the outbox; audit events through their own port and store, never the log pipeline; telemetry flushed at shutdown. The domain records business events only through a port (or the stack's standard facade — `tracing` in Rust). Sampling, cardinality, SLOs: the arch doc's Observability Contract (software-architecture `observability.md`, if available).
 
-## Security baseline
+## Security
 
-| Item | Value |
-|------|-------|
-| JWT signing | **ES256/EdDSA** (asymmetric) when multiple services verify; `HS256` only for a single service that both issues and verifies |
-| JWT verification | Pin the algorithm on verify — never trust the token's `alg` header |
-| JWT access token | 15 min |
-| JWT refresh (web) | 90 days |
-| JWT refresh (mobile) | 1 year |
-| Refresh token rotation | **Required** — issue new refresh token on each use, revoke old immediately |
-| Refresh token storage | DB table with `jti`, user id, revoked-at, expires-at |
-| Secrets | Never sign with a dev placeholder secret outside dev |
-| Rate limiting | Terminate at the gateway / LB, or in-process with a 429 problem document |
-
-Auth middleware lives in the inbound layer. Domain never handles raw tokens. Password hashing and the JWT library are stack choices (see the guide).
+Pin JWT algorithms; validate `iss`, `aud`, `exp`; HS256 only when one service both issues and verifies, else ES256 / EdDSA via a cached JWKS with a fetch timeout — a key source that cannot be fetched is a dependency failure (503 + `Retry-After`), never a 401. Short-lived access tokens with a revocation path; refresh tokens opaque, hashed, rotated, with reuse detection (a replayed token revokes its family), idle and absolute expiry, a short grace window for concurrent refreshes. Cookies → HttpOnly, Secure, SameSite plus CSRF defense. Hash passwords with argon2id off the request thread. Validate config and secrets at startup and fail loud — no placeholder secret outside dev. Lifetimes are arch-doc policy; checklist: review-checklists `security/auth.md`, `security/api.md`, if available. The domain never sees raw tokens.
 
 ## Enforce the boundary (CI)
 
-"Domain never imports infrastructure" is a fitness function, not an honor system — guard it on every PR (if the `software-architecture` skill is installed, this is its Stage-8 fitness functions at code level). Stack tools: a separate domain crate or grep gate (Rust), `import-linter` (Python), dependency-cruiser or eslint-plugin-boundaries plus `madge --circular` and `tsc --noEmit` (TypeScript) — configs in each guide.
+"Domain never imports infrastructure" is a fitness function on every PR: a separate domain crate (Rust); import-linter (Python); dependency-cruiser counting type-only imports, with a no-circular rule, failing on zero cruised modules (TypeScript). Commit the generated OpenAPI document; fail on breaking diffs. Configs in each guide.
 
-## Testing approach
+## Testing
 
-**TDD**: Write all tests first as a spec, then implement, then verify all pass. (Tests → Impl → Green)
+Write each test before the behavior it proves; choose the level by risk.
 
-- **Layer split**: handler tests against a mock service (parsing, status codes, error format); service tests against mock ports (orchestration, side-effect ordering); adapter tests against a real DB (SQL, error mapping, transactions); a few E2E happy paths with nothing mocked.
-- **Hand-rolled port doubles**: Stub (configured results), Saboteur (always fails), Spy (counts side effects), NoOp (side effects don't matter). A fake repository must replicate DB constraints such as uniqueness, or tests pass against behavior production doesn't have.
-- Build the app through the test builder (no bound port).
+- **Layers**: domain tests on invariants and transitions; use-case tests with hand-rolled port doubles — Stub, Saboteur (always fails), Spy, NoOp — where a fake repository enforces the DB's constraints; adapter tests on real PostgreSQL with real migrations (an embedded substitute with millisecond timestamps hides precision bugs); HTTP tests through the test builder; a few end-to-end paths.
+- **Risk set per write path**: concurrent duplicate creates (one 201, one 409); version conflict (409 / 412); idempotency replay, mismatch, in-flight; a Saboteur at each side-effect step (the outbox row rolls back with the aggregate); cross-tenant (foreign id → 404, never listed); a cursor walk over rows that tie on the sort key; the problem+json matrix, framework 401 / 404 / 405 included; migrations forward from empty.
 
-## Shared checklist
+## Hand-off checklist
 
-- [ ] Stack confirmed from build files; `references/<stack>/guide.md` and its examples loaded before coding
-- [ ] Architecture doc's cross-cutting rules applied (or this skill's defaults, if absent)
-- [ ] Domain imports no framework / ORM / driver; boundary enforced in CI
-- [ ] Handlers: parse → service → map; DTOs ↔ domain via explicit mappers
-- [ ] Every error is RFC 9457 problem+json; Unknown → logged + generic 500
-- [ ] `/v1` mount, `{data}` / `{data, meta}` envelopes, 201 + Location, `X-Request-Id` header
-- [ ] Lists use keyset cursor pagination with `limit + 1` and a clamped limit
-- [ ] By-id reads and writes tenant / ownership-scoped (404 for foreign resources)
-- [ ] Transactions short and in adapters; outbox for events; version column on racing aggregates; idempotency for retried POSTs (principal-scoped, leased, expiring keys)
-- [ ] Liveness without dependencies, readiness 503 under timeout, graceful SIGTERM / SIGINT drain
-- [ ] Tests written first; adapter tests hit a real DB
+- [ ] Change plan answered; published contracts unchanged or versioned; boundary gate green
+- [ ] Every use case takes an Actor; every query tenant / owner-scoped; foreign → 404
+- [ ] One transaction per command, owned by the use case; must-happen effects through the outbox; concurrency control fits each write; idempotency on retried creates
+- [ ] Every error RFC 9457, framework errors included; `X-Request-Id` on every response
+- [ ] Cursor exact at DB precision; limit clamped and bounded in the port
+- [ ] Deadline, DB and pool timeouts set; retries in one layer
+- [ ] Liveness dependency-free; readiness latched and instance-local; drain inside the platform grace
+- [ ] Risk-set tests green on real PostgreSQL; OpenAPI diff clean
 
 ## Reference files
 
 | File | Contents |
 |---|---|
-| `references/api-design.md` | REST conventions: naming, envelopes, status codes, pagination, security headers, caching, versioning |
-| `references/api-patterns.md` | HTTP exchanges: CRUD, RFC 9457 errors, ETag / `If-Match`, uploads, state transitions, async, bulk, SSE, webhooks |
-| `references/axum/guide.md` + `examples-{domain,adapters,bootstrap}.md` | Axum 0.8 + sqlx + utoipa-axum |
-| `references/fastapi/guide.md` + `examples-{domain,adapters,bootstrap}.md` | FastAPI + Pydantic + SQLAlchemy async + Alembic |
-| `references/hono/guide.md` + `examples-{domain,adapters,bootstrap}.md` | Hono + @hono/zod-openapi + Drizzle, multi-runtime |
-| `references/nestjs/guide.md` + `examples-{domain,adapters,bootstrap}.md` | NestJS + TypeORM 1.x + nestjs-zod + terminus |
+| `references/api-design.md` | REST conventions: naming, envelopes, status codes, problem types, filtering, security, caching, versioning |
+| `references/api-patterns.md` | Worked exchanges: CRUD, errors, idempotency, `If-Match`, uploads, transitions, search, async jobs, bulk, SSE, webhooks |
+| `references/<stack>/guide.md` | Axum · FastAPI · Hono · NestJS: version baseline, decisions, edge, persistence, operability, testing, traps |
+| `references/<stack>/examples-{domain,adapters,bootstrap}.md` | One tenant-scoped vertical slice per stack that compiles and passes its tests |
 
-Library APIs drift: each guide carries a dated version baseline; verify against the official docs with a doc-lookup tool if one is available.
+Library APIs drift: each guide opens with a dated version baseline; verify against the official docs with a doc-lookup tool if one is available.
