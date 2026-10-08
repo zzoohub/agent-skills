@@ -1,136 +1,45 @@
-# shadcn/ui + cva + Radix Primitives Integration
+# shadcn/ui
 
-shadcn isn't a library — it's a code-gen tool that copies components into your repo. Tokens flow through CSS variables; variants are built with `class-variance-authority` (cva); accessibility comes from Radix Primitives.
+shadcn copies component source into the repo: the code is yours to edit and to hold to this system. Skip it for a design language far from its interaction model.
 
-## Table of Contents
+## Detect Before Generating
 
-1. [Stack](#stack)
-2. [File layout (FSD-aware)](#file-layout-fsd-aware)
-3. [CLI config — components.json](#cli-config--componentsjson)
-4. [The cn helper](#the-cn-helper)
-5. [Button with cva (reads design tokens via Tailwind classes)](#button-with-cva-reads-design-tokens-via-tailwind-classes)
-6. [Why asChild via Radix Slot](#why-aschild-via-radix-slot)
-7. [Token integration with Tailwind v4](#token-integration-with-tailwind-v4)
-8. [Forms — pair with react-hook-form + zod](#forms--pair-with-react-hook-form--zod)
-9. [When NOT to use shadcn](#when-not-to-use-shadcn)
-10. [Alternatives](#alternatives)
+- **Headless library:** the `style` in `components.json` names it: `base-*` (Base UI, `@base-ui/react`), `radix-*` (Radix, `radix-ui`; also a legacy `new-york` or `default`) or `aria-*` (React Aria Components). Base UI composes with `render`, Radix with `asChild`, React Aria with a `render` function (`components.md`). New projects have defaulted to Base UI since July 2026 (`shadcn init -b radix` or `-b aria` picks another). Follow the repo; never mix two.
+- **Migrations:** prefer `shadcn migrate radix` (per-primitive `@radix-ui/react-*` imports to `radix-ui`) and `shadcn migrate cn` (`clsx` and `tailwind-merge` to the `cn` package) over hand edits, then re-run the merge check (`platform-web.md` § Class Merging).
+- **Base UI setup:** follow its quick start, including the isolated app root (`isolation: isolate`), or popups stack under page content.
+- **Placement:** `aliases.ui` (for example `"@/shared/ui"`) decides where components land; without it, the CLI writes to its default folder and the system splits in two. With two or more consuming apps, point it at the shared UI package.
 
+## Point shadcn's Variables at the Tokens
 
-## Stack
-
-| Layer | Tool |
-|---|---|
-| Headless primitives | Radix via the unified `radix-ui` package (Dialog, Popover, Select, etc.; older projects import per-primitive `@radix-ui/react-*` packages) — or Base UI, chosen at `npx shadcn create` |
-| Variants | `class-variance-authority` (cva) |
-| Class merging | `tailwind-merge` + `clsx` (exposed as `cn()`) |
-| Tokens | Tailwind v4 `@theme` reading project CSS variables |
-| Generator | `npx shadcn@latest add <component>` |
-
-## File layout (FSD-aware)
-
-```
-shared/ui/
-├── button.tsx           # shadcn-generated, owned by us
-├── dialog.tsx           # shadcn-generated, owned by us
-└── lib/
-    └── cn.ts            # cn helper
-```
-
-## CLI config — `components.json`
-
-The shadcn CLI is driven by a project-root `components.json` (style, the Tailwind CSS entry path, RSC/tsx flags, import aliases, and registries). Because this FSD layout puts `cn` at `@/shared/ui/lib/cn` rather than the CLI default `@/lib/utils`, set the aliases so generated components import from the right place:
-
-```json
-{
-  "aliases": {
-    "utils": "@/shared/ui/lib/cn",
-    "components": "@/shared/ui"
-  }
-}
-```
-
-Without this, `npx shadcn@latest add` scaffolds imports like `@/lib/utils` that won't resolve in this structure.
-
-## The `cn` helper
-
-```ts
-import { clsx, type ClassValue } from 'clsx';
-import { twMerge } from 'tailwind-merge';
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
-```
-
-## Button with cva (reads design tokens via Tailwind classes)
-
-```tsx
-import { cva, type VariantProps } from 'class-variance-authority';
-import { cn } from '@/shared/ui/lib/cn';
-import { Slot } from 'radix-ui'; // unified package; older projects: import { Slot } from '@radix-ui/react-slot'
-
-const buttonVariants = cva(
-  'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 disabled:opacity-50',
-  {
-    variants: {
-      variant: {
-        primary: 'bg-interactive-primary text-white hover:bg-interactive-primary-hover',
-        secondary: 'border border-border-default bg-bg-secondary hover:bg-bg-tertiary',
-        danger: 'bg-status-error text-white hover:bg-status-error/90',
-        ghost: 'hover:bg-bg-secondary',
-      },
-      size: {
-        sm: 'h-8 px-3 text-sm',
-        md: 'h-10 px-4',
-        lg: 'h-12 px-6 text-lg',
-      },
-    },
-    defaultVariants: { variant: 'primary', size: 'md' },
-  }
-);
-
-interface ButtonProps
-  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
-    VariantProps<typeof buttonVariants> {
-  asChild?: boolean;
-}
-
-export function Button({ className, variant, size, asChild, ...props }: ButtonProps) {
-  const Comp = asChild ? Slot.Root : 'button'; // with @radix-ui/react-slot: `Slot`
-  return <Comp className={cn(buttonVariants({ variant, size, className }))} {...props} />;
-}
-```
-
-## Why `asChild` via Radix `Slot`
-
-`<Button asChild><Link to="/">Home</Link></Button>` — renders a real `<a>` (from your Link) but inherits Button's classes. Avoids div-in-link / link-in-button structural problems.
-
-Since February 2026 the shadcn new-york templates import Radix from the unified `radix-ui` package (`import { Slot } from 'radix-ui'`, used as `Slot.Root`) instead of the per-primitive `@radix-ui/react-*` packages. Migrate existing components with `npx shadcn@latest migrate radix`, then remove the unused `@radix-ui/react-*` dependencies.
-
-## Token integration with Tailwind v4
-
-Tokens are defined as CSS custom properties in `:root` (see `platform-web.md`); an `@theme inline` block bridges them into Tailwind's utility generator so cva can consume `bg-*`/`text-*`/`hover:*` classes. Use the `inline` keyword: it makes each generated utility emit the referenced value (`var(--color-x)`) directly, so it resolves on the element that uses the utility. Without `inline`, a theme variable that aliases another variable is resolved where Tailwind defines it (`:root`), so a theme override scoped to a subtree would not reach the utility; for same-name entries the unlayered `:root` / dark declarations usually win over Tailwind's `@layer theme` output anyway, but `inline` keeps it correct regardless of layering. With `inline`, runtime overrides flow through correctly. Keep `:root` and utility names identical (both kebab-case):
+Generated code depends on shadcn's vocabulary (`primary` and `primary-foreground`; `accent`, a subtle hover surface, not the brand; `destructive`; `input`; `ring`), so it is the project's Tailwind vocabulary: keep shadcn's `@theme inline` block, with `--color-*: initial;` added first, instead of `platform-web.md`'s names, which would give `accent` two meanings. Replace shadcn's `:root` and `.dark` value blocks with one mapping; the `--ds-*` variables already switch per theme. Declare it on every themed element: an alias resolves where it is declared, so on `:root` alone a nested theme keeps the outer colors.
 
 ```css
-@theme inline {
-  --color-interactive-primary: var(--color-interactive-primary);            /* utility → :root value */
-  --color-interactive-primary-hover: var(--color-interactive-primary-hover);
+:root, [data-theme] {
+  --background: var(--ds-bg-base);
+  --foreground: var(--ds-fg-default);
+  --primary: var(--ds-bg-accent);
+  --primary-foreground: var(--ds-fg-on-accent);
+  --accent: var(--ds-bg-subtle);
+  --accent-foreground: var(--ds-fg-default);
+  --destructive: var(--ds-bg-danger);
+  --input: var(--ds-border-input);
+  --ring: var(--ds-border-focus);
 }
 ```
-→ Tailwind generates `bg-interactive-primary` and `hover:bg-interactive-primary-hover`, both resolving to the `:root` variables — so dark mode just works.
 
-## Forms — pair with react-hook-form + zod
+Map every variable your components reference, plus what the fixes below need in `@theme inline` (`--color-primary-hover: var(--ds-bg-accent-hover)`, `--color-link: var(--ds-fg-accent)`, then `danger-subtle` and `danger-strong` the same way; legacy `--color-destructive-foreground: var(--ds-fg-on-danger)`), and point the `dark:` variant at the theme attribute (`platform-web.md`).
 
-shadcn's `Form` component wraps react-hook-form with Radix's `Label` and a `FormField` adapter. Use `@hookform/resolvers/zod` for schema-typed forms.
+## Fix Generated Components
 
-## When NOT to use shadcn
+Review each component as it lands; defaults break the floor:
+- **`outline-none` → `outline-hidden`.** In Tailwind v4, `outline-none` removes the outline and forced-colors mode drops the box-shadow ring, so focus disappears; `outline-hidden` keeps a transparent outline that forced colors reveal.
+- **Alpha modifiers change the pair.** With the example palette, `ring-ring/50` gives the focus ring 1.81:1, and `hover:bg-primary/80` drops the on-token to 3.63:1 in light and 4.04:1 in dark (legacy `new-york`'s `/90`: 4.32:1); use the full `ring` and the hover token (`hover:bg-primary-hover`).
+- **Destructive is a tint** (`bg-destructive/10 text-destructive`): the fill read as text, at 2.84–4.13:1 across states and themes. Restyle it from the pair table: the danger ghost (`text-danger-strong hover:bg-danger-subtle`), or `bg-danger-subtle text-danger-strong` with an admitted hover token. Legacy `new-york` puts `text-white` on a solid `bg-destructive`: use `text-destructive-foreground`.
+- **Fills used as text:** `text-primary` (the `link` variant) and `text-destructive` (error messages) read fills, at 3.99:1 and 3.90:1 on dark `bg.raised`: use `text-link` and `text-danger-strong`; the role gate (`platform-web.md` § Guards) finds the rest.
+- **`dark:` overrides** (`dark:bg-destructive/20`) bypass the token remap; delete them, or gate each one as a pair.
+- **`import { cn } from "cn"` → the system's helper.** Since September 2026, generated components import the `cn` package directly, and its default tables drop a token-named size next to a text color; import the configured helper (`platform-web.md`) and ban bare `cn` imports with `no-restricted-imports`.
+- **Bare `<button>` elements submit their form;** default `type="button"`.
 
-- Highly bespoke design language that doesn't map to Radix Primitives' interaction model
-- Need fully framework-agnostic components (shadcn is React-only; for Vue/Solid see Park UI, Ark UI, Kobalte)
-- Strict bundle-size constraints where the Radix dependency is too much
+## Forms
 
-## Alternatives
-
-- **Park UI / Ark UI** — same idea, multi-framework via Zag.js
-- **Headless UI** — Tailwind Labs' own headless library; smaller surface area
-- **Base UI** — unstyled React library (stable 1.x) from the creators of Radix, Material UI and Floating UI; shadcn can also generate its components on Base UI instead of Radix (pick it in `npx shadcn create`)
+Compose the `Field` family (`Field`, `FieldLabel`, `FieldDescription`, `FieldError`) with the project's form library. The system owns layout and the description and error slots (`aria-describedby`, `aria-invalid`); validation belongs to the feature.

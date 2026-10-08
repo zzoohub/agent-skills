@@ -1,47 +1,21 @@
-# Drei Essentials Reference
+# Drei under WebGPURenderer
 
-All helpers below render inside `<Canvas>`.
+drei was built for `WebGLRenderer`: run the grep rule (SKILL.md, Decide) on every helper used under `WebGPURenderer`. At drei 10.7.9 the scene utilities (`Bounds`, `Center`, `Float`, `Instances`, `Html`, `useGLTF`) pass.
 
-## Environment & Lighting
+Common hits (not exhaustive):
 
-```tsx
-import { Environment, ContactShadows, Float, Sky } from '@react-three/drei'
+| Helpers | Instead |
+|---|---|
+| Materials: `MeshTransmissionMaterial`, `MeshReflectorMaterial`, `MeshDistortMaterial`, `MeshWobbleMaterial`, `shaderMaterial` | Node materials: `MeshPhysicalNodeMaterial` with `transmission`; TSL `reflector()`; a `positionNode` displacement (`../shaders.md`) |
+| Shadows: `ContactShadows`, `AccumulativeShadows`, `SoftShadows`, and so `Stage` | Bake the shadow into a texture once, or a plane with `ShadowNodeMaterial` under a real shadow-casting light |
+| `Line`, `Edges`, `Segments` | `Line2` or `LineSegments2` from `three/addons/lines/webgpu/`, with `Line2NodeMaterial` |
+| `Sky` | `SkyMesh` from `three/addons/objects/SkyMesh.js` |
+| `Sparkles`, `Stars`, `Cloud`, `Grid`, `Outlines`, `Image` | TSL rebuilds (sprites: `../shaders.md` § Compute) |
+| `Text` (troika) | Stay on `WebGLRenderer`, or a `CanvasTexture` label on a plane, or `<Html>` outside XR |
+| `@react-three/uikit` | Stay on `WebGLRenderer` |
 
-<Sky sunPosition={[100, 20, 100]} />
-<Environment preset="sunset" background backgroundBlurriness={0.05} />
-<ContactShadows position={[0, -0.5, 0]} opacity={0.5} blur={1} frames={1} />
-<Float speed={2} rotationIntensity={1} floatIntensity={1}>
-  <mesh>{/* gently bobs / rotates */}</mesh>
-</Float>
-```
+A clean grep is necessary, not sufficient: look at every helper on both backends.
 
-Presets: `apartment`, `city`, `dawn`, `forest`, `lobby`, `night`, `park`, `studio`, `sunset`, `warehouse`.
-
-## Controls
-
-```tsx
-import { OrbitControls } from '@react-three/drei'
-<OrbitControls makeDefault maxPolarAngle={Math.PI / 2} />
-```
-
-## Text
-
-```tsx
-import { Text } from '@react-three/drei'
-<Text fontSize={1} color="white" anchorX="center" anchorY="middle">
-  Hello World
-</Text>
-```
-
-`<Text>` loads glyphs asynchronously (wrap in `<Suspense>`); for non-Latin scripts pass `font={url}` to a font that contains the glyphs. Add the `occlude` prop for depth-aware labels that hide behind geometry.
-
-## HTML Overlay in 3D
-
-```tsx
-import { Html } from '@react-three/drei'
-<mesh>
-  <Html center transform distanceFactor={10}>
-    <div className="label">Info Panel</div>
-  </Html>
-</mesh>
-```
+- `<Environment preset>` downloads its HDRI from a third-party CDN at runtime. In production, self-host the file and pass it with `files` (availability, COEP). Its `ground` prop fails the grep.
+- `occlude` belongs to `<Html>`, not to `<Text>` (a mesh is depth-tested already).
+- `<Text>` loads its font asynchronously, so wrap it in `<Suspense>`; non-Latin scripts need a `font` URL whose file contains the glyphs.

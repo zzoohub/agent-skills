@@ -1,154 +1,36 @@
 # Aha Moment Discovery
 
-## Table of Contents
-
-1. [Definition](#definition)
-2. [Discovery Process](#discovery-process)
-3. [Common Pitfalls](#common-pitfalls)
-4. [Activation Rate](#activation-rate)
-5. [Implementation in PostHog](#implementation-in-posthog)
-
-
 ## Definition
 
-The Aha Moment is the single action (or set of actions) that predicts long-term retention:
+The Aha Moment is the early action that predicts long-term retention, and, once validated, drives it:
 
 > **"[Action X] within [Y days] of signup, [Z times]"**
 
-Examples from well-known products (folklore-canon — Facebook per Chamath Palihapitiya, Twitter per
-Josh Elman, Slack per Stewart Butterfield, Dropbox per ChenLi Wang; treat the exact numbers as
-those products' discoveries, not transferable targets):
-- **Facebook**: 7 friends in 10 days
-- **Twitter**: Follow 30 people
-- **Slack**: Team has exchanged 2,000 messages
-- **Dropbox**: Put at least one file in one Dropbox folder on one device
-
-The Aha Moment defines the entire product strategy. Once found, the company's single goal becomes: get more users to complete X within Y days, Z times.
-
----
+Canonical examples (Facebook's "7 friends in 10 days") are folklore: other products' discoveries, not targets.
 
 ## Discovery Process
 
-### Step 1: Identify Power Users
+1. **Cohorts.** Take every signup from cohorts whose outcome window has fully elapsed. Never start from preselected power users: that selects on the outcome.
+2. **Candidates.** List 5–10 actions that deliver core value early (created a first project, invited a teammate, connected an integration), not vanity or forced steps (viewed settings, finished a mandatory tutorial). Compute them from raw events, so the hypothesis can change without re-instrumenting.
+3. **Windows.** Count the action only in [0, Y]; measure retention strictly after Y (for a weekly product: active in weeks 5–8). An outcome window that overlaps Y leaks the outcome into the action.
+4. **Score each candidate** on the 2×2 (A = did and retained, B = didn't and retained, C = did and churned, D = didn't and churned):
+   - **retention predictive value (RPV)** = P(retained | did) = A/(A+C);
+   - **coverage** = A/(A+B), the share of retained users who did it;
+   - **lift** = RPV ÷ P(retained | didn't) = [A/(A+C)] ÷ [B/(B+D)].
 
-Create a segment of your most retained, most active users. These are users who:
-- Have been active for 30+ days
-- Use the product regularly (weekly or more)
-- Would be "very disappointed" if the product disappeared (Sean Ellis test)
+   Compare users with the same number of early active days: an action that doesn't beat plain "active days" only measures engagement. Example: "invited a teammate in week 1" shows 3× lift overall but 1.2× among users active 4+ days that week; the invite mostly marks engaged users and ranks below an action that keeps its lift inside each activity band. Prefer high lift with useful coverage; a rare action with huge lift reaches too few users to steer onboarding.
+5. **Sweep (Y, Z)** for the strongest candidates: frequencies such as 1, 2, 3, 5, 10; windows matched to the natural usage interval.
+6. **Multiple-comparisons guard (FDR).** Candidates × frequencies × windows make dozens to hundreds of hypotheses, so the peak you pick is partly noise. Treat the sweep as exploratory: control the false-discovery rate (Benjamini–Hochberg across candidates), or re-check the winning (X, Y, Z) on a holdout cohort the sweep never saw. Only step 7 confirms it.
+7. **Validate with an encouragement test.** Nudge a random half of new users toward the action. Retention gain ÷ uptake gain estimates the action's effect: if the nudge lifts uptake from 20% to 35% (+15 pp) and retention from 30% to 33% (+3 pp), each extra adopter gains about 3 ÷ 15 = 20 pp of retention. Uptake up with retention flat means the action marks engaged users; it doesn't cause retention. The ratio holds only if the nudge moves retention solely through the action: nudge in-product at the moment of eligibility, never by email or push, which bring users back on their own (otherwise read the ratio as an upper bound). It measures the effect on users the nudge moves, not on everyone.
 
-### Step 2: Identify Candidate Actions
-
-List 5-10 actions that represent core value delivery. Focus on:
-- Actions that reflect the product's core value proposition
-- Actions that require meaningful engagement (not vanity actions like "viewed dashboard")
-- Actions that happen relatively early in the user journey
-
-**Good candidates**: Created first project, invited a team member, completed first workflow, exported first report, connected first integration
-**Bad candidates**: Viewed settings page, clicked help, updated profile photo
-
-### Step 3: Correlation Analysis
-
-For each candidate action, segment ALL users into 4 groups:
-
-```
-             | Retained (D30+) | Not Retained
--------------|-----------------|-------------
-Did Action   |    A            |    C
-Didn't Do    |    B            |    D
-```
-
-Calculate two metrics:
-
-**Retention Predictive Value (RPV)**:
-```
-RPV = A / (A + B)
-```
-RPV answers: "Of all retained users, what percentage did this action?"
-Target: RPV > 95% (nearly all retained users did this action)
-
-**Intersection (Jaccard overlap)**:
-```
-Intersection = A / (A + B + C)
-```
-Intersection answers: "Of everyone who retained OR did the action, how many did both?"
-Maximize this — it balances false positives (C: did action but churned) with coverage.
-
-### Step 4: Sweep Parameters
-
-For each promising candidate (RPV > 80% — the looser bar exists because tuning Z and Y can lift a
-borderline candidate past the 95% target), sweep:
-- **Frequency (Z)**: How many times? (1, 2, 3, 5, 10...)
-- **Time window (Y)**: Within how many days? (1, 3, 7, 14, 30...)
-
-Plot Intersection across these combinations. The sweet spot is where Intersection peaks — the specific frequency within the specific time window.
-
-**Multiple-comparisons guard (FDR).** Sweeping 5-10 candidates × frequencies × windows is dozens to
-hundreds of hypotheses — the peak you pick will partly be noise. Treat the sweep as *exploratory*:
-either apply a false-discovery-rate control (Benjamini-Hochberg across candidate correlations), or
-re-check the winning (X, Y, Z) on a holdout cohort the sweep never saw. Only the Step 5 experiment
-confirms it.
-
-### Step 5: Validate
-
-**Correlation ≠ causation.** Validate with:
-1. **A/B test**: Design an onboarding flow that pushes users toward the candidate action. Compare retention vs control.
-2. **Qualitative check**: Interview retained users. Do they describe the candidate action as the moment they "got it"?
-3. **Segment check**: Does the Aha Moment hold across different user segments (by acquisition channel, persona, geography)?
-
-If the A/B test shows improved retention, you've found your Aha Moment. If not, the action may be a symptom of engaged users, not a cause of engagement.
-
----
-
-## Common Pitfalls
-
-### Confusing Correlation with Causation
-Power users do many things. Not all of those things cause retention. A retained user might also view settings frequently — that doesn't make "view settings" an Aha Moment.
-
-### Vanity Actions
-"Completed onboarding tutorial" often has high RPV but low causal power. Users complete it because the product forces them to, not because it delivers value.
-
-### Ignoring Segments
-Different personas may have different Aha Moments. A collaboration tool's Aha Moment might be "shared a file" for team leads but "received a notification" for individual contributors. Analyze segments separately.
-
-### Optimizing for Speed Over Accuracy
-The Aha Moment defines your entire product strategy. Spend the time to validate properly. A wrong Aha Moment leads to optimizing the wrong thing.
-
-### Not Revisiting
-Products evolve. The Aha Moment for a v1 product may differ from v3. Revisit quarterly or after major feature launches.
-
----
+After adoption, the action becomes a target and can be gamed: check that nudged users retain like those who did it unprompted. Run the analysis per persona when personas use the product differently, and again after major launches.
 
 ## Activation Rate
 
-Once the Aha Moment is identified, track:
+Activation rate = signups who reach the Aha Moment ÷ signups, per cohort; time to Aha = median time from signup. Judge both against your own earlier cohorts: external activation benchmarks don't transfer across Aha definitions.
 
-```
-Activation Rate = Users who reach Aha Moment / Total signups
-```
+## Tooling
 
-And the time dimension:
+Funnel correlation features (PostHog's correlation analysis) only shortlist candidates; compute RPV, coverage and lift yourself. Emit `aha_moment_reached` only after validation (event-tracking reference).
 
-```
-Time to Aha Moment = Median time from signup to Aha Moment completion
-```
-
-Both should be tracked by cohort, by segment, and over time. Improvements to onboarding should show:
-- Rising activation rate
-- Declining time to Aha Moment
-
----
-
-## Implementation in PostHog
-
-Execute Aha Moment discovery via a PostHog capability (MCP tools or the UI), if available:
-
-| Step | PostHog Feature | How |
-|------|----------------|-----|
-| Identify power users | **Cohort** | Create cohort: retained D30+ users |
-| List candidate actions | **Paths** | Compare paths of retained vs churned |
-| Correlation analysis | **Correlation Analysis** | Automates RPV calculation across events |
-| Behavioral cohorts | **Cohort** | Create cohort per candidate action (e.g., "completed_import in first 3 days") |
-| Retention comparison | **Retention** insight | Compare retention curves: did-action vs didn't |
-| Parameter sweeping | **HogQL** | Custom SQL for frequency×timewindow matrix when UI doesn't support it |
-| Lifecycle tracking | **Lifecycle** view | Monitor new/returning/resurrecting/dormant after activation changes |
-| A/B validation | **Experiments** | Test causal effect of nudging users toward Aha Moment |
+**Output:** `reports/aha-analysis.md` in the analytics dir (default `biz/analytics/`; caller may redirect; ≤400 words plus the table; sections are a menu): the candidate table (action · window · frequency · RPV · coverage · lift overall and at equal active days · n), the FDR or holdout check, and the encouragement-test design. Only the definition and its status go to the tracking plan.

@@ -1,374 +1,71 @@
-# Multi-Thread Architecture Reference
+# Threading: Placement, Isolation, Build Config, Sync
 
-3D/XR apps must keep the main thread free for rendering and XR frame submission. Offload all heavy computation to background threads. This reference covers every browser multithreading option, when to use each, and how to wire them together.
+The main thread owns input, the DOM, rendering and the XR frame loop. Every extra thread adds latency, a build target and a failure mode, so move work only when the floor device's numbers say so. R3F consumers of worker data: `react/performance.md`.
 
-> For framework-specific main thread consumer patterns (R3F useFrame sync): `react/performance.md`
+## Placement
 
-## Table of Contents
+- **Rendering and scene graph:** main thread. OffscreenCanvas renders WebGL 2 in a worker in every engine (Safari 17+; MDN BCD, 2026-10), but input, DOM sync and WebXR stay on the main thread. Worth it only when the host page's long tasks, not the scene, drop frames and input reduces to forwarded pointer deltas; never for XR or DOM-overlaid UI.
+- **ECS, physics, per-element math:** SKILL.md's State, Physics and Compute rows; past the threshold, pure-data ECS systems and the physics step (`physics.md` § Worker path) may move.
+- **Pathfinding, procedural generation, mesh processing:** a worker or pool for one-shot jobs over a frame budget; results land frames later.
+- **Asset decoding:** Draco and KTX2 already decode in worker pools; meshopt only after `MeshoptDecoder.useWorkers(n)`. The usual stall is GPU upload and shader compile instead: KTX2 + `initTexture`, `compileAsync` (`assets.md`).
 
-1. [Browser Multithreading Options](#browser-multithreading-options)
-2. [Decision Guide: What Goes Where](#decision-guide-what-goes-where)
-3. [Data Transfer Patterns](#data-transfer-patterns)
-4. [COOP/COEP Headers](#coopcoep-headers)
-5. [SharedArrayBuffer Layout Convention](#sharedarraybuffer-layout-convention)
-6. [Race Conditions and Synchronization](#race-conditions-and-synchronization)
-7. [Performance Rules](#performance-rules)
+**Threshold.** Offload recurring work whose p95 exceeds about 15% of the frame budget on the floor device (≈ 2.5 ms at 60 Hz, ≈ 1.7 ms at 90 Hz), and one-shot work longer than one frame budget.
 
-## Browser Multithreading Options
+## Transfer
 
-### 1. Dedicated Worker (`new Worker()`)
+Per-step transforms ping-pong in two preallocated transferred buffers, or sit in a SharedArrayBuffer (below); WASM memory must be copied out first (`wasm.md`). Workers are long-lived; never spawn one per task. A pool keeps **one persistent `onmessage` per worker** and routes replies by a request id the worker echoes back; reassigning `worker.onmessage` per request clobbers in-flight resolvers once tasks outnumber workers.
 
-The workhorse of browser multithreading. 1:1 thread per Worker instance. Use for physics, ECS ticks, pathfinding, and any sustained background computation.
+## Cross-origin isolation
 
-```typescript
-const worker = new Worker(
-  new URL('./workers/physics.worker.ts', import.meta.url),
-  { type: 'module' }
-)
+Only SharedArrayBuffer and WASM threads need `crossOriginIsolated === true`, and it costs:
+- **COOP `same-origin`** severs `window.opener`, breaking OAuth and payment popups that report back. Send it on the 3D route only.
+- **COEP `require-corp`** blocks every cross-origin subresource (images, iframes, decoders, HDRIs, fonts) without CORP or CORS. **`credentialless`** instead loads no-cors resources without cookies (Chromium and desktop Firefox; not Safari or Firefox for Android, which then stay unisolated and need the `postMessage` path; MDN BCD, 2026-10). Check each host the scene loads from; self-host what you can.
+
+```ts
+const canShare = typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated === true
+// false → the transfer path; headers "being set" proves nothing
 ```
 
-- Full browser support
-- Each Worker has its own global scope (`self`), no DOM access
-- Communication via `postMessage` or `SharedArrayBuffer`
+## Vite config
 
-### 2. SharedWorker
+The one copy in this skill; other files point here.
 
-A single Worker shared across multiple tabs/iframes. Useful for multi-window XR apps (e.g., spectator view + player view sharing game state).
-
-```typescript
-const shared = new SharedWorker(
-  new URL('./workers/shared-state.worker.ts', import.meta.url),
-  { type: 'module' }
-)
-shared.port.onmessage = (e) => { /* ... */ }
-shared.port.postMessage({ type: 'sync' })
-```
-
-- **Broad support**: Chrome/Edge, Firefox, and Safari 16+ (2022). The real gap is Chrome / Samsung Internet on **Android** and Android WebView, which don't implement SharedWorker.
-- Communicates via `MessagePort`
-- Niche use case -- only reach for this when you genuinely need cross-tab state sharing
-
-### 3. Worker Pool (Manual)
-
-Spawn N Dedicated Workers and distribute tasks across them. Essential for chunked parallel work: terrain generation, mesh processing, LOD computation, batch asset loading.
-
-```typescript
-class WorkerPool {
-  private workers: Worker[]
-  private seq = 0
-  private pending = new Map<number, (v: any) => void>()
-
-  constructor(url: URL, size: number) {
-    this.workers = Array.from({ length: size }, () => {
-      const w = new Worker(url, { type: 'module' })
-      // ONE persistent handler per worker, routed by message id. Reassigning
-      // worker.onmessage on every post() clobbers in-flight resolvers when more
-      // tasks than workers are queued (round-robin reuse) — never do that.
-      w.onmessage = (e) => {
-        const resolve = this.pending.get(e.data.id)
-        if (resolve) { this.pending.delete(e.data.id); resolve(e.data) }
-      }
-      return w
-    })
-  }
-
-  post(message: any, transfer?: Transferable[]) {
-    const id = this.seq++
-    const worker = this.workers[id % this.workers.length]
-    return new Promise((resolve) => {
-      this.pending.set(id, resolve)
-      worker.postMessage({ ...message, id }, transfer ?? [])
-    })
-  }
-
-  terminate() { this.workers.forEach(w => w.terminate()) }
-}
-// The worker must echo `id` back in its reply: self.postMessage({ id: e.data.id, ...result })
-
-// Usage
-const pool = new WorkerPool(
-  new URL('./workers/terrain-chunk.worker.ts', import.meta.url),
-  navigator.hardwareConcurrency
-)
-
-const chunks = await Promise.all(
-  chunkCoords.map(coord => pool.post({ type: 'generate', coord }))
-)
-```
-
-### 4. WASM Threads (pthread / rayon)
-
-WASM modules can spawn their own threads internally using `wasm-bindgen-rayon`. Best for massive parallel compute: particle simulation, voxel processing, fluid dynamics, large-scale pathfinding.
-
-See `references/wasm.md` for setup and build instructions.
-
-### 5. Worklets
-
-| Worklet | Use in 3D/XR | Support |
-|---|---|---|
-| **AudioWorklet** | Spatial audio processing, HRTF, real-time audio synthesis | Stable, all modern browsers |
-| AnimationWorklet | Main-thread-independent animations | Experimental, limited support |
-| PaintWorklet | CSS custom painting | Not relevant to 3D/XR |
-
-Only **AudioWorklet** is practical for 3D/XR:
-
-```typescript
-await audioContext.audioWorklet.addModule('/audio/spatial-processor.js')
-const node = new AudioWorkletNode(audioContext, 'spatial-processor')
-node.connect(audioContext.destination)
-
-// Send listener position from render loop
-node.port.postMessage({ listenerPos: [x, y, z], listenerQuat: [qx, qy, qz, qw] })
-```
-
-### 6. GPU Compute (WebGPU Compute Shader)
-
-Not CPU multithreading -- this is GPU parallel processing. Thousands of threads executing simultaneously on the GPU. Use for particles, boids, post-processing, and any embarrassingly parallel simulation that operates on large buffers.
-
-Accessible via TSL compute shaders (see `references/shaders.md`) or raw WebGPU `computePipeline`.
-
----
-
-## Decision Guide: What Goes Where
-
-| Task | Where | Why |
-|---|---|---|
-| Rendering, scene graph updates | Main thread | WebGL/WebGPU context is main-thread-only |
-| XR frame submission | Main thread | `requestAnimationFrame` callback |
-| UI | Main thread | DOM access required |
-| Physics simulation | Dedicated Worker | Rapier WASM is CPU-heavy, deterministic stepping |
-| ECS system tick | Dedicated Worker | Batch entity iteration at fixed rate |
-| Pathfinding, AI decisions | Dedicated Worker or Pool | Can be async, results consumed next frame |
-| Terrain/mesh generation | Worker Pool | Chunked, parallelizable, one-shot |
-| Massive parallel compute (>100K elements) | WASM Threads | rayon saturates all cores, no JS overhead |
-| Particles, boids (GPU-friendly) | GPU Compute | Massively parallel, data stays on GPU |
-| Post-processing effects | GPU Compute / TSL | Fragment shader or compute pipeline |
-| Spatial audio | AudioWorklet | Dedicated audio thread, no jank |
-| Asset loading/decoding | Dedicated Worker | Prevents main thread stalls on large glTF |
-
-**Rule of thumb**: if the task runs every frame and takes >2ms, move it off the main thread. If it's a one-shot task that takes >16ms, move it off the main thread.
-
----
-
-## Data Transfer Patterns
-
-### Pattern 1: postMessage (Structured Clone)
-
-Data is deep-copied between threads. Simple but expensive for large payloads.
-
-```typescript
-// Worker
-self.postMessage({ positions: new Float32Array(1000), metadata: { count: 333 } })
-
-// Main thread
-worker.onmessage = (e) => {
-  const { positions, metadata } = e.data
-  // positions is a COPY
-}
-```
-
-**Cost**: order of ~1 ms per MB, but highly hardware- and shape-dependent — typed arrays clone far faster than deep object graphs. Measure rather than assume.
-
-**Use for**: Small messages, one-shot results, configuration, events.
-
-### Pattern 2: Transferable Objects (Zero-Copy Ownership Transfer)
-
-Transfer ownership of an `ArrayBuffer` to another thread. The sender loses access. Zero-copy.
-
-```typescript
-// Worker: generate terrain, transfer result
-const positions = new Float32Array(width * depth * 3)
-// ... fill positions ...
-self.postMessage(
-  { type: 'terrain', positions },
-  [positions.buffer]  // Transfer list
-)
-// positions.byteLength === 0 after this (detached)
-
-// Main thread: receive and use
-worker.onmessage = (e) => {
-  const positions = e.data.positions  // Now owned by main thread
-  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
-}
-```
-
-**Cost**: Near-zero (pointer transfer).
-
-**Use for**: One-shot results (generated terrain, decoded assets), ping-pong buffers.
-
-### Pattern 3: SharedArrayBuffer (Concurrent Shared Memory)
-
-Both threads read/write the same memory simultaneously.
-
-```typescript
-// Main thread: create and share
-const sab = new SharedArrayBuffer(ENTITY_COUNT * 3 * 4)
-const positions = new Float32Array(sab)
-
-worker.postMessage({ type: 'init', buffer: sab, count: ENTITY_COUNT })
-
-// Worker: write simulation results directly
-self.onmessage = (e) => {
-  if (e.data.type === 'init') {
-    const { buffer, count } = e.data
-    const positions = new Float32Array(buffer)
-    const velocities = new Float32Array(count * 3)  // populate from the init payload
-    const dt = 1 / 60
-    function tick() {
-      for (let i = 0; i < count * 3; i += 3) {
-        positions[i]     += velocities[i] * dt
-        positions[i + 1] += velocities[i + 1] * dt
-        positions[i + 2] += velocities[i + 2] * dt
-      }
-      // Simple fixed cadence. setTimeout drifts under load — for a stable sim use an
-      // elapsed-time accumulator with a carried remainder (see references/physics.md).
-      setTimeout(tick, 1000 / 60)
-    }
-    tick()
-  }
-}
-
-// Main thread render loop: read without any copy
-// geometry.attributes.position.needsUpdate = true
-```
-
-**Cost**: Zero transfer cost. Potential race conditions on individual values, but for transform data this is acceptable.
-
-**Use for**: Continuous simulation data (physics transforms, ECS state, particle positions).
-
-**Requires COOP/COEP headers** (see below).
-
-### Choosing a Pattern
-
-| Scenario | Pattern | Reason |
-|---|---|---|
-| Physics transforms updated every frame | SharedArrayBuffer | Zero-copy continuous read |
-| Generated terrain chunk (one-shot) | Transferable | Zero-copy, ownership transfer |
-| "Pause game" command | postMessage | Tiny payload, infrequent |
-| Worker reports error/status | postMessage | Small event message |
-| Ping-pong double buffer | Transferable | Alternating ownership |
-| WASM memory shared with main thread | SharedArrayBuffer (via WASM) | Direct memory view |
-
----
-
-## COOP/COEP Headers
-
-`SharedArrayBuffer` requires Cross-Origin Isolation.
-
-### Vite Dev Server
-
-```typescript
+```ts
 // vite.config.ts
+import { defineConfig } from 'vite'
+import wasm from 'vite-plugin-wasm'
+
+const isolation = { // only if SharedArrayBuffer was chosen (SKILL.md, Threads row)
+  'Cross-Origin-Opener-Policy': 'same-origin',
+  'Cross-Origin-Embedder-Policy': 'credentialless', // or 'require-corp'
+}
+
 export default defineConfig({
-  server: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-  preview: {
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
+  plugins: [wasm()],                                 // add react() in R3F apps
+  worker: { format: 'es', plugins: () => [wasm()] }, // config.plugins reaches workers only in dev
+  build: { target: 'esnext' },                       // native top-level await: no TLA plugin
+  // server: { headers: isolation }, preview: { headers: isolation },
 })
 ```
 
-### Production
+- Dev and preview headers never ship: the production host must send them on the 3D route's document.
+- Safari before 27 mishandles a top-level-await module imported by several modules at once (MDN BCD; WebKit bug 242740), which is how bundled WASM glue loads. For older iOS, use init-style builds (wasm-pack `--target web` plus `await init()`, Rapier's `-compat`) and test the production build on an iPhone.
 
-Set headers at the CDN/server level:
+## SharedArrayBuffer layout and sync
 
-```
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Embedder-Policy: require-corp
-```
+One layout module, imported by both threads, owns stride and offsets; one stride per buffer.
 
-**Side effects of COEP**: All cross-origin resources must either have `Cross-Origin-Resource-Policy: cross-origin` header or be loaded with `crossorigin` attribute.
-
-### Feature Detection
-
-```typescript
-// SharedArrayBuffer is only usable when the page is cross-origin isolated — the
-// constructor can exist but allocation/ sharing fails without isolation, so check both.
-const canUseSharedArrayBuffer =
-  typeof SharedArrayBuffer !== 'undefined' && self.crossOriginIsolated === true
-
-if (!canUseSharedArrayBuffer) {
-  console.warn('SharedArrayBuffer unavailable -- falling back to postMessage')
-}
+```ts
+// shared/layout.ts
+export const STRIDE = 7 // px py pz qx qy qz qw
+export const slotOffset = (slot: number, buf: 0 | 1, n: number) => (slot * 2 + buf) * n * STRIDE // buf 0 prev, 1 curr
+// views over SharedArrayBuffers: data Float32Array, 2 slots × (prev, curr) × n × STRIDE;
+// time Float64Array(2), each slot's step time; ctrl Int32Array(1), seq: the publish count (newest slot = seq & 1)
 ```
 
----
-
-## SharedArrayBuffer Layout Convention
-
-Define a structured layout so both threads agree on where data lives:
-
-```typescript
-// shared/buffer-layout.ts
-export const ENTITY_STRIDE = 16  // floats per entity
-
-export const POS_X = 0
-export const POS_Y = 1
-export const POS_Z = 2
-export const ROT_X = 3
-export const ROT_Y = 4
-export const ROT_Z = 5
-export const ROT_W = 6
-export const VEL_X = 7
-export const VEL_Y = 8
-export const VEL_Z = 9
-export const FLAGS = 10  // bitfield: alive, active, dirty, etc.
-// Indices 11-15 are reserved padding (ENTITY_STRIDE = 16). NB: this 16-float layout holds
-// full transform + state; the positions-only examples elsewhere use a tighter stride-3
-// buffer — keep one layout per buffer and don't mix them.
-
-export function entityOffset(entityIndex: number): number {
-  return entityIndex * ENTITY_STRIDE
-}
-
-export function createSharedTransformBuffer(maxEntities: number): SharedArrayBuffer {
-  return new SharedArrayBuffer(maxEntities * ENTITY_STRIDE * 4)
-}
-```
-
-Both the Worker and main thread import the same layout module.
-
----
-
-## Race Conditions and Synchronization
-
-For transform data (positions, rotations), tearing is visually imperceptible -- no synchronization needed.
-
-For data where consistency matters (entity alive/dead flags, state transitions), use `Atomics`:
-
-`Atomics` require an **integer** view (`Int32Array`) — they throw `TypeError` on a `Float32Array`. Create a parallel `Int32Array` over the same `SharedArrayBuffer` and index by the stride layout, not a bare entity index:
-
-```typescript
-const flagsI32 = new Int32Array(sab)   // same buffer as the Float32Array transform view
-
-// Worker: set entity as dead (index via the layout: entityOffset(i) + FLAGS)
-Atomics.store(flagsI32, entityOffset(entityIndex) + FLAGS, DEAD_FLAG)
-
-// Main thread: check
-const flags = Atomics.load(flagsI32, entityOffset(entityIndex) + FLAGS)
-if (flags & DEAD_FLAG) { /* remove from scene */ }
-```
-
----
-
-## Performance Rules
-
-**DO:**
-- Pre-allocate all `SharedArrayBuffer`s at startup
-- Use `Transferable` for one-shot results
-- Keep `postMessage` payloads small (<1KB) for per-frame communication
-- Use `DynamicDrawUsage` on BufferAttributes that update from SharedArrayBuffer every frame
-- Match Worker tick rate to render rate (60Hz) or use fixed timestep with interpolation
-
-**DON'T:**
-- Don't `postMessage` large Float32Arrays every frame
-- Don't create/destroy Workers per task (use a pool or long-lived Workers)
-- Don't share `WebGLRenderingContext` or `GPUDevice` across threads (not possible)
-- Don't use `Atomics.wait()` on the main thread — it *throws* there (it is allowed only inside workers); use `Atomics.waitAsync()` for a non-blocking wait
+- **Publish by sequence number** (code: `physics.md` § Worker path). The worker fills the unpublished slot, then `Atomics.store`s `seq + 1`; the reader copies slot `seq & 1` and retries if `seq` moved, since a catch-up loop can be rewriting that slot.
+- **Unsynchronized reads tear** (this step's position, last step's rotation). Tolerable only for independent bodies; jointed or attached bodies, alive flags and state changes need the sequence check.
+- **`Atomics` need an integer view** (`Int32Array`) and throw `TypeError` on a `Float32Array`. Keep flags in their own `Int32Array`, indexed through the layout, never by a bare entity index.
+- **`Atomics.wait` throws on the main thread**; use `Atomics.waitAsync`, or read once per frame.
+- **Clocks differ per thread**: compare times as `performance.timeOrigin + performance.now()`.
+- **Pause with the page.** On `visibilitychange`, post `pause`/`resume` to every simulation worker; on resume, reset its accumulator and last timestamp so it doesn't fast-forward. Preallocate every SharedArrayBuffer at startup; attributes fed from one are `DynamicDrawUsage`.

@@ -1,375 +1,103 @@
 # Carrying Capacity & Kill/Keep/Scale
 
-## Table of Contents
+The verdict rubric lives in SKILL.md § Verdicts; retention inputs come from the retention reference.
 
-1. [What Is Carrying Capacity?](#what-is-carrying-capacity)
-2. [Components](#components)
-3. [Calculating CC](#calculating-cc)
-4. [CC as a Decision-Making Tool](#cc-as-a-decision-making-tool)
-5. [Kill/Keep/Scale Framework](#killkeepscale-framework)
-6. [Sean Ellis Survey (PMF Test)](#sean-ellis-survey-pmf-test)
-7. [Advanced CC Concepts](#advanced-cc-concepts)
-8. [Dashboard Design for CC Monitoring](#dashboard-design-for-cc-monitoring)
-9. [Weekly Report Template](#weekly-report-template)
-10. [CC and Revenue Metrics](#cc-and-revenue-metrics)
-11. [Common Mistakes](#common-mistakes)
+## Compute CC
 
-## What Is Carrying Capacity?
+CC is the active base the product sustains on organic inflow alone: the equilibrium where users leaving equal users arriving.
 
-Carrying Capacity (CC) is the natural equilibrium MAU a product settles at without paid marketing. It's borrowed from ecology — just as an ecosystem can only sustain a certain population, a product can only sustain a certain user base given its organic inflow and churn rate. (The ecology metaphor is population biology's; as a product metric this framing was popularized by Toss founder Seung-gun Lee's PO SESSION lecture, 2022.)
+**CC = organic new users per period × area under the organic cohort's retention curve (in periods).**
+- Area = the sum of the curve's values from period 0 (its measured core-action rate; 100% only if signup is the core action) through the last mature period, plus the tail beyond it: last value × (1 − d) ÷ d, with d the late per-period decay (retention reference).
+- No measurable decay (d within noise of zero): write "no equilibrium within the horizon; inflow is the limit", and report CC truncated at 36 months.
+- Organic inflow = new users not bought: search, direct, word of mouth, referral signups, content. Exclude paid, sponsored, launch and PR spikes. Audit tagging first (GA4/GTM reference): untagged paid traffic inflates CC silently.
+- Resurrected users are inside the curve (period retention counts their return), not inflow.
+- Compute monthly, after the launch spike has passed, once ≥3 monthly organic cohorts are mature.
+- Compute per segment when the decision differs by segment: the segment with the largest area per user (expected active periods) is where the product works best, whatever its size.
+- Sales-led or enterprise (tens of accounts): no CC; use logo retention and GRR/NRR.
 
+**Why not inflow ÷ blended churn.** Blended churn falls as the base ages, so that formula rises with no product change. Example: 1,000 organic signups a month, all active in their first month, 50% lost after it, then 2% a month. With three monthly cohorts in the base (1,990 users), the next month loses 520 (≈26%), so naive CC ≈ 3,800; the true equilibrium is 1,000 × (1 + 0.5 ÷ 0.02) = 26,000. And churn defined as "inactive for N days" only shows N days later, so short trailing windows (7-day CC) are noise.
+
+## Read CC
+
+- Compare CC with the active base counted on the same core-action definition; any-event MAU sits above CC even with no paid spend. An active base above CC is paid-supported, or draining since organic inflow or retention fell (check which driver moved); either way it falls toward CC. Below CC, it is still filling.
+- Report CC with its two drivers beside it, organic inflow and same-age retention. Credit the product only when one of them moved; a CC move with neither moving is channel mix or data.
+- CC rising while revenue stays flat means users stay but don't pay: a packaging or pricing question (via the pricing capability, if available).
+
+## Live K
+
+A growth-loops capability owns the K model (definition, amplification, targets); this skill measures the live value.
+- **Gross K** = `referral_completed` attributed to a cohort ÷ cohort size, within the cohort's referral window. Label it gross.
+- **Qualified K_W** = referred users (joined on `referrer_id`) who reach the qualifying event within W days of the inviting cohort's signup ÷ cohort size, as growth-loops defines it; W is the loop design's (K30, K90).
+- Referral signups are already organic inflow: count them once. Never multiply CC by 1/(1−K); use 1/(1−K) only to project what a change in non-referral inflow would bring.
+- Read K on post-launch cohorts at equal age: launching to the installed base drains a backlog of latent invites, so week-one K overstates.
+
+Events: `invite_sent`, `invite_clicked`, `referral_completed`, `reward_granted` (event-tracking reference).
+
+## Kill-Criteria Record
+
+`kill-criteria.md` (default `biz/analytics/kill-criteria.md`; caller may redirect). If the PRD has a decision rule, seed the criteria from it: stop = Kill; change = Keep and iterate; continue = Keep or Scale.
+
+**Fix next** follows activated-user retention: no flattening → the product; it flattens but few users activate → activation; both healthy → volume. Cohorts under ~100 activated users: buy enough volume to read the curve first, under the spend plan's cap and stop-loss.
+
+This record is the source of truth for its criteria: reports and dashboards quote its thresholds, definitions and as-of dates verbatim, never a variant.
+
+```markdown
+# Kill Criteria — [Product]
+<!-- ≤500 words + tables and queries; sections are a menu: omit what doesn't apply, heading included. A slot you can't derive reads "not computable: [reason]", never an estimate -->
+## Criteria (written YYYY-MM-DD, before the data)
+| Call | Metric (definition, unit, interval) | Threshold | Cohorts / n needed | Review date |
+## Current read — YYYY-MM-DD
+| Metric | Value | n | 95% CI | vs threshold |
+Carried by: [aggregate] — top [k] [units] = [x]%; without them [value]
+What changed (overturning a figure leadership saw): | Figure | Was | Now | Why |, then likely objections answered, one line each
+Supporting, never decisive (monthly, as of YYYY-MM): CC [value | not computable: reason] · organic inflow [n/period; share of all inflow] · same-age retention [x]
+Call: Kill / Keep / Scale / no call: [reason] — confidence [high | med | low: SKILL.md scale]
+Fix next: product / activation / volume — [why; owner; the metric that shows it worked]
+## Spend plan (when the call moves spend)
+| Channel | Monthly cap (next raise ≤2×) | Gate: max incremental cost per activated [unit] | Stop-loss: after [spend] | Review date, lagging check | Channel fix |
+## Change log
+- YYYY-MM-DD: [what changed] — [reason]
+## Queries
+[one per number above, inline or linked, as-of date as its parameter]
 ```
-CC = Daily Organic Inflow / Daily Churn Rate
-```
-
-Marketing spend can temporarily push MAU above CC, but it always falls back. **The only way to raise CC is to improve the product** — increase organic inflow (word-of-mouth, SEO, virality) or decrease churn (better retention, more value).
-
-CC is the single most honest metric in product analytics. It strips away the noise of launch spikes, ad spend, and press coverage to reveal what the product can sustain on its own.
-
----
-
-## Components
-
-### Daily Organic Inflow
-Users who arrive without paid acquisition. Includes:
-
-| Source | Description | Signal |
-|--------|------------|--------|
-| **Direct/Organic search** | Users who search for you or your category | Brand awareness, SEO strength |
-| **Word-of-mouth** | Users referred by existing users (informally) | Product quality, delight |
-| **Referral program** | Users from structured referral loops | Viral mechanics working |
-| **Resurrected users** | Previously churned users who return | Product improvements reaching former users |
-| **Content/SEO** | Users from blog, guides, free tools | Content marketing working |
-
-**Exclude**: Paid ads, sponsored posts, one-time PR spikes, launch traffic.
-
-### Daily Churn Rate
-The percentage of active users who become inactive per day. For practical calculation:
-
-```
-Daily Churn Rate = Users who churned this period / Active users at start of period / Days in period
-```
-
-Or more commonly, use weekly/monthly and adjust:
-
-```
-CC (weekly) = Weekly Organic Inflow / Weekly Churn Rate
-CC (monthly) = Monthly Organic Inflow / Monthly Churn Rate
-```
-
----
-
-## Calculating CC
-
-### Method 1: Direct Calculation
-
-```
-1. Measure organic inflow over 30 days (exclude all paid channels)
-2. Measure churn over same 30 days
-3. CC = Monthly Organic Inflow / Monthly Churn Rate
-```
-
-**Example:**
-- 600 organic signups/month
-- 8% monthly churn rate
-- CC = 600 / 0.08 = 7,500 MAU
-
-### Method 2: Trailing Average Observation
-
-If you stop all paid acquisition and wait, MAU will converge toward CC. Track:
-
-```
-CC (7d trailing) = Average of last 7 days' organic inflow / Average of last 7 days' churn rate
-CC (30d trailing) = Same over 30 days
-```
-
-**Reading the trailing averages:**
-- 7d CC rising + 30d CC rising = Improvements are working, sustained
-- 7d CC rising + 30d CC flat = Recent change showing promise, wait to confirm
-- 7d CC flat + 30d CC rising = Older improvements still compounding
-- 7d CC declining + 30d CC flat = Recent regression, investigate
-- Both declining = Product health deteriorating, urgent
-
-### Method 3: Infer from Stable Periods
-
-If there's been a period with no marketing spend changes and MAU was relatively stable, that stable MAU ≈ CC.
-
----
-
-## CC as a Decision-Making Tool
-
-### Why CC, Not MAU?
-
-MAU is vanity. It includes the effects of ad spend, viral spikes, press mentions — all temporary. CC tells you what's left when the noise stops.
-
-**Example:**
-- Product A: 50,000 MAU, $20k/month in ads, CC = 12,000
-- Product B: 18,000 MAU, $0 in ads, CC = 18,000
-
-Product B is healthier. Product A's MAU will drop to ~12,000 if ads stop.
-
-### CC Trend Is More Important Than CC Level
-
-A CC of 5,000 that's been rising 10%/month is better than a CC of 20,000 that's been flat. Trend tells you if improvements are working.
-
-Track CC over time and annotate:
-- Product changes (new features, UX improvements)
-- Onboarding changes
-- Viral loop launches
-- Content/SEO investments
-- **Look for which changes move the 7d CC first, then confirm on 30d**
-
----
-
-## Kill/Keep/Scale Framework
-
-This is the master decision. Every product should be assessed regularly (weekly for early-stage, monthly for established).
-
-### Decision Matrix
-
-| Signal | Kill | Keep (Fix) | Scale |
-|--------|------|------------|-------|
-| **Retention plateau** | None after 8+ weeks | Emerging (5-20%) | Established (>20%) |
-| **CC trend (30d)** | Declining or zero | Flat or slowly rising | Consistently rising |
-| **Activation rate** | <10% | 10-30% | >30% |
-| **Organic inflow** | Near zero or declining | Steady | Growing without paid push |
-| **Usage frequency** | <1x/month | 1-3x/month | >3x/month |
-| **Time to Aha Moment** | >14 days (undefined → run Aha discovery first, don't kill on a missing metric) | 3-14 days | <3 days |
-| **Qualitative signal** | Users don't care it exists | Users say "nice to have" | Users say "very disappointed" without it |
-
-### Kill Criteria
-
-A product should be killed (or pivoted) when **several of these hold together** — no single bullet
-is sufficient on its own:
-- No retention plateau after 8+ weeks with real users
-- CC is declining despite product improvements
-- Activation rate stays <10% after 3+ onboarding iterations
-- Usage frequency <1x/month (habitual use is impossible)
-- Sean Ellis survey: <25% "very disappointed", and not improving across waves (25-40% is
-  "approaching PMF" per the interpretation table below — a segment-and-fix signal, not a kill signal)
-
-**Important**: Kill decisions should be made on data, not emotion. The sunk cost fallacy is the biggest enemy.
-
-### Keep (Fix) Criteria
-
-The product shows some promise but isn't ready to scale:
-- Retention plateau exists but is low (5-20%)
-- CC is flat — not declining, but not growing
-- Some user segment retains well but overall numbers are weak
-
-**Fix priority** (always this order):
-1. Retention — raise the plateau
-2. Activation — get more users to Aha Moment
-3. Acquisition — only after 1 & 2 are healthy
-
-### Scale Criteria
-
-Scale only when:
-- Retention plateau >20% and stable
-- CC is rising consistently (30d trend)
-- Activation rate >30%
-- Organic inflow is growing
-- Unit economics are healthy (margin-adjusted LTV:CAC > 3:1 or trending toward it)
-
-**Scaling before PMF = burning money.** Every dollar spent acquiring users who won't retain is wasted.
-
----
-
-## Sean Ellis Survey (PMF Test)
-
-The Sean Ellis survey is a qualitative PMF signal that complements the quantitative Kill/Keep/Scale metrics above. It asks one question: **"How would you feel if you could no longer use [product]?"**
-
-### Setting Up in PostHog
-
-Use PostHog's survey feature to create and distribute the survey:
-
-**Survey configuration:**
-- **Type**: Popover (in-app) or Link (email)
-- **Question**: "How would you feel if you could no longer use [product name]?"
-- **Answer type**: Single choice
-- **Options**:
-  1. Very disappointed
-  2. Somewhat disappointed
-  3. Not disappointed
-
-**Targeting** — survey users who have enough experience to give a meaningful answer:
-- Completed at least 2 core sessions (not first-time visitors who haven't formed an opinion)
-- Signed up at least 7 days ago (enough time to experience the product)
-- Haven't already responded to this survey (use PostHog's response limits)
-
-**Timing:**
-- Show after completing a core action (not during onboarding — too early)
-- Limit to once per user
-- Run continuously or in quarterly waves
-
-### Interpreting Results
-
-| "Very disappointed" % | Assessment | Action |
-|----------------------|------------|--------|
-| < 25% | No PMF signal | Product doesn't solve a real problem. Reconsider value prop. |
-| 25-40% | Approaching PMF | Some users love it. Segment and understand who they are. |
-| > 40% | PMF signal | Product solves a real problem. Focus on getting more users to this state. |
-
-The 40% threshold comes from Sean Ellis's observation across hundreds of startups: products that cross 40% "very disappointed" almost always find a way to scale.
-
-### Making the Survey Actionable
-
-The raw percentage matters less than understanding **who** is very disappointed and **why**:
-
-1. **Segment by "very disappointed"**: What do these users have in common? (company size, use case, acquisition channel, features used) — this reveals your ideal customer profile.
-2. **Follow-up question** (optional): Add "What would you use as an alternative?" and "What is the main benefit you receive?" to understand competitive positioning and core value.
-3. **Cross-reference with Aha Moment**: Do "very disappointed" users overwhelmingly complete the Aha Moment action? If yes, the Aha Moment is validated. If not, the Aha Moment hypothesis may be wrong.
-4. **Track over time**: Run the survey quarterly. A rising "very disappointed" percentage after product changes confirms you're moving in the right direction.
-
-### PostHog Implementation
-
-Via a PostHog capability (MCP tools or the UI), if available:
-
-| Step | PostHog Feature | How |
-|------|----------------|-----|
-| Create survey | **Surveys** (create) | Set question, options, targeting rules |
-| Check responses | **Surveys** (per-survey stats) | Read response counts and distribution |
-| Analyze segments | **HogQL** | Join survey responses with user properties to find patterns |
-| Track over time | **Surveys** (cross-survey stats) | Compare response distributions across survey runs |
-
----
-
-## Advanced CC Concepts
-
-### CC Components Breakdown
-
-```
-Total Organic Inflow = New Organic + Resurrected + Referral
-
-CC = (New Organic + Resurrected + Referral) / Churn Rate
-```
-
-Each component has its own levers:
-- **New Organic**: SEO, content marketing, word-of-mouth, brand
-- **Resurrected**: Product improvements that bring back churned users, re-engagement emails
-- **Referral**: Viral loops, referral programs (Viral K × existing users)
-- **Churn Rate**: Product quality, retention features, onboarding, value delivery
-
-### Viral K and CC
-
-If your product has a referral loop, K amplifies CC (the K *model* — formula, amplification math,
-target-setting — is owned by a growth-loops capability; this skill owns measuring the live value
-and feeding it into CC):
-
-```
-Measured live K (per cohort) = referral_completed events attributed to the cohort / cohort size
-                               (over the cohort's referral window — a per-lifetime K)
-
-If K < 1: CC = Organic Inflow / (Churn Rate × (1 − K))   — the 1/(1−K) amplification
-If K = 1: CC → ∞ (theoretically, growth is self-sustaining)
-If K > 1: Exponential growth (extremely rare, usually temporary)
-```
-
-Even small measured K values meaningfully increase CC. Instrument `invite_sent` /
-`referral_completed` (see the event-tracking reference) so K is a measured input, not a guess.
-
-### Segment-Level CC
-
-Different user segments may have very different CC values. Calculate CC per segment to find where the product works best:
-
-```
-Segment A (SMB): CC = 3,000 (flat)
-Segment B (Mid-market): CC = 8,000 (rising)
-Segment C (Enterprise): CC = 500 (rising fast)
-```
-
-This reveals which segment to double down on.
-
----
 
 ## Dashboard Design for CC Monitoring
 
-### Primary Dashboard: CC Monitor
+`dashboards.md` (default `biz/analytics/dashboards.md`; caller may redirect): § Definitions, then one row per tile; ≤250 words beyond the tables; sections are a menu: omit what doesn't apply, heading included.
 
-| Metric | Display | Frequency |
-|--------|---------|-----------|
-| CC (7d trailing) | Line chart with trend | Daily |
-| CC (30d trailing) | Line chart with trend | Daily |
-| Daily organic inflow breakdown | Stacked bar (new/resurrected/referral) | Daily |
-| Daily churn rate | Line chart | Daily |
-| Annotations | Product changes, experiments | As they happen |
+**Definitions first.** One outcome metric tied to the decision the dashboard serves, and 3–5 input metrics teams can move that sum or multiply to it. Each metric carries a spec: unit, numerator, denominator, window, source of truth, owner, the decision it serves, a counter-metric that catches gaming, and the saved query that computes it.
+- Active = did the core value action in the period; never a login or any event.
+- Reject a north star that can rise while activated-cohort retention falls (signups, time spent, raw MAU).
+- A definition change is logged and runs beside the old one for a full period; never splice two definitions into one trend line.
 
-### Supporting Dashboards
+The tiles below are the default until PMF; past it, tiles come from the metric tree, ≤7 per audience.
 
-- **Retention**: Cohort tables, plateau detection, segment comparison
-- **Activation**: Funnel to Aha Moment, time-to-activation, segment comparison
-- **Growth Engine**: Inflow by type, Viral K, referral loop metrics
-- **Revenue**: MRR, conversion rate, expansion/contraction
+| Tile | Shows | Cadence |
+|---|---|---|
+| Carrying Capacity | monthly CC with organic inflow and same-age retention beside it | monthly |
+| Inflow | new organic, referral and paid (kept separate), by source | weekly |
+| Retention | cohort table at the natural interval; immature cells blank | per interval |
+| Activation | signup → Aha rate and time to Aha, by cohort | weekly |
+| Live K (when a loop exists) | gross and qualified K_W per cohort at equal age; cycle time | per cohort |
+| Revenue | MRR, GRR/NRR (trailing 12 months), payback | monthly |
+| Data health | each key event's volume against its band; client vs server gap | daily |
 
----
+Annotate releases, campaigns, pricing and tracking changes on every tile.
 
 ## Weekly Report Template
 
+Output: `reports/week-YYYY-WW.md` in the analytics dir (default `biz/analytics/`; caller may redirect).
+
 ```markdown
-# Week [YYYY-WW] — [Product Name]
-
-## CC Status
-- CC (7d trailing): ___
-- CC (30d trailing): ___
-- Trend: rising / flat / declining
-- Change from last week: +/- ___
-
-## Retention
-- D7 retention (latest cohort): ___%
-- Retention plateau: exists / not yet
-- Plateau height: ___%
-- Plateau trend: improving / stable / declining
-
-## Activation
-- Activation rate (signup → Aha Moment): ___%
-- Time to Aha Moment (median): ___ days
-- Change from last week: +/- ___
-
-## Funnel
-| Stage | Rate | Δ Week | Note |
-|-------|------|--------|------|
-| Visit → Signup | | | |
-| Signup → Aha Moment | | | |
-| Aha → D7 Return | | | |
-| D7 → Paid | | | |
-
-## Top Priority
-[The ONE thing that would most improve CC right now]
-
-## Kill/Keep/Scale Assessment
-[Current assessment with key supporting data]
+# Week YYYY-WW — [Product]
+<!-- ≤250 words + a table of ≤8 rows; sections are a menu. CC and GRR/NRR appear in the first report of each month only. Under ~500 users: counts beside rates, rolling 4-week window, no week-over-week verdicts. -->
+**Headline:** [what matters this week, with confidence (SKILL.md scale)]
+## Moved beyond its noise band
+| Metric | This period | Band (mean ± 3 SD, last 8–12) | n | Likely cause | Confidence |
+## Decision or ask
+[who should do what; or "none this week"]
+## Data issues
+[gate failures and tracking changes, each with its fix or replacement definition (untested) and, for a figure already reported, was · now · why; or "none"]
+## Within normal range
+[metric names only]
 ```
-
----
-
-## CC and Revenue Metrics
-
-CC measures product health (user retention). It doesn't measure revenue health. When CC looks good but revenue doesn't (or vice versa), these diagnostics help:
-
-| Situation | Diagnosis | Fix |
-|-----------|-----------|-----|
-| CC rising + revenue flat | Users stay but don't pay enough | Pricing/packaging problem. See pricing. |
-| CC flat + revenue rising | Existing users expand, but no new organic growth | Good short-term, fragile long-term. Improve product or top-of-funnel. |
-| CC rising + revenue rising | Healthy | Keep going. |
-| Both declining | Urgent | Fix retention first (see Kill/Keep/Scale above). |
-
-If you run paid acquisition, track your **organic ratio** (organic signups / total signups). Target > 70% — above that, growth isn't ad-dependent. If it's high and CC is rising, your business is fundamentally healthy. (Without paid spend the ratio is ~100% by construction — watch the CC trend instead.)
-
----
-
-## Common Mistakes
-
-### Counting Paid Traffic in CC
-CC must exclude paid channels. If you include paid users in "inflow," you're measuring something that disappears when you stop paying.
-
-### Measuring CC Too Early
-CC needs at least 4-8 weeks of data after launch spike subsides. Launch traffic is not organic inflow.
-
-### Ignoring Resurrection
-Resurrected users (previously churned, now returned) are organic inflow. They indicate product improvements are reaching former users. Track this separately — a rising resurrection rate is a very positive signal.
-
-### Optimizing Acquisition Before Retention
-Pouring users into a leaky bucket doesn't raise CC. It temporarily inflates MAU. Fix the bucket first.
-
-### Using CC for Enterprise Products
-CC works best for self-serve and product-led products with meaningful user volumes. For enterprise (10-50 customers), use NRR and logo retention instead. CC requires statistical volume to be meaningful.

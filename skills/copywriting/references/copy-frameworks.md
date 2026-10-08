@@ -1,203 +1,68 @@
-# Copy Frameworks
+# Positioning, Pages and Short-Form Copy
 
-Page structure, CTA formulas, and page-specific copywriting frameworks.
+The positioning method; how the message from `SKILL.md` §3 becomes a page (section order, CTAs, where objections and proof sit); and the specs for promo units, paywalls, brand voice and changelog entries. Meta titles and descriptions: the search-visibility capability, if available.
 
-## Table of Contents
+## Positioning
 
-1. [Page Structure Framework](#page-structure-framework)
-2. [CTA Copy Guidelines](#cta-copy-guidelines)
-3. [Page-Specific Guidance](#page-specific-guidance)
-4. [Before Writing Checklist](#before-writing-checklist)
-5. [Copywriting Principles](#copywriting-principles)
-6. [Best Practices](#best-practices)
-7. [Voice and Tone](#voice-and-tone)
-8. [Output Format](#output-format)
+For a positioning request, or when the owner wants positioning that `SKILL.md` §1 found unsettled. Work from evidence, in this order:
+1. **The alternative** best-fit customers used before you (lost deals, sales calls, "what did you use before?"): often a spreadsheet, an agency or nothing, not a rival.
+2. **What only you do** against it, each with proof from the inventory. If nothing survives, say so: copy can't fix it.
+3. **What that lets them do**, in their words.
+4. **Who values it most**: a segment narrower than the market.
+5. **The frame**: an existing category, "X for Y", or a new category only if you can fund teaching it.
 
----
+Deliver one sentence (the `SKILL.md` §3 message) plus up to three pillars, each with its proof and the alternative it beats (≤300 words), as a proposal for the marketing strategy's Positioning section, which the owner approves. If a rival could sign the sentence, step 2 isn't done.
 
-## Page Structure Framework
+**Taglines** aren't cut-down headlines: one line that stays true wherever the logo appears (an invoice, an error page, an apology email), passes the swap test and is easy to say aloud. No tagline beats a generic one.
 
-### Above the Fold
+## The reader's questions, in order
 
-**Headline**
-- Your single most important message
-- Communicate core value proposition
-- Specific > generic
+A page is one side of a conversation: each section answers the question the previous one raised. Six questions recur: What is it? Is it for me? Why believe you? How does it work? What does it cost or risk? What now? The page type sets their order.
 
-**Headline Formulas:**
-- "{Achieve outcome} without {pain point}"
-- "The {category} for {audience}"
-- "Never {unpleasant event} again"
-- "{Question highlighting main pain point}"
-- "Stop {pain}. Start {desired outcome}."
-- "{Number} {audience} use [product] to {outcome}"
-- "What if you could {dream state}?"
+| Page | Question order | Notes |
+|---|---|---|
+| Landing (ad or email traffic) | Is it for me? What is it? How does it work? Why believe you? Cost or risk? What now? | Opens on the source's promise and offer, in its words; one action, no competing CTAs |
+| Homepage | What is it? Is it for me? Why believe you? How does it work? What now? | Lead with the sharpest true claim for the best-fit segment; other segments get paths below the hero. Break: a category leader can lead with the category |
+| Pricing | Which plan is mine? What does it cost in total? What's the catch? What now? | Each plan's line names who it's for; "Most popular" only on the most-chosen plan; the billed amount and period beside each price, and an annual-first toggle keeps monthly one tap away; "What's the catch?" gets true reassurance (cancel anytime, no setup fee), the full renewal and cancel terms at checkout; prices only from the price book |
+| Feature | What does it do for me? How does it work? Why believe you? What now? | Show the feature doing the job, inside the product it belongs to |
+| About | Why trust you? Why does this exist, for the customer? Who's behind it? What now? | The founding problem as customers feel it; still one CTA |
+| Smoke test (not built yet) | Is it for me? What will it do? What will it cost, and when? What now? | Says plainly it isn't available yet; the CTA asks for the costly action the test measures (pre-order, deposit, booked call); money taken up front says whether it's refundable and when it would ship, or that it may never ship, with unconfirmed terms as `[VERIFY: …]`; no testimonials before customers exist |
 
-**Subheadline**
-- Expands on headline
-- Adds specificity
-- 1-2 sentences max
+- Answer each objection where the anxiety arises: beside the price, the form, the CTA. A closing FAQ catches only the rest.
+- Pick each testimonial for the objection it answers where it sits; lead with the before-state or a specific result, not praise. Trim for length, never meaning, and get the customer's OK on the edit; a result typical customers don't reach also states what they do get (US: 16 CFR 255.1-255.2).
+- When someone else approves the purchase (`SKILL.md` §1), give the champion one line to forward on payback and one on risk (security, migration, lock-in), each in the section that raises it.
+- Every feature reaches its "which means" for this reader.
+- If a section needs a transition phrase to follow the last one, the order is wrong: move the section.
+- Length follows the decision: a cheap, familiar purchase gets a short page; an expensive or unfamiliar one earns a long one, if every block answers a question buyers ask before acting. Readers scan: headings and each block's first line carry the argument alone.
 
-**Primary CTA**
-- Action-oriented button text
-- Communicate what they get: "Start Free Trial" > "Sign Up"
+## CTAs
 
-### Core Sections
+- A label predicts the next screen: "Start free trial" when the next screen starts the trial. "Get started" passes when that screen is plainly a signup; "Learn more" passes as a secondary CTA.
+- One primary action per screen, repeated where the reader is ready; one secondary (see a demo, see pricing) for readers who aren't yet.
+- The line beside each CTA follows `SKILL.md` §3: that moment's top hesitation, answered truthfully, never one line repeated; an unconfirmed policy reads `[VERIFY: …]`.
+- "Start my trial" or "Start your trial": published tests go both ways; test, don't assume.
 
-| Section | Purpose |
-|---------|---------|
-| Social Proof | Build credibility (logos, stats, testimonials) |
-| Problem/Pain | Show you understand their situation |
-| Solution/Benefits | Connect to outcomes (3-5 key benefits) |
-| How It Works | Reduce perceived complexity (3-4 steps) |
-| Objection Handling | FAQ, comparisons, guarantees |
-| Final CTA | Recap value, repeat CTA, risk reversal |
+## Long-form
 
----
+Sales pages, case studies and About stories keep one line of argument: the reader's situation, what changes, the proof, the offer. A case study needs a real, consenting customer and their numbers, or tags in their place. Blog articles and SEO pieces: the search-visibility capability, if available.
 
-## CTA Copy Guidelines
+## Promo units and paywalls
 
-**Weak CTAs (avoid):**
-- Submit, Sign Up, Learn More, Click Here, Get Started
+Banner, push and in-app upsell: one reason to tap, stated as the action and its effort ("Fill 8 boxes, get points"). A guaranteed reward beats "up to", which reads as a promise: use it only when nearly everyone reaches the figure. A novelty tease ("A new benefit for you") works only where the reader trusts the sender and the tap costs nothing. Break: cold audiences get the benefit.
 
-**Strong CTAs (use):**
-- Start Free Trial
-- Get [Specific Thing]
-- See [Product] in Action
-- Create Your First [Thing]
-- Download the Guide
+Paywall or purchase screen, where money is taken: what unlocks, then the price and period, when the first charge happens, that it renews and how to cancel, plainly beside the purchase button, with prices and terms only from the price book or the paywall doc (default `biz/growth/paywall-pricing.md`; caller may redirect); the decline reads as plainly as the accept ("No thanks"). A popup or upgrade prompt that only opens the next screen gives one reason to act and answers its top hesitation; the terms wait for the screen that takes payment. Placement, triggers and tests: the cro capability, if available.
 
-**Formula:** [Action Verb] + [What They Get] + [Qualifier if needed]
+## Brand voice
 
-Examples:
-- "Start My Free Trial"
-- "Get the Complete Checklist"
-- "See Pricing for My Team"
-- "Create Your First Dashboard"
-- "Download the Free Template"
+At most 400 words, in the Brand Voice section of the marketing strategy (default `biz/marketing/strategy.md`; caller may redirect): read what is there and update it in place; with no strategy doc, create only that section.
 
-**First-person CTAs** ("Get My Report") can outperform third-person ("Get Your Report") — test both. (A much-cited ContentVerve test found a first-person "Start my…" button beat "Start your…" by ~90% in one experiment, but the same tester saw the identical my/your swap lose ~25% on a payment page — treat it as a test idea, not a rule.)
+Derive traits from what the positioning needs readers to believe (a precision tool sounds precise), the register customers use in reviews and tickets, and 10 real strings customers quote back or that perform best. Keep a trait only if applying it changes one of those strings ("friendly", "innovative" and "professional" change none), and sharpen any pair a rival's guide could hold. Voice stays fixed; tone moves along the map.
+- 3-4 "X, not Y" pairs where Y is the tempting neighbor ("Confident, not cocky"), each with a before and after of a real product string.
+- We-say and we-don't words, taken from customer language.
+- A tone map for onboarding, success, error, billing, security and apology, with no humor where money, data or security is at stake.
 
----
+Break: pre-launch with no shipped strings, write plainly and extract the voice later.
 
-## Page-Specific Guidance
+## Changelog entries
 
-### Homepage
-- Serve multiple audiences without being generic
-- Lead with broadest value proposition
-- Provide clear paths for different visitor intents (buyers vs researchers)
-- Dual CTA strategy: primary (try/buy) + secondary (learn more)
-
-### Landing Page
-- Single message, single CTA
-- Match headline to ad/traffic source (message match)
-- Complete argument on one page — no navigation distractions
-- Remove header/footer navigation for focused conversion
-
-### Pricing Page
-- Help visitors choose the right plan
-- Address "which is right for me?" anxiety
-- Make recommended plan obvious (visual highlight, "Most Popular" badge)
-- Show annual vs monthly toggle with savings highlighted
-- Add FAQ section addressing common pricing objections
-
-### Feature Page
-- Connect feature → benefit → outcome
-- Show use cases and examples
-- Clear path to try or buy
-- "See it in action" > "Learn more about this feature"
-
-### About Page
-- Tell the story of why you exist
-- Connect mission to customer benefit
-- Show the humans behind the product
-- Still include a CTA
-
----
-
-## Before Writing Checklist
-
-Gather this context before writing any copy:
-
-1. **Page Purpose** — What type of page? What is the ONE primary action?
-2. **Audience** — Who is the ideal customer? What problem are they solving? What objections do they have? What language do they use?
-3. **Product/Offer** — What are you selling? What makes it different? What's the key outcome? Any proof points?
-4. **Context** — Where is traffic coming from? What do visitors already know?
-
----
-
-## Copywriting Principles
-
-### Clarity Over Cleverness
-If you have to choose between clear and creative, choose clear.
-
-### Benefits Over Features
-Features: What it does. Benefits: What that means for the customer.
-
-### Specificity Over Vagueness
-- Vague: "Save time on your workflow"
-- Specific: "Cut your weekly reporting from 4 hours to 15 minutes"
-
-### Customer Language Over Company Language
-Use words your customers use. Mirror voice-of-customer from reviews, interviews, support tickets.
-
-### One Idea Per Section
-Each section should advance one argument. Build a logical flow down the page.
-
----
-
-## Best Practices
-
-### Be Direct
-Get to the point. Don't bury the value in qualifications.
-
-### Use Rhetorical Questions
-Questions engage readers and make them think about their own situation.
-- "Hate returning stuff to Amazon?"
-- "Tired of chasing approvals?"
-
-### Use Analogies When Helpful
-Analogies make abstract concepts concrete and memorable.
-
-### Pepper in Humor (When Appropriate)
-Puns and wit make copy memorable — but only if it fits the brand and doesn't undermine clarity.
-
----
-
-## Voice and Tone
-
-Before writing, establish:
-
-**Formality level:**
-- Casual/conversational
-- Professional but friendly
-- Formal/enterprise
-
-**Brand personality:**
-- Playful or serious?
-- Bold or understated?
-- Technical or accessible?
-
-Maintain consistency, but adjust intensity:
-- Headlines can be bolder
-- Body copy should be clearer
-- CTAs should be action-oriented
-
----
-
-## Output Format
-
-When writing copy, provide:
-
-### Page Copy
-Organized by section: Headline, Subheadline, CTA, Section headers and body, Secondary CTAs
-
-### Annotations
-For key elements, explain why you made this choice and what principle it applies.
-
-### Alternatives
-For headlines and CTAs, provide 2-3 options with rationale.
-
-### Meta Content (if relevant)
-- Page title (for SEO)
-- Meta description
+At most 80 words each: what changed, in the user's words; who it's for; the first step. Small fixes share one line; no ticket numbers or internal names. The social post about it: `references/social/post-templates.md`.

@@ -1,82 +1,19 @@
 ---
 title: Don't Define Components Inside Components
-impact: HIGH
-impactDescription: prevents remount on every render
-tags: rerender, components, remount, performance
+tags: rerender, components, remount, keys
 ---
 
-## Don't Define Components Inside Components
-
-**Impact: HIGH (prevents remount on every render)**
-
-Defining a component inside another component creates a new component type on every render. React sees a different component each time and fully remounts it, destroying all state and DOM.
-
-A common reason developers do this is to access parent variables without passing props. Always pass props instead.
+React matches elements by type and key. A component defined inside another is a new type on every render, so React unmounts the old instance and mounts a new one: state is lost, Effects re-run and DOM nodes are recreated. An unstable `key` does the same (`key={Math.random()}`, or a key built from values that change each render); keys come from the data's identity, such as `item.id`.
 
 **Incorrect (remounts on every render):**
 
 ```tsx
-function UserProfile({ user, theme }) {
-  // Defined inside to access `theme` - BAD
-  const Avatar = () => (
-    <img
-      src={user.avatarUrl}
-      className={theme === 'dark' ? 'avatar-dark' : 'avatar-light'}
-    />
-  )
-
-  // Defined inside to access `user` - BAD
-  const Stats = () => (
-    <div>
-      <span>{user.followers} followers</span>
-      <span>{user.posts} posts</span>
-    </div>
-  )
-
-  return (
-    <div>
-      <Avatar />
-      <Stats />
-    </div>
-  )
+function UserProfile({ user, theme }: Props) {
+  const Avatar = () => <img src={user.avatarUrl} className={`avatar-${theme}`} />   // a new type each render
+  return <div><Avatar /><Stats user={user} /></div>
 }
 ```
 
-Every time `UserProfile` renders, `Avatar` and `Stats` are new component types. React unmounts the old instances and mounts new ones, losing any internal state, running effects again, and recreating DOM nodes.
+**Correct:** define `Avatar` at module scope and pass what it reads as props: `<Avatar src={user.avatarUrl} theme={theme} />`.
 
-**Correct (pass props instead):**
-
-```tsx
-function Avatar({ src, theme }: { src: string; theme: string }) {
-  return (
-    <img
-      src={src}
-      className={theme === 'dark' ? 'avatar-dark' : 'avatar-light'}
-    />
-  )
-}
-
-function Stats({ followers, posts }: { followers: number; posts: number }) {
-  return (
-    <div>
-      <span>{followers} followers</span>
-      <span>{posts} posts</span>
-    </div>
-  )
-}
-
-function UserProfile({ user, theme }) {
-  return (
-    <div>
-      <Avatar src={user.avatarUrl} theme={theme} />
-      <Stats followers={user.followers} posts={user.posts} />
-    </div>
-  )
-}
-```
-
-**Symptoms of this bug:**
-- Input fields lose focus on every keystroke
-- Animations restart unexpectedly
-- `useEffect` cleanup/setup runs on every parent render
-- Scroll position resets inside the component
+Symptoms: an input loses focus on every keystroke, animations restart, Effects clean up and re-run on every parent render, scroll position resets.

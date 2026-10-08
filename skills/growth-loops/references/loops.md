@@ -1,265 +1,130 @@
-# Growth Loops & Referral Programs
+# Growth Loops: reference
 
-Frameworks for designing compounding user-acquisition loops: viral, content, paid, and integration loops. This file is the canonical reference for referral/viral loop design.
+Depth behind `SKILL.md`; sibling skills named here are used if available.
 
-## Table of Contents
+## Loop types
 
-1. [The Loop Mental Model](#the-loop-mental-model)
-2. [Loop Types](#loop-types)
-3. [Referral / Viral Loop Design (5 Stages)](#referral--viral-loop-design-5-stages)
-4. [Abuse Guardrails](#abuse-guardrails)
-5. [Viral Metrics](#viral-metrics) — includes K Factor (Viral Coefficient), Amplification Factor, Loop Cycle Time
-6. [Paid Loop Economics](#paid-loop-economics)
-7. [Two Anti-Patterns](#two-anti-patterns)
-8. [When NOT to Build a Loop](#when-not-to-build-a-loop)
-9. [Common Loop Patterns (Reference)](#common-loop-patterns-reference)
-10. [Marketplace Cold-Start](#marketplace-cold-start)
-11. [Output Format](#output-format)
+| Loop | Dominant term (usually the lever) | Forcing question |
+|---|---|---|
+| Exposure (shared links, forms, files, embeds, badges) | Non-user views per active user; c | Does normal use show non-users the product, naming the source? |
+| Collaboration | p; who pays the seat | `SKILL.md` question 3; joins to the inviter's account are expansion, not acquisition |
+| Referral | p | `SKILL.md` Gate row 3 |
+| Content | Own visits per indexed page (answer engines erode it: measure) | What share of artifacts is meant to be public (forms, templates)? Personal data starts private |
+| Paid | Marginal CAC at the next spend tier, not average; payback | Does recycled margin fund the next cycle within the cash cycle? Else: a funnel with an ad budget |
+| Marketplace | Scarce-side liquidity | Which side is scarce? Seed it by hand or with single-player value |
 
----
+Peer-dependent loops (collaboration, marketplace) grow per cluster (team, campus, city, niche): seed one to density and read in-cluster K (marketplaces: scarce-side match rate) before spreading; thin seeding reads as K ≈ 0.
 
-## The Loop Mental Model
+## Model
 
-Growth loops are systems where each cycle of input produces output that feeds the next cycle. They compound; funnels don't. A loop has four parts:
+**Events** (tracking-plan names): p from `invite_sent` (share intent, not delivery; `invite_method`) or exposure views; k from `invite_clicked` (observable sends: invites per sharer × clicks per invite); c from `referral_completed` (`referrer_id`); a from the qualifying event joined on `referrer_id`; payouts from `reward_granted`. Request only missing events; add no synonyms. They see tracked paths only (§ Measurement).
 
-1. **Input** — New user / action / content
-2. **Action** — What they do
-3. **Output** — Artifact their action produces
-4. **Re-entry** — How the output brings the next input back in
+- **Cycle time** runs from the inviter's signup to the invitee's qualifying event, and **sets when, not how much**: within m cycles the multiplier reaches (1−K^(m+1))/(1−K), so 90% of the ceiling takes about 2.3 cycles at K = 0.5, 21 at K = 0.9. It dominates near 1 (where 0.9 → 0.8 also halves the ceiling), in one-shot launches and in experiment read time.
+- **Never trust a blended K**: it decays by cohort (saturation, fatigue), grows with retention (usage loops: K90 > K30; one-shot programs plateau), and a launch to the installed base inflates week-one K by draining latent referrals; compare cohorts at equal age. In a finite pool (niche B2B, one city), recompute K each cycle as K × (1 − share of the reachable pool reached); 1/(1−K) overstates.
 
-If any step breaks, the loop collapses into a one-time funnel.
+Example: paid CAC = CAC_c = $60 per qualified user, K30 0.3, r $20 → q_min 0.33 (Go with holdout); effective CAC is $48 at q = 1, $56.5 at q = 0.5, and $60, no saving, at q_min. Interrogated, it moves both ways: if half of paid's credited conversions would have come anyway (lift test), paid's incremental CAC is $120 and q_min 0.17 (Go), payback permitting; if a third of rewarded referrals joined existing accounts, K in new accounts is 0.2 and r per new account $30: q_min 0.5 (Test first).
 
-Loops also differ in how defensible they are. Content and network loops accumulate assets — public pages, data, connections — that a competitor can't copy. Pure-incentive referral loops are the most copyable thing in growth: anyone can clone "give $10, get $10." Favor loops that leave a moat behind.
+## Choose
 
----
+Gate each running or candidate loop. Attribute last period's qualified new units by entry point (artifact landing, referral link; joins to an existing account are expansion, their own row), else "how did you hear"; unattributed is a row, and exposure also arrives as direct and brand-search traffic: bound it, never zero it. Columns: loop, units/period, K range, lever, headroom, cost to lift (the users' cost included), cycle time, moat, fund/hold/drop. Headroom: extra qualified units within the horizon if the lever term reached your best segment's rate, capped by the unreached pool. Rank by headroom ÷ cost; ties go to the loop that leaves an asset.
 
-## Loop Types
+## Design decisions
 
-| Type | Input | Output | Examples |
-|------|-------|--------|----------|
-| **Viral (direct)** | User signs up | Invites people they know | WhatsApp, Dropbox, Calendly |
-| **Viral (content)** | User creates public artifact | Artifact attracts new users | YouTube, Notion public pages, GitHub |
-| **Paid** | Revenue | Ad spend acquires users | Most DTC |
-| **Sales** | SDR contacts prospect | Prospect becomes customer | Enterprise SaaS |
-| **Integration / API** | Product embedded elsewhere | New users discover via partner | Stripe, Intercom embeds, Zapier triggers |
-| **UGC / Marketplace** | Supply-side user lists | Demand-side user searches | Airbnb, Etsy, Upwork |
+### Trigger
 
-Pick one loop to be dominant. Multiple loops can coexist but one must be primary — two "primary" loops is a way to under-invest in both.
+Ask at the first value moment and once more after a positive signal (promoter score, high rating, completed outcome), with a persistent entry point; other successes make a shareable artifact, not another ask (repeated asks train dismissal). Break: where the invite is the activation (collaboration), ask during setup.
 
-The 5-stage framework below is written for **direct viral loops** (the most common request). Content, paid, and marketplace loops reuse the same stages, with the type-specific economics called out in *Paid loop economics* and *Marketplace cold-start* later.
+### Incentive
 
----
+- **Reward the limiting term.** Low p or k: reward the sender (capacity, status, credit). Low c: reward the receiver, which turns the ask into a gift. Break when a personal reward reads as a kickback (a B2B user recommending a vendor to their employer): reward the account.
+- **Split the timing** for each side you reward. Invitee value is bounded, usable at once and redeemable only through real use (time-boxed credit, trial or capacity): it lifts c without paying for signups. An inviter reward shows pending at once and pays, after the hold, on a costly-to-fake event in the decision's unit: the invitee's first payment when that unit is paying accounts, else the qualifying event under § Abuse Guardrails.
+- **Pay in product value unless cash is the value unit**: it draws people who want the product and pays only if they stay (break: affiliates, non-user partners). Cost r by its form (pricing's rule).
+- **No incentive when normal use already shares** (exposure, collaboration): a reward adds only fraud and reward-seekers.
+- **Per-seat pricing taxes collaboration loops**: an invite that costs the admin money dies at approval; keep exposure roles (viewer, guest, commenter) free. Price paid badge removal against the exposure it strips from your heaviest users.
+- **Structure**: one- or two-sided, or a milestone at N qualified referrals (launches, waitlists). Consumer rewards stay flat and capped (escalating tiers pay most where fraud rings sit); tiers suit only ambassadors and B2B partners.
 
-## Referral / Viral Loop Design (5 Stages)
+Hand pricing the side, the value unit and the reward-only ceiling r_max = q × CAC_c (× LTV_referred ÷ LTV_next) − fraud leakage − payout ops, at q_low until a holdout measures q (rewards are hard to cut).
 
-The canonical framework for direct viral loops:
+### Mechanism and attribution
 
-### 1. Trigger
-**When** does the user get prompted to invite? Match it to a moment of perceived value.
-- Bad: immediately after signup (user hasn't experienced value yet)
-- Good: right after Aha Moment (user just got the win they came for)
-- Great: repeatable trigger on every success event
+- Prefer links users send from their own channels: an invite your servers send, or one you reward, is your commercial message (consent, anti-spam and disclosure rules apply per market).
+- Contact import: the user picks individual recipients (system picker) and previews message and sender; no select-all, auto-send, auto-remind, or uploaded or stored address book.
+- Attribution survives install, device switch and delayed signup: a deferred deep link, with a typed code as fallback (capped per inviter; a leaked code becomes a public discount), tested per platform and app version.
+- Put the code in the URL path and record it server-side at landing: cross-site Referer carries only the origin, and some browsers block known tracking scripts from reading query parameters.
+- Set the credit rule before launch (first or last inviter; referral, affiliate or paid last click), or you pay twice for one user.
 
-### 2. Incentive
-**Why** would they invite? Two-sided incentives usually beat one-sided (still worth A/B testing for your audience).
-- One-sided (inviter gets reward): cheap but feels transactional
-- Two-sided (both get reward): aligned interests, higher conversion
-- No incentive (pure value share): works only when the product is genuinely better with friends (e.g., multiplayer, collaboration)
-- Milestone (reward unlocks at N qualified referrals): concentrates a burst of invites toward a goal — Dropbox's "invite friends for more storage" pattern
-- Tiered (escalating reward per successful referral): pays your power-referrers more without overpaying casual ones
+### Invitee path
 
-Match the incentive to the product's value unit. Credits for usage-priced products. Months free for subscriptions. Cash for finance products. This skill picks the **structure** (one-sided, two-sided, milestone, tiered); for the **dollar value** of a reward tied to subscription/usage pricing, consult `pricing`.
+The invitee's first session sets c and a; page-level conversion goes to cro.
+- Land on the inviter's object, inviter named; the invitee acts (reply, comment, book, sign) before signing up.
+- Prefill what the invite already says (name, email, team); never an empty product; one screen to the first action.
+- Defer costly steps (verification, payment, app install, contact or notification permissions) until after first value.
 
-### 3. Mechanism
-**How** do they invite? Reduce friction at every step.
-- Shareable link (copy + send) — lowest friction
-- Native share sheet — capture platform-specific apps
-- Email invites — best for professional tools
-- Contact import — highest absolute reach but highest friction and privacy risk
-- In-product @-mention / co-edit invite — natural, contextual
+## Risks and side effects
 
-Pre-fill the message where possible. Never force the inviter to compose from scratch.
-
-### 4. Landing
-**Where** does the invitee arrive? A personalized landing converts meaningfully better than a generic signup page.
-- Show the inviter's name/photo
-- Reference the artifact that brought them (if content loop)
-- Skip signup form fields you can infer (name from invite)
-- Deep-link directly to the action the inviter wanted them to take
-
-### 5. Activation
-**How fast** can the invitee hit the Aha Moment? Every extra step before the Aha Moment costs conversion — friction compounds, and the highest-friction steps cost the most.
-- Skip email verification until necessary (or use magic link)
-- Pre-populate sample data so the product isn't empty
-- Guide to first-action within one screen
-- The expensive steps to defer: email verification, payment, contact-import permission
-
----
+Each that applies gets who pays, a guardrail metric and the mitigation.
+- **Users the mechanism taxes** (branding on their work, an invite step before value, contact or notification access, messages in their name) pay in activation, conversion and retention; paid removal of branding can also lift upgrades. Read it by user stage (new vs established) and tier (free vs paid). Keep steps before first value (invite walls, permission prompts) out of new users' path; for branding, test a new-user exemption read on both sides: the taxed users' activation and upgrades, and the loop's total new units (§ Measurement); never decide on one side's readout.
+- **Invitees**: a poor first session spends the inviter's credibility; reward-seekers retain worse (referred-cohort retention vs organic).
+- **Other channels**: organic and word of mouth now paid for (q); double payment (the credit rule above).
+- **Rules, brand, ops**: consent, disclosure and regulated-category rules; a reward that reads as a kickback; payout, support and fraud-review load.
 
 ## Abuse Guardrails
 
-Any incentive with cash value will be gamed — fraud risk scales directly with the dollar value of the reward. Design the guardrails *before* launching a paid referral program:
+Before launch:
+- **Pay on a qualified action that is costly to fake**: a first payment on a new instrument, or the qualifying event on an attested device (apps) or with a verified non-VoIP mobile number (web). Never on signup or a scriptable step: that is a fraud subsidy, not a growth loop. The invitee may activate before verifying; the reward may not.
+- **Pending, then hold**: show the reward pending at once; grant it after the hold; claw it back on chargeback or churn in the window.
+- **Dedupe on keys that are expensive to create**: payment-instrument fingerprint; in apps, Apple DeviceCheck bits or Play Integrity device recall (check your app's access). Email and IP are weak keys (strip +tags where supported, dots only on consumer gmail.com; expect relay addresses). Never fingerprint in iOS apps (Apple's license terms); web device signals stay secondary, after a privacy-law check (EU cookie rules cover fingerprinting).
+- **Per-inviter caps** per period, minimum account age or activity, no self-referral; spikes go to review (a creator's spike is an affiliate candidate).
 
-- **Pay on a qualified action, not on signup.** Require the invitee to activate (hit the Aha Moment) or make a first payment before any reward is granted. This alone kills most fake-account farming — fake accounts don't complete real actions.
-- **Dedupe aggressively** — normalize email provider-aware (strip `+tags` where the provider supports sub-addressing; drop dots only for providers that ignore them, such as Gmail — stripping dots everywhere merges distinct addresses and flags legitimate invitees), fingerprint payment method, and check device/IP. Referral rings reuse these.
-- **Per-inviter caps** — cap rewards per inviter per period. A sudden spike from one account is almost always abuse, not virality.
-- **Hold + clawback window** — delay payout and reverse the reward if the invitee charges back or churns inside the window.
-- **Self-referral block** — the same person can't be both sides.
+## Measurement
 
-A loop that pays on signup with no guardrails is a fraud subsidy, not a growth loop.
+- Randomize mechanics tests by inviter, or by cluster (workspace, company domain, school, geo) when inviters share recipients; credit each invitee to the inviter's arm. Never by invitee (it leaks and biases toward zero), except on surfaces the inviter never sees (landing layout, signup steps), offer held fixed.
+- **Primary metric: the decision's unit** (new paying accounts, revenue) per eligible user or cluster, from all entry paths: signups or tracked referrals alone count reward-seekers who never pay and miss untracked paths. Inviter-level arms see only tracked and self-reported ("who referred you?") arrivals; when the change can act untracked (a bigger reward also lifts talk without a code), randomize by cluster or geo, or name the blind spot.
+- Measure q with a cluster holdout (market, company domain, team) on that metric. An inviter-level holdout, with identical unrewarded share links and "who referred you?" capture in both arms, compares referred new units per eligible user: an upper bound on q (rewards raise attribution).
+- **Exposure you can't track** (badges, shared files, embeds): randomize where total inflow is observable (geo or market; alternating periods only if exposure converts within one) and read total new units, direct and brand search included; else triangulate tracked clicks, "how did you hear" and brand-search trends across exposed and unexposed groups, as a range.
+- **Power first**: state the smallest effect the test can detect at its volume and length (few clusters, little power); if that misses q_min, say so and decide on the cheapest reversible version (a time-boxed reward, a small slice).
+- Guardrails: referred-cohort retention vs organic; fraud and rejection rates; for a taxing mechanism, activation and conversion of the users carrying it, by stage and tier.
+- Pre-register the card's Decision line: Kill if q < q_min; Iterate on the lever if K is below break-even (ongoing costs only: the build is sunk); else Ship. Read no earlier than one window W after the last cohort enrolls.
 
----
+## Diagnose
 
-## Viral Metrics
+1. Rule out measurement (an event, attribution or dedupe change on the drop date), then normalize per active user: flat per active user means the inputs fell, not the loop.
+2. Decompose K by term, platform, app version, cohort age, inviter source and top-inviter share (a mix shift or lost head referrers lower K with no loop change); compare second-generation K with first.
+3. Match the symptom, then rank fixes by the lever rule (`SKILL.md`, Design step 2):
 
-### K Factor (Viral Coefficient)
+| Symptom | Likely cause | Check; fix |
+|---|---|---|
+| A step drops on one date, platform or version | Broken link, deep link, attribution or deliverability | Click → install → open per platform (shutdowns fail silently: Firebase Dynamic Links stopped on 2025-08-25); restore, then alert per platform |
+| Slow decline across cohorts; more recipients already invited or users | Saturation | Repeat-recipient rate; a new segment, not new copy |
+| Invites per sharer up, conversion per invite down | Fatigue | Conversion by invite ordinal; a frequency cap |
+| Signups up; referred retention or second-generation K below organic | Reward-seeking or fraud | Device and payment clustering; a later qualifying event |
+| Referred users up, new paying accounts flat | Invitees joining existing accounts, or reward-seekers | New-account share and paid conversion of referred users; count in the decision's unit |
+| Rewards pending longer or rejected more after a guardrail change | False positives starving real referrers | Rejection rate and pending age by cohort; a review queue |
+| Participation down after a release | The ask left the value moment | Prompt impressions per active (p = exposure × take-rate); move the ask back |
+| Referral share up, total signups flat | Cannibalized organic | Holdout; a smaller cash reward |
 
-```
-K = (invites sent per user) × (conversion rate of invitees)
-```
+## Affiliates and ambassadors
 
-- **K > 1** → Viral growth (each user brings more than one new user; exponential)
-- **K = 1** → Stable (each user replaces themselves; linear)
-- **K < 1** → Sub-viral (loop amplifies paid/organic but can't sustain alone)
+A paid channel with no K: model each partner type's qualified acquisitions, new-customer share (its q) and commission, judged by q_min and payback. Pay for introduction, not interception: full rate where buyers had no prior visit, reduced or none for checkout-stage partners; test the largest partners' incrementality by pausing them by geo or period. Commission on qualified revenue after the guardrail hold, with clawback; ban brand-term bidding, cookie stuffing and self-purchase. Disclose beside every link ("paid link"; "affiliate link" alone may not suffice under US FTC guidance; free product counts; rules via copywriting). Ambassadors: organic top referrers, paid in access and status, cash only per qualified acquisition.
 
-Measure "conversion rate of invitees" at the **activated/retained** level, not at gross signup. A churned invitee stops inviting, so the *sustained* K is always lower than the snapshot K you see right after launch — that gap is exactly the cliff in Anti-Pattern 1.
+## Loop spec
 
-Real K > 1 is extremely rare. Most durable growth comes from a sub-viral loop (K well below 1) that amplifies low-CAC channels rather than replacing them.
-
-**K and cycle time are different things.** K tells you *whether* growth compounds; cycle time (below) tells you *how fast*. The same K = 0.5 is a completely different business at a 3-day cycle versus a 60-day cycle. Always report K alongside cycle time.
-
-### Amplification Factor
-
-```
-Amplification = 1 / (1 - K)     (only valid when K < 1)
-```
-
-This is the eventual multiplier on organic/paid acquisition once the loop reaches steady state — a cumulative ceiling realized over many cycle times, not a per-period rate. Cycle time sets how fast you approach it (halving cycle time roughly doubles the rate of approach).
-- K = 0.3 → 1.43x (each paid user brings 0.43 extra via viral)
-- K = 0.6 → 2.5x
-- K = 0.9 → 10x
-
-Note how non-linear this gets near the top: K slipping from 0.9 to 0.8 drops the multiplier from 10x to 5x. Amplification is fragile close to K = 1.
-
-### Why K isn't constant
-
-K is not a fixed property of the product — it's a per-cohort number that decays over time:
-- **Network saturation** — early cohorts invite into a fresh network; later cohorts find their contacts already use the product, so invites convert less.
-- **Invite fatigue** — the more often someone has been invited, the less each new invite converts.
-
-This decay is *why* sustained K > 1 is so rare, and why amplification is an idealization rather than a guarantee. Measure K by cohort and watch the trend — never trust a single blended number.
-
-### Loop Cycle Time
-
-Days from a user signing up to their invitees signing up. Shorter cycles compound faster — they decide how quickly you approach the amplification ceiling.
-- Rough targets: consumer loops should turn over in days; B2B in weeks rather than months. Exact thresholds vary by product — the lever that matters is making each cycle faster.
-- Optimize: shorten time-to-Aha Moment, surface invite UI sooner after Aha
-
-### Referral Conversion Rate
-
-Invite → signup → activation. Track each step separately — most loops leak at landing → signup.
-
----
-
-## Paid Loop Economics
-
-A paid loop (revenue → ad spend → users → revenue) is only a *loop* — not a leaky funnel — when the unit economics let you recycle margin into spend faster than it leaks out:
-
-- **Contribution margin must fund the next cycle.** The loop closes only if margin from acquired users, recycled into spend, acquires more than it costs to keep running. If every cycle needs outside cash, that's a funnel with an ad budget.
-- **Payback period vs. cash cycle.** If CAC payback (months to recover acquisition cost from margin) is longer than your cash cycle, the loop stalls on cash even when LTV:CAC looks healthy on paper. For loop *velocity*, fast payback beats high lifetime LTV.
-- **The loop dies when LTV:CAC compresses** — rising CAC from channel saturation or falling LTV from worse retention will both break it.
-
-This skill covers the loop *dynamics*; for what to actually charge (LTV inputs, value metric, tier design), consult `pricing`.
-
----
-
-## Two Anti-Patterns
-
-### Anti-Pattern 1: Incentive Without Value
-Paying users to invite a product they don't use churns both sides. K goes up briefly, then retention cliffs. **Rule**: don't launch a referral program until you have a retention plateau.
-
-### Anti-Pattern 2: Trigger Before Aha
-Prompting for invites at signup or onboarding trains users to dismiss invite UI. You only get one "first ask." Save it for after the first success.
-
----
-
-## When NOT to Build a Loop
-
-A growth loop is the wrong investment when:
-- **No retention plateau yet** (Anti-Pattern 1) — you'll just amplify churn.
-- **Low network density** — your users don't know others who'd want the product (niche single-player tools).
-- **Sensitive or regulated category** — health, finance, anything users won't broadcast; sharing carries privacy/compliance risk.
-- **Long or episodic purchase cycle** — if people buy once every few years, the loop can't turn over fast enough to compound.
-- **Single-seat B2B** — one user per account caps the natural in-product invite surface.
-
-When these hold, paid / sales / content channels usually beat a forced viral loop.
-
----
-
-**Where to look first** when improving an existing loop: the step with the lowest absolute conversion is where to *look* — it's the biggest leak. But the best fix maximizes `leak size × expected lift × value per conversion ÷ effort`: some large leaks (contact-import permission, for instance) are structurally hard to move, so the biggest leak isn't automatically the best place to *invest*. Invite sent → invitee signup is the most common leak.
-
----
-
-## Common Loop Patterns (Reference)
-
-| Product | Loop Shape | What Makes It Work |
-|---------|-----------|---------------------|
-| **Calendly** | Invite-to-schedule | Every meeting invite is a product demo |
-| **Dropbox** | Two-sided storage | Incentive matches value unit |
-| **Figma** | Collaboration | Product is better with more editors |
-| **Notion** | Public docs + templates | Content loop + utility loop |
-| **Linear** | In-product @-mentions | Professional context, no incentive needed |
-| **Superhuman** | Keyboard shortcut cult + waitlist | Scarcity + in-signature ad |
-| **Typeform** | Branded form footer | Every completed form is an ad |
-
----
-
-## Marketplace Cold-Start
-
-UGC / marketplace loops are listed above as a loop type, but they can't bootstrap with the direct-viral playbook — they face the chicken-and-egg problem (no demand without supply, no supply without demand). Design for it:
-
-- **Seed the hard side first** — usually supply. Recruit or even manually create the first listings so the demand side finds value on arrival.
-- **Single-player value before the network** — make the product useful to one side alone (e.g., a tool the supply side would use even with zero buyers), so the hard side has a reason to show up early.
-- **Constrain to liquidity** — launch one geography or one vertical at a time. A dense, liquid niche beats a thin global marketplace; expand only once each segment reaches reliable match rates.
-
----
-
-## Output Format
-
-When designing a referral/viral loop, produce:
+The referral doc's format. **Budget: Design ≤ 900 words per loop; No-go ≤ 250**, prose ceilings: compress a material finding, never drop it. Sections are a menu: omit what doesn't apply, heading included.
 
 ```markdown
-## Loop: [Name]
-
-### Shape
-- Type: [direct viral | content | integration | paid | marketplace | ...]
-- Input → Action → Output → Re-entry (one line each)
-
-### 5 Stages
-- Trigger: [when]
-- Incentive: [structure — one-/two-sided, milestone, tiered — and for whom]
-- Mechanism: [how]
-- Landing: [where, personalization]
-- Activation: [Aha path]
-
-### Target Metrics
-- K goal: [number] (reported with cycle time)
-- Cycle time goal: [days]
-- Per-stage conversion goals
-
-### Instrumentation
-- Events: invite_created, invite_sent, invite_clicked, invitee_signup,
-  invitee_activated, reward_granted — each linking inviter ↔ invitee
-- (Live K measurement methodology and the broader tracking plan: `product-analytics`)
-
-### Abuse Guardrails
-- [payout trigger, dedupe keys, caps, clawback window]
-
-### Risks
-- [what could break the loop]
-- [churn cliff candidates]
-- [fraud / gaming vectors]
-
-### Test Plan
-- [first experiment to validate]
+## Loop: [name] — Go | Go with holdout | Test first | No-go: [reason in plain words]
+Summary (plain, ≤ 120 words): recommendation; cost per extra customer vs the next-best channel; main risk; next step, owner
+Shape: who acts → what they send or make → what a non-user sees → how they arrive → where it breaks
+Inputs corrected: [claim] → [corrected or bounded figure], because [reason]
+Model (K30 at [qualifying event], in [decision's unit]; affiliates: per partner type, no K; ≤ 8 rows): term, baseline, source, low / base / high
+Economics (gloss each symbol once in plain words): effective CAC vs next-best incremental CAC at q low / base / high; q_min; break-even K; cycle time (median, p75); amplification realized within [horizon]
+Lever: [term], and why its relative lift is cheapest
+Decisions: trigger; incentive (none, or structure and side, each tied to the term it lifts; any inviter reward paid on [costly-to-fake event in the decision's unit] after [hold]; any invitee value bounded, usable at once; ceiling + value unit for pricing); mechanism, attribution precedence; invitee path to first value
+Abuse Guardrails (reward with value only): one per fraud vector
+Risks and side effects: who pays, by user stage or tier; guardrail metric; mitigation
+Experiment (Proposed until its owner approves): randomization unit; primary metric (decision's unit, all entry paths); guardrails; smallest detectable effect; Decision line; read date; missing events (tracking-plan names)
+Positions (if contested): each position, what it gets right, the evidence, the answer
+Owners and checkpoints: owner, date, metric and threshold, action
+Do instead (No-go): [channel or fix]; reopen when [measurable condition]
+Open questions and assumptions
 ```

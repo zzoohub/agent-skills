@@ -1,241 +1,82 @@
-# PostgreSQL Indexing Strategy Guide
+# Indexing Strategy
 
-## Table of Contents
+Indexes come from access paths, not from columns; this file is the depth behind the Index gate (SKILL.md Stage 3). A query that ignores its index: `references/postgresql/query-tuning.md`. Building or dropping one on a live table: `references/migration-patterns.md`.
 
-1. [Core Principle](#core-principle)
-2. [Index Types](#index-types)
-3. [Advanced Index Patterns](#advanced-index-patterns)
-4. [Index Maintenance](#index-maintenance)
-5. [Index Anti-Patterns](#index-anti-patterns)
-6. [Reading EXPLAIN ANALYZE](#reading-explain-analyze)
+## From paths to indexes
 
-## Core Principle
+1. **List the paths and every variant** (gate step 1). Sources: the feature specs, the API and the code that builds the queries; on a running system, `pg_stat_statements` ranked by total time.
+2. **Constraint indexes first.** PRIMARY KEY, UNIQUE and EXCLUDE indexes enforce invariants, and child-FK indexes (SKILL.md Stage 3) serve parent deletes; none needs a path, and none is ever "unused".
+3. **Tabulate candidates × variants, then merge.** Example: a tenant's orders, filtered by status (one value, several, or none), newest first, with a total count:
 
-The goal of indexing: **minimize disk I/O**. An index is metadata pointing to where specific values are stored.
+   | Candidate | `status = $2` | `status = ANY($2)` | no filter | count |
+   |---|---|---|---|---|
+   | `(tenant_id, created_at DESC, id DESC) WHERE status = 'pending'` | `pending` only, never under a generic plan | — | — | `pending` only |
+   | `(tenant_id, created_at DESC, id DESC)` | walk and filter: fast while the value is common | same | seek and stop | reads the tenant's rows |
+   | `(tenant_id, status, created_at DESC, id DESC)` | seek and stop | per-value merge | per-value merge over the closed set | index-only, per value |
 
-### Selectivity
-```
-Selectivity = Number of distinct values / Total number of rows
-```
-- Close to 1 = highly selective (good) → index is very effective
-- Close to 0 = low selectivity → index is less effective
-- Boolean / low-cardinality columns (only 2-3 distinct values → selectivity near 0): a plain index is rarely worthwhile; use a Partial Index targeting the rare value (e.g. `WHERE is_active`) instead. (Note: 'selectivity' here = distinct-value ratio; it differs from the fraction of rows a single predicate matches.)
+   An index whose columns are a leading prefix of another's (`(a)` beside `(a, b)`) is redundant unless it is unique or the narrow one is hot and much smaller.
+4. **Verify on seeded data** (SKILL.md Stage 3): a plan on an empty table proves nothing.
 
+## Column order
+
+- Equality columns first. `tenant_id` leads when tenant-scoped queries dominate; cross-tenant analytics may want the opposite.
+- Then, under `ORDER BY … LIMIT`, the sort columns: the scan returns rows in order and stops at LIMIT, and a range column placed after them is still checked inside the index.
+- Otherwise the range column next.
+- *Break when* the range alone leaves a handful of rows: then equality → range, and sort those few.
+
+Example (range vs sort): `WHERE tenant_id = $1 AND due_at < now() ORDER BY priority DESC LIMIT 50`. The textbook "equality → range → sort" index `(tenant_id, due_at, priority)` fetches and sorts every overdue row (≈2,500 buffers on a 400k-row test table); `(tenant_id, priority DESC, due_at)` reads 50 rows in order (≈50 buffers).
+
+Example (filter, then sort): `WHERE tenant_id = $1 AND status = $2 ORDER BY created_at DESC LIMIT 20`. `(tenant_id, status, created_at DESC)` seeks each status and reads 20 rows in order, for every value the endpoint sends. A partial `(tenant_id, created_at DESC) WHERE status = 'pending'` serves only `pending`, and only when the planner sees the value (a generic plan's `$2` cannot use it), and leaves every other status to scan.
+
+**Several values, one sort.** The composite index returns rows value by value, so `status = ANY($2) ORDER BY created_at DESC LIMIT 20` reads every matching row and sorts them (a Sort node above the index scan). Merge per value instead; each branch stops after one page:
 ```sql
--- Check selectivity
-SELECT
-    attname AS column_name,
-    n_distinct,
-    CASE
-        WHEN reltuples <= 0 THEN NULL  -- reltuples is -1 on never-analyzed tables (PG14+); NULL = "run ANALYZE first" instead of a bogus negative
-        WHEN n_distinct > 0 THEN n_distinct / reltuples
-        WHEN n_distinct < 0 THEN abs(n_distinct)
-        ELSE 0
-    END AS selectivity
-FROM pg_stats
-JOIN pg_class ON pg_class.relname = pg_stats.tablename
-WHERE tablename = 'your_table'
-ORDER BY selectivity DESC;
--- Figures are meaningful only after ANALYZE; add `schemaname = 'public'` (or the target schema) to avoid cross-schema name collisions in the join.
+SELECT o.*
+FROM unnest($2::text[]) AS v(status)
+CROSS JOIN LATERAL (
+    SELECT id, status, created_at, total_minor FROM orders
+    WHERE tenant_id = $1 AND status = v.status
+      AND (created_at, id) < ($3, $4)        -- keyset cursor; omit on the first page
+    ORDER BY created_at DESC, id DESC
+    LIMIT 21                                 -- page size + 1, for has-next
+) o
+ORDER BY o.created_at DESC, o.id DESC
+LIMIT 21;
 ```
+It reads at most 21 index entries per value. For the "no filter" variant, pass the closed set (the CHECK list) while it is small; when the requested values are common among recent rows, or the set is large, an index led by the sort, `(tenant_id, created_at DESC, id DESC)`, walks and filters for less. Compare both plans on seeded data.
 
-## Index Types
+## Selectivity
 
-### B-tree (default, most commonly used)
+Judge a predicate by the fraction of rows its value matches, not by distinct values / total rows:
 ```sql
--- Suitable for equality, range, sorting, LIKE 'prefix%'
-CREATE INDEX idx_orders_created_at ON orders (created_at);
-CREATE INDEX idx_user_email ON user_accounts (email);
-
--- Composite index: matches left-to-right (leftmost prefix rule)
-CREATE INDEX idx_orders_user_status ON orders (user_id, status);
--- ✅ WHERE user_id = 1
--- ✅ WHERE user_id = 1 AND status = 'pending'
--- ❌ WHERE status = 'pending' (without user_id: not usable as an index search on PG ≤17)
+-- as a role that bypasses RLS: pg_stats shows nothing for tables whose policies apply to you
+SELECT most_common_vals, most_common_freqs FROM pg_stats
+WHERE schemaname = 'app' AND tablename = 'orders' AND attname = 'status';
 ```
-PG18+ adds B-tree **skip scan**: the planner can use this index for `WHERE status = 'pending'` by probing each distinct leading `user_id` — worthwhile only when the skipped leading column has few distinct values. Design order for the real queries anyway; don't count on skip scan for a high-cardinality leading column.
+A path that only ever reads one rare value (a queue's `pending` rows) wants a partial index; a value matching 30% of rows is served better by a scan, or by walking a sort-led index. A status column alone rarely deserves an index; as the equality column ahead of a sort, it serves every value's page (Column order).
 
-### Hash (equality-only)
-Hash supports only equality (=). Crash-safe since PG10, but B-tree is still the default even for equality. Hash indexes cannot be UNIQUE, multicolumn, used for sorting/ranges, or used for index-only scans (they store only the hash, not the value). Consider hash only for very large keys where smaller index size matters; otherwise prefer B-tree.
+## Partial, expression and covering indexes
 
+- **Partial**: index only the rows a hot path reads, `CREATE INDEX idx_orders_pending ON orders (created_at) WHERE status = 'pending';`. Queries must repeat the predicate literally; a generic plan's `status = $1` cannot use it. Name the variants it leaves unserved. A partial UNIQUE scopes uniqueness (`… WHERE deleted_at IS NULL`).
+- **Expression**: `lower(email)`, `(attributes->>'brand')`; queries must repeat the exact expression. `created_at::date` on a `timestamptz` cannot be indexed (it depends on `TimeZone`): query a half-open range on the bare column instead.
+- **Covering**: `INCLUDE (cols)` turns a hot read into an index-only scan, which needs a current visibility map (vacuum; watch `Heap Fetches`). Only for columns that rarely change.
+
+## Beyond B-tree
+
+GIN for containment (jsonb, arrays, `tsvector`) and `pg_trgm` (`ILIKE '%term%'`); GiST for ranges and EXCLUDE (`btree_gist` for scalar columns); BRIN only where physical order follows the column (append-only events by time).
+
+## Reconcile the index set
+
+Every index is paid on every insert, on every update that is not HOT, and again in vacuum, WAL volume, replica apply and cache. An update that changes any indexed column, INCLUDE columns too, cannot be HOT (PG16+ exempts columns indexed only by BRIN). On write-hot tables count the indexes and prefer one composite index serving two paths over two narrow ones.
+
+Before and after an index change, list the table's set:
 ```sql
-CREATE INDEX idx_sessions_token ON sessions USING HASH (token);
--- A session token usually wants a UNIQUE B-tree instead.
-```
-
-### GIN (Generalized Inverted Index)
-```sql
--- Essential for ARRAY, JSONB, full-text search
-CREATE INDEX idx_products_tags ON products USING GIN (tags);
-CREATE INDEX idx_products_attrs ON products USING GIN (attributes);
-
--- Full-text search
-CREATE INDEX idx_articles_fts ON articles USING GIN (to_tsvector('english', title || ' ' || body));
-```
-
-For JSONB, the default GIN opclass (jsonb_ops) supports key-existence (?, ?|, ?&), containment (@>), and the jsonpath operators (@?, @@); `USING GIN (attributes jsonb_path_ops)` is smaller/faster and supports @>, @? and @@ but NOT the key-existence operators — that lack is the only difference between the two opclasses. For substring/fuzzy matching, `CREATE EXTENSION pg_trgm;` then `USING GIN (col gin_trgm_ops)` makes `ILIKE '%term%'` and similarity (%) indexable.
-
-### GiST (Generalized Search Tree)
-```sql
--- Geographic data, range types, proximity searches
--- Requires a GiST-indexable type: built-in point/box/polygon, a range type, or (most commonly for geo) PostGIS geometry/geography via CREATE EXTENSION postgis. This example assumes location is a PostGIS geography column.
-CREATE INDEX idx_store_location ON store USING GIST (location);
-
--- Range types (overlap searches)
-CREATE INDEX idx_reservation_period ON reservation USING GIST (
-    tstzrange(check_in, check_out)
-);
-```
-
-### BRIN (Block Range Index)
-```sql
--- Physically sorted large datasets (time-series, logs)
--- Much smaller than B-tree
-CREATE INDEX idx_logs_created_at ON access_logs USING BRIN (created_at);
--- Effective only when physical row order strongly correlates with the indexed column (append-only time-series, logs). Always correct regardless of order, just not selective without correlation. Tune with pages_per_range.
-```
-
-### Foreign Key Indexing
-PostgreSQL auto-creates indexes for PRIMARY KEY and UNIQUE constraints, but does NOT index foreign-key (referencing) columns. Always add an index on FK columns — without it, a DELETE/UPDATE on the parent row forces a sequential scan of the child table during the referential-integrity check (and takes row-level locks on matching child rows), and FK joins are unindexed.
-
-```sql
-CREATE INDEX idx_orders_user_id ON orders (user_id);  -- for FOREIGN KEY (user_id) REFERENCES user_accounts (id)
-```
-
-## Advanced Index Patterns
-
-### Partial Index
-Index only rows that match a condition. Saves space and improves performance.
-
-```sql
--- Only index active orders (if 5% of total, saves 95% space)
-CREATE INDEX idx_orders_active ON orders (created_at)
-WHERE status NOT IN ('delivered', 'cancelled');
-
--- Unread notifications only
-CREATE INDEX idx_notification_unread ON notification (user_id, created_at)
-WHERE is_read = false;
-
--- Soft delete pattern
-CREATE INDEX idx_user_active ON user_accounts (email)
-WHERE deleted_at IS NULL;
-```
-
-### Expression Index
-```sql
--- Case-insensitive search
-CREATE INDEX idx_user_email_lower ON user_accounts (lower(email));
--- Query: WHERE lower(email) = 'user@example.com'
-
--- Date extraction
-CREATE INDEX idx_orders_year_month ON orders (
-    date_trunc('month', created_at)
-);
-
--- JSONB specific key
-CREATE INDEX idx_products_brand ON products ((attributes->>'brand'));
-```
-
-### Covering Index (INCLUDE)
-Enables Index-Only Scan by including all needed columns in the index.
-
-```sql
--- Frequent lookup by id returning email and name
-CREATE INDEX idx_user_lookup ON user_accounts (id) INCLUDE (email, name);
--- Covering indexes are most useful on a non-PK lookup column; here the PK index on (id) doesn't store email/name, so INCLUDE turns this into an index-only scan (no heap fetch).
-
--- Order listing optimization
-CREATE INDEX idx_orders_user_list ON orders (user_id, created_at DESC)
-INCLUDE (status, total_amount);
-```
-
-### Composite Index Design Rules
-
-Column order matters:
-1. **Equality conditions** first
-2. **Range conditions** next
-3. **Sort columns** last
-
-```sql
--- Query: WHERE user_id = ? AND status = ? ORDER BY created_at DESC
-CREATE INDEX idx_orders_user_status_date ON orders (user_id, status, created_at DESC);
-
--- Query: WHERE user_id = ? AND created_at > ?
-CREATE INDEX idx_orders_user_date ON orders (user_id, created_at);
-```
-
-## Index Maintenance
-
-### Check index usage
-```sql
--- Find unused indexes
-SELECT
-    s.schemaname, s.relname AS tablename, s.indexrelname AS indexname,
-    s.idx_scan AS times_used,
-    pg_size_pretty(pg_relation_size(s.indexrelid)) AS index_size
+SELECT s.indexrelid::regclass AS index_name, s.idx_scan,
+       pg_size_pretty(pg_relation_size(s.indexrelid)) AS size,
+       pg_get_indexdef(s.indexrelid) AS definition
 FROM pg_stat_user_indexes s
-JOIN pg_index ix ON ix.indexrelid = s.indexrelid
--- idx_scan is cumulative since the last stats reset — trust 0 only over a
--- representative window (PG16+ has last_idx_scan for recency).
-WHERE s.idx_scan = 0
-    -- never drop what enforces uniqueness or feeds logical replication
-    -- (standalone UNIQUE indexes have no pg_constraint row):
-    AND NOT ix.indisunique
-    AND NOT ix.indisprimary
-    AND NOT ix.indisreplident
-    AND s.indexrelid NOT IN (
-        SELECT conindid FROM pg_constraint WHERE contype IN ('p', 'u')
-    )
-ORDER BY pg_relation_size(s.indexrelid) DESC;
+WHERE s.relid = 'app.orders'::regclass
+ORDER BY s.idx_scan;
 ```
-
-### Rebuild bloated indexes
-```sql
--- CONCURRENTLY (zero-downtime, recommended)
-REINDEX INDEX CONCURRENTLY idx_orders_created_at;
-
--- Or create new + swap
-CREATE INDEX CONCURRENTLY idx_orders_created_at_new ON orders (created_at);
-DROP INDEX CONCURRENTLY idx_orders_created_at;  -- plain DROP takes ACCESS EXCLUSIVE and queues traffic
-ALTER INDEX idx_orders_created_at_new RENAME TO idx_orders_created_at;
--- REINDEX INDEX CONCURRENTLY (PG12+) is the preferred one-step path. All CONCURRENTLY index ops cannot run inside a transaction block, and a failed run can leave an INVALID index that must be dropped and recreated.
-```
-
-### Check index sizes
-```sql
-SELECT
-    relname AS tablename, indexrelname AS indexname,
-    pg_size_pretty(pg_relation_size(indexrelid)) AS index_size
-FROM pg_stat_user_indexes
-ORDER BY pg_relation_size(indexrelid) DESC;
-```
-
-## Index Anti-Patterns
-
-1. **Indexing every column** → degrades INSERT/UPDATE/DELETE, wastes storage
-2. **Regular index on low-selectivity columns** → use Partial Index for Boolean/status
-3. **Leaving unused indexes** → check `pg_stat_user_indexes` regularly
-4. **Ignoring composite index column order** → leftmost prefix rule violation (PG18 skip scan softens this only for a low-cardinality leading column)
-5. **Function in WHERE without Expression Index**
-   ```sql
-   -- Index is ignored
-   WHERE UPPER(email) = 'USER@EXAMPLE.COM'
-   -- Needs Expression Index
-   CREATE INDEX idx_user_email_upper ON user_accounts (UPPER(email));
-   ```
-
-## Reading EXPLAIN ANALYZE
-
-```sql
-EXPLAIN (ANALYZE, BUFFERS, FORMAT TEXT)
-SELECT * FROM orders WHERE user_id = 123 AND status = 'pending';
-```
-
-Key indicators:
-- **Seq Scan**: reads the whole table — expected and optimal when a query returns a large fraction of rows (low-selectivity/analytics); a problem only when a selective predicate should have used an index but didn't (stale stats, non-sargable predicate, or missing index)
-- **Index Scan**: Finds rows via index, reads data from table (good)
-- **Index Only Scan**: Completes entirely from index (best)
-- **Bitmap Index Scan**: Builds a bitmap of matching rows, then reads the heap in physical order — chosen when a single index matches many rows (avoids random I/O), or to combine multiple indexes via BitmapAnd/BitmapOr. Often the optimal plan, not a warning sign
-- **actual time**: Real execution time (ms)
-- **Buffers: shared hit**: Pages read from cache (more = better)
-- **Buffers: shared read**: Pages read from disk (less = better)
+- **Redundant prefixes**: `scripts/schema_review.sql` §3 lists B-tree indexes whose key columns lead another valid index with the same operator classes, collations, directions and predicate. Drop them unless unique, or hot and much smaller.
+- **Zero scans** are a question for the owner, not a verdict: counts are per node, so run §3 on the primary and every replica, and they restart on a statistics reset, a crash or `pg_upgrade`; sum them over a business cycle, since monthly jobs scan rarely.
+- **Drop** one at a time with `DROP INDEX CONCURRENTLY`, as a runbook row, keeping the definition to restore it. An expression index also gives the planner statistics on its expression: replace them with `CREATE STATISTICS … ON (<expression>)` before dropping it.

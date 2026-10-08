@@ -1,154 +1,59 @@
 # Cold Email Outreach
 
-B2B cold email writing, personalization, and follow-up sequences.
+B2B prospecting by email: who to write to, whether the law allows it, and the copy and sending rules that keep the domain alive. Output uses the Default Output Format in `references/email/guide.md`, bodies at most 80 words.
 
----
+Last verified: 2026-10. Law rows and the benchmark change: re-check each source before a launch. A starting map, not legal advice.
 
-## Table of Contents
+## Before writing
 
-1. [Legal & Compliance First](#legal--compliance-first)
-2. [Writing Principles](#writing-principles)
-3. [Voice & Tone](#voice--tone)
-4. [Structure Frameworks](#structure-frameworks)
-5. [Subject Lines](#subject-lines)
-6. [Follow-Up Sequences](#follow-up-sequences)
-7. [Quality Check](#quality-check)
-8. [What to Avoid](#what-to-avoid)
-9. [Benchmarks](#benchmarks)
+- **Relevance test, per segment:** why this person, why now (a trigger you can cite: a hire, a launch, a funding round, a stack change, a public post), and why us (a result for a similar company). If any answer is generic, fix the list, not the copy.
+- **Law:** classify every recipient country with the table below before the first send. Unknown country → treat it as opt-in.
+- **Kill rule:** if positive replies stay under ~1% after ~300 delivered to one segment, change the segment or the offer before touching the copy.
 
+## Consent law by country
 
-## Legal & Compliance First
+The middle column is the legal floor for marketing to your own users, trial signups and former customers, not a permission: anyone who declined marketing, or whose consent you can't show, gets none, whatever the column allows (`references/email/deliverability.md` § Consent).
 
-Cold email is restricted differently in different jurisdictions. **Verify the rules for every region you send into before launching.** Non-compliance risks fines, sender-reputation damage, and platform bans. Below is a 2026 baseline summary — not legal advice.
+| Country | Own customers and signups (the floor) | Cold B2B | Source |
+|---|---|---|---|
+| US | Opt-out (CAN-SPAM) | Same: the Act has no B2B exemption | ftc.gov, CAN-SPAM compliance guide |
+| Canada | Consent (CASL): express, or implied for 2 years after a purchase and 6 months after an inquiry | Implied only from a conspicuously published business address with no "no solicitations" notice, and only for mail relevant to the role | crtc.gc.ca |
+| UK | Individuals and sole traders: opt-in, or soft opt-in (similar products, refusal offered at collection and in every email); company addresses as in the next column | Companies, LLPs and public bodies: no PECR consent, but UK GDPR legitimate interest with a recorded assessment and easy opt-out. Sole traders and some partnerships: opt-in | ico.org.uk (PECR amended by the Data (Use and Access) Act 2025; guidance under review) |
+| Germany | Opt-in; existing-customer exception for similar products (UWG §7(3)) | Opt-in: B2B is not exempt (UWG §7(2)) | gesetze-im-internet.de |
+| France | Opt-in, except existing customers offered similar products | Opt-out: allowed when relevant to the recipient's job, with notice and an easy objection | cnil.fr |
+| Other EU | National ePrivacy rules differ; GDPR legitimate interest never overrides a national consent rule | Same | The national regulator |
+| Korea | Prior explicit opt-in (정보통신망법 §50); exception: the same kind of goods within 6 months of a transaction; reconfirm consent every 2 years | Same: the Act names no B2B exemption | law.go.kr, KISA; verify before launch |
+| Australia | Express or inferred consent (Spam Act 2003) | Inferred from a conspicuously published work address only when relevant to the role | acma.gov.au |
+| Brazil | A lawful basis under LGPD: consent, or legitimate interest with an assessment | Same | gov.br/anpd |
 
-| Jurisdiction | Key Rule (B2B cold email) |
-|---|---|
-| **US — CAN-SPAM** | Allowed without prior consent. Must include: accurate From/Reply-To, identifiable subject, physical postal address, working opt-out (process within 10 business days), no header forgery. |
-| **Canada — CASL** | **Explicit or implied consent required** even for B2B. "Implied consent" includes existing business relationships or publicly-posted business addresses (with limits). Penalties up to CAD $10M. |
-| **UK — UK GDPR + PECR** | PECR's electronic-mail marketing rule does **not** apply to corporate subscribers (limited companies, LLPs, Scottish partnerships, public bodies) — no consent needed under PECR to email a corporate body. UK GDPR still applies because a named individual's address (`john@company.com`) is personal data, so document a legitimate-interest basis (LIA) and offer easy opt-out. Sole traders and most partnerships count as individual subscribers — PECR consent (or the soft opt-in exemption) is required. |
-| **EU — GDPR + national ePrivacy** | ePrivacy is transposed per member state and varies materially. Several states (e.g. Germany via UWG §7, with double opt-in the de facto standard; France/CNIL; Netherlands) require **prior consent** even for B2B email to named individuals. A GDPR legitimate-interest basis does **not** cure an ePrivacy consent requirement. Verify the specific country before sending — don't assume legitimate interest is available. |
-| **Australia — Spam Act 2003** | Express or inferred consent required. Penalties scale with volume. |
-| **Brazil — LGPD** | Treats email outreach to natural persons as personal data; needs lawful basis (consent, legitimate interest with LIA, etc.). |
+Every commercial email, everywhere: a truthful sender and subject; a one-step opt-out that keeps working for at least 30 days after the send and is honored within 2 days in every stream (faster than most laws require); one suppression list across every tool (`references/email/deliverability.md`); a record of the basis for each contact. The US adds a postal address and, without prior consent, a clear statement that the email is an ad. Korea adds "(광고)" at the very start of the subject, with the sender's name, contact details and opt-out in the body.
 
-**Common requirements across most jurisdictions:**
-- Identify yourself and your company truthfully
-- Provide a working, no-friction opt-out — honor it within the CAN-SPAM legal maximum of 10 business days (and, for bulk marketing mail subject to Gmail/Yahoo/Microsoft rules, process one-click List-Unsubscribe within 2 days; see `references/email/deliverability.md`)
-- Don't disguise commercial intent in the subject or body
-- Maintain a suppression list across all your sending tools (see `references/email/deliverability.md` — Suppression-List Management)
-- Document your basis for sending (LIA, consent record, business relationship evidence)
+## Writing
 
-> **Mailbox-rotation warning:** Tools that send via many fresh mailboxes/subdomains to scale cold outreach increasingly trip Gmail/Microsoft anti-spam heuristics (and may violate provider ToS). Treat rotation as a deliverability *bandaid*, not a strategy — and verify provider ToS before adopting.
+- A peer who noticed something, not a vendor: contractions, read it aloud, more "you" than "we". Never "I hope this finds you well", "My name is", "just checking in" or "circle back".
+- At most 80 words; the best campaigns in Instantly's 2026 report average under 80 on the first touch. Shapes: observation → what it usually costs → a result from a similar company → ask; or trigger → implication → ask.
+- **Personalization test:** delete the personalized opening. If the email still makes sense, the personalization was decoration; it has to connect to the problem.
+- One proof point from a similar company beats ten features. Real results only; a gap gets the core proof rule's tag.
+- One low-friction ask: interest ("Worth a look?") rather than a 30-minute call on the first touch.
+- Subject: 2-4 plain words that could be internal ("reply rates", "hiring ops"); no pitch, urgency, emoji, first name or fake "Re:".
 
----
+## Sequence
 
-## Writing Principles
+- Most replies come from the first email (58% at step one in Instantly's 2026 report), so spend the effort there.
+- At most 4 touches over about 3 weeks, with widening gaps, each adding something new (an angle, a proof point, a useful resource); the last closes the loop politely. The same vendor recommends 4-7; past the fourth, each touch adds fewer replies and more complaint risk on a domain you need, so stop at four.
+- A reply from anyone at an account stops the sequence for every contact there. An opt-out, including a reply asking to stop, suppresses that person everywhere.
 
-### Write Like a Peer, Not a Vendor
-The email should read like it came from someone who understands their world. Use contractions. Read it aloud. If it sounds like marketing copy, rewrite it.
+## Sending
 
-### Every Sentence Must Earn Its Place
-Cold email is ruthlessly short. If a sentence doesn't move toward replying, cut it.
+- A separate registered domain, never the product domain or one of its subdomains: cold complaints would land on the reputation your product mail depends on. Authenticate it fully (`references/email/deliverability.md`) and put a real website and a monitored inbox behind it.
+- Tracking off, plain text, no link in the first email.
+- Verify addresses before sending. Keep volume per mailbox low and raise it only while bounces and replies stay healthy; pause the domain when a batch hard-bounces above 2%.
+- Rotating many fresh mailboxes or domains to dodge limits trips provider filters and may breach their terms; it treats the symptom, not the list.
 
-### Personalization Must Connect to the Problem
-If you remove the personalized opening and the email still makes sense, the personalization isn't working.
+## Measure
 
-### Lead with Their World, Not Yours
-"You/your" should dominate over "I/we." Don't open with who you are.
+Primary: positive replies and meetings per segment, against your own baseline. Instantly's 2026 benchmark (its platform, January to December 2025) puts the average reply rate at 3.43% and the top quartile at 5.5%+, counting every reply, positive or not. Opens mean nothing with tracking off.
 
-### One Ask, Low Friction
-Interest-based CTAs ("Worth exploring?") beat meeting requests. One CTA per email.
+## Before you hand it back
 
----
-
-## Voice & Tone
-
-**Target voice:** A smart colleague who noticed something relevant.
-
-**Calibrate to audience:**
-- C-suite: ultra-brief, peer-level, understated
-- Mid-level: more specific value, slightly more detail
-- Technical: precise, no fluff, respect their intelligence
-
-**Never sound like:**
-- A template with fields swapped in
-- A pitch deck in paragraph form
-- An AI-generated email ("I hope this finds you well," "leverage," "synergy")
-
----
-
-## Structure Frameworks
-
-| Framework | Shape |
-|-----------|-------|
-| **Observation → Problem → Proof → Ask** | You noticed X → usually means Y challenge → we helped Z → interested? |
-| **Question → Value → Ask** | Struggling with X? → We do Y, Z saw [result] → worth a look? |
-| **Trigger → Insight → Ask** | Congrats on X → that creates Y challenge → we've helped similar companies |
-| **Story → Bridge → Ask** | [Company] had [problem] → solved it this way → relevant to you? |
-
----
-
-## Subject Lines
-
-- 2-4 words, lowercase, no punctuation tricks (the general marketing subject-line length in `references/email/copy-guidelines.md` does not apply to cold)
-- Should look like it came from a colleague ("reply rates," "hiring ops")
-- No product pitches, urgency, emojis, or prospect's first name
-
----
-
-## Follow-Up Sequences
-
-Each follow-up must add something new — different angle, fresh proof, useful resource.
-
-- 3-5 total emails, increasing gaps between them
-- Each email should stand alone
-- The breakup email is your last touch — honor it
-- Never "just checking in"
-
-### Cadence Example
-
-| Email | Timing | Approach |
-|-------|--------|----------|
-| 1 | Day 0 | Opening — observation + value |
-| 2 | Day 3 | New angle — case study or social proof |
-| 3 | Day 7 | Resource — share something useful |
-| 4 | Day 14 | Different value prop angle |
-| 5 | Day 21 | Breakup — final, graceful close |
-
----
-
-## Quality Check
-
-Before sending, gut-check:
-- Does it sound like a human wrote it?
-- Would YOU reply to this?
-- Does every sentence serve the reader, not the sender?
-- Is the personalization connected to the problem?
-- Is there one clear, low-friction ask?
-- If drafted with AI then scaled, has a human reviewed this exact send? (AI tells — "I hope this finds you well," "leverage," "synergy" — and near-identical mass copy both read as spam.)
-
----
-
-## What to Avoid
-
-- Opening with "I hope this email finds you well" or "My name is X"
-- Jargon: "synergy," "leverage," "circle back," "best-in-class"
-- Feature dumps — one proof point beats ten features
-- HTML, images, or multiple links
-- Fake "Re:" or "Fwd:" subject lines
-- Asking for 30-minute calls in first touch
-- "Just checking in" follow-ups
-
----
-
-## Benchmarks
-
-> **Open rate caveat (post-MPP, post-Gmail/Yahoo enforcement 2024):** Open rate is unreliable for recipients who read in the Apple Mail app with MPP (pre-fetched pixels — MPP affects roughly 55-60% of all opens per Litmus, 2026). Prioritize **reply rate and meeting-booked rate** for cold-outreach health.
-
-| Metric | Typical | Good |
-|--------|---------|------|
-| Open rate (directional only) | ~44% platform average (Instantly 2026; MPP-inflated — not a health metric) | — |
-| **Reply rate (primary signal)** | ~3.4% platform average (Instantly 2026) | 5.5%+ (top quartile); 10%+ (elite) |
-| Positive reply rate | 1-3% (practitioner rule of thumb) | 3-5%+ |
-| Meeting booked rate | 0.5-2% (practitioner rule of thumb) | 2-3%+ |
-
-> Dated benchmark (as of 2026-10): reply and open figures are from Instantly's 2026 cold-email benchmark report (vendor platform data); the positive-reply and meeting rows have no primary source. Re-check before quoting and benchmark against your own baseline. Pre-2022 "30-40% open / 5-10% reply" benchmarks no longer apply — Gmail/Yahoo enforcement (Feb 2024) tightened bulk sender rules, MPP inflated/distorted opens, and inbox saturation grew.
+Relevance test answered per segment; every recipient country classified; each email ≤80 words, one ask, no link in the first; every proof point real or tagged; the personalization survives the deletion test; ≤4 touches with an account-level stop.

@@ -1,139 +1,207 @@
--- ============================================
--- PostgreSQL Schema Review Diagnostic Queries
--- Run against your database to identify common issues
--- ============================================
+-- PostgreSQL schema review: structural checks (runtime: query_diagnostics.sql).
+-- psql -X -f schema_review.sql <conn>   Read-only; PostgreSQL 14+. Run it as a role that bypasses
+-- RLS: pg_stats (9) hides tables whose policies apply to you. Rows are candidates, not verdicts.
 
--- 1. Foreign Key columns without indexes
--- PostgreSQL does NOT auto-create indexes on FK columns
-SELECT
-    c.conrelid::regclass AS table_name,
-    a.attname AS fk_column,
-    c.conname AS constraint_name
+-- 1. FKs with no valid, non-partial index led by their columns: parent DELETEs scan the child.
+SELECT c.conrelid::regclass AS child_table, c.conname,
+       (SELECT string_agg(a.attname, ', ') FROM pg_attribute a
+        WHERE a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)) AS fk_columns,
+       c.confrelid::regclass AS parent_table,
+       p.n_tup_del AS parent_deletes,
+       pg_size_pretty(pg_relation_size(c.conrelid)) AS child_size
 FROM pg_constraint c
-JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey)
+LEFT JOIN pg_stat_all_tables p ON p.relid = c.confrelid
 WHERE c.contype = 'f'
-AND NOT EXISTS (
-    SELECT 1 FROM pg_index i
-    WHERE i.indrelid = c.conrelid
-    -- Leading-column coverage, checked per FK column. NOTE for COMPOSITE FKs: an index on (a, b)
-    -- fully covers a FK on (a, b), but this per-column query still emits a FALSE-POSITIVE row for
-    -- the trailing column b (no index has b as its leading column). Only the leading-column row is
-    -- meaningful — for a composite FK, ignore the trailing-column rows (don't add a redundant index).
-    AND i.indkey[0] = a.attnum
-)
-ORDER BY table_name, fk_column;
+  AND NOT EXISTS (
+      SELECT 1 FROM pg_index i
+      WHERE i.indrelid = c.conrelid AND i.indisvalid AND i.indpred IS NULL
+        AND (SELECT array_agg(k ORDER BY k) FROM unnest(
+                (string_to_array(i.indkey::text, ' ')::int2[])[1:cardinality(c.conkey)]) k)
+          = (SELECT array_agg(k ORDER BY k) FROM unnest(c.conkey) k))
+ORDER BY pg_relation_size(c.conrelid) DESC;
 
--- 2. Tables without a primary key
-SELECT n.nspname AS schemaname, c.relname AS tablename
+-- 2. Tables without a primary key.
+SELECT c.oid::regclass AS table_name
 FROM pg_class c
 JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE c.relkind IN ('r', 'p')
-AND n.nspname NOT IN ('pg_catalog', 'information_schema')
-AND NOT EXISTS (
-    SELECT 1 FROM pg_constraint k
-    WHERE k.conrelid = c.oid AND k.contype = 'p'
-)
-ORDER BY n.nspname, c.relname;
+WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+  AND n.nspname !~ '^(pg_|information_schema$)'
+  AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conrelid = c.oid AND k.contype = 'p')
+ORDER BY 1;
 
--- 3. Unused indexes (idx_scan = 0 since last stats reset)
-SELECT
-    s.schemaname, s.relname AS tablename, s.indexrelname AS indexname,
-    s.idx_scan AS times_used,
-    pg_size_pretty(pg_relation_size(s.indexrelid)) AS index_size
+-- 3. Index candidates to drop: zero scans (constraint, replica-identity and FK-covering indexes
+--    excluded), then redundant prefixes. Scan counts are per node and restart on reset, crash or
+--    pg_upgrade; reconcile before and after any index change: references/indexing-strategy.md.
+SELECT s.relid::regclass AS table_name, s.indexrelid::regclass AS index_name, s.idx_scan,
+       (to_jsonb(s) ->> 'last_idx_scan')::timestamptz AS last_idx_scan,  -- PG16+
+       coalesce((SELECT stats_reset::text FROM pg_stat_database WHERE datname = current_database()),
+                'never reset') AS counting_since,
+       pg_size_pretty(pg_relation_size(s.indexrelid)) AS size,
+       pg_get_indexdef(s.indexrelid) AS restore_with
 FROM pg_stat_user_indexes s
-JOIN pg_index ix ON ix.indexrelid = s.indexrelid
--- idx_scan is cumulative since the last stats reset (pg_upgrade/pg_stat_reset zero it); check SELECT stats_reset FROM pg_stat_database and trust 0 only over a representative window. PG16+ has last_idx_scan for recency.
+JOIN pg_index i ON i.indexrelid = s.indexrelid
 WHERE s.idx_scan = 0
--- verify uniqueness/replica-identity before dropping any flagged index (standalone UNIQUE indexes have no pg_constraint row)
-AND NOT ix.indisunique
-AND NOT ix.indisprimary
-AND NOT ix.indisreplident
-AND s.indexrelid NOT IN (
-    SELECT conindid FROM pg_constraint WHERE contype IN ('p', 'u')
+  AND i.indisvalid AND NOT i.indisunique AND NOT i.indisprimary AND NOT i.indisreplident
+  AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = s.indexrelid)
+  AND NOT EXISTS (
+      SELECT 1 FROM pg_constraint f
+      WHERE f.contype = 'f' AND f.conrelid = i.indrelid
+        AND (SELECT array_agg(k ORDER BY k) FROM unnest(
+                (string_to_array(i.indkey::text, ' ')::int2[])[1:cardinality(f.conkey)]) k)
+          = (SELECT array_agg(k ORDER BY k) FROM unnest(f.conkey) k))
+ORDER BY pg_relation_size(s.indexrelid) DESC;
+
+--    ...and redundant B-tree indexes: key columns that lead another valid index with the same
+--    operator classes, collations, directions and predicate (a non-unique twin of a unique index
+--    included). Drop unless the narrow one is hot and much smaller.
+WITH pair AS (
+    SELECT a.indrelid AS tbl, a.indexrelid AS idx, b.indexrelid AS cover
+    FROM pg_index a
+    JOIN pg_class ca ON ca.oid = a.indexrelid
+    JOIN pg_index b ON b.indrelid = a.indrelid AND b.indexrelid <> a.indexrelid AND b.indisvalid
+    JOIN pg_class cb ON cb.oid = b.indexrelid AND cb.relam = ca.relam
+    WHERE ca.relam = (SELECT oid FROM pg_am WHERE amname = 'btree')
+      AND a.indisvalid AND NOT a.indisunique AND NOT a.indisreplident
+      AND a.indexprs IS NULL AND a.indnatts = a.indnkeyatts       -- no expressions, no INCLUDE
+      AND NOT EXISTS (SELECT 1 FROM pg_constraint k WHERE k.conindid = a.indexrelid)
+      AND pg_get_expr(a.indpred, a.indrelid) IS NOT DISTINCT FROM pg_get_expr(b.indpred, b.indrelid)
+      AND a.indnkeyatts <= b.indnkeyatts
+      AND string_to_array(a.indkey::text, ' ')::int2[]
+          = (string_to_array(b.indkey::text, ' ')::int2[])[1:a.indnkeyatts]
+      AND string_to_array(a.indclass::text, ' ')::oid[]
+          = (string_to_array(b.indclass::text, ' ')::oid[])[1:a.indnkeyatts]
+      AND string_to_array(a.indcollation::text, ' ')::oid[]
+          = (string_to_array(b.indcollation::text, ' ')::oid[])[1:a.indnkeyatts]
+      AND string_to_array(a.indoption::text, ' ')::int2[]
+          = (string_to_array(b.indoption::text, ' ')::int2[])[1:a.indnkeyatts]
+      AND (a.indnkeyatts < b.indnkeyatts OR b.indisunique OR a.indexrelid > b.indexrelid))
+SELECT p.tbl::regclass AS table_name, p.idx::regclass AS redundant_index,
+       left(string_agg(p.cover::regclass::text, ', ' ORDER BY p.cover::regclass::text), 120)
+           AS covered_by,
+       s.idx_scan, pg_size_pretty(pg_relation_size(p.idx)) AS size,
+       pg_get_indexdef(p.idx) AS restore_with
+FROM pair p
+LEFT JOIN pg_stat_all_indexes s ON s.indexrelid = p.idx
+GROUP BY p.tbl, p.idx, s.idx_scan
+ORDER BY pg_relation_size(p.idx) DESC;
+
+-- 4. Sequence-fed smallint/integer keys by range used (references/migration-patterns.md, worked example).
+SELECT c.oid::regclass AS table_name, a.attname AS column_name,
+       format_type(a.atttypid, a.atttypmod) AS type, s.last_value,
+       round(100.0 * s.last_value
+             / CASE a.atttypid WHEN 'int2'::regtype THEN 32767 ELSE 2147483647 END, 1) AS pct_used
+FROM pg_depend d
+JOIN pg_class sc ON sc.oid = d.objid AND sc.relkind = 'S'
+JOIN pg_namespace sn ON sn.oid = sc.relnamespace
+JOIN pg_sequences s ON s.schemaname = sn.nspname AND s.sequencename = sc.relname
+JOIN pg_class c ON c.oid = d.refobjid
+JOIN pg_attribute a ON a.attrelid = d.refobjid AND a.attnum = d.refobjsubid
+WHERE d.classid = 'pg_class'::regclass AND d.refclassid = 'pg_class'::regclass
+  AND d.deptype IN ('a', 'i')
+  AND a.atttypid IN ('int2'::regtype, 'int4'::regtype)
+ORDER BY pct_used DESC NULLS LAST;
+
+--    ...and foreign-key columns narrower than the key they reference.
+SELECT c.conrelid::regclass AS child_table, c.conname,
+       format_type(ca.atttypid, ca.atttypmod) AS child_type,
+       format_type(pa.atttypid, pa.atttypmod) AS parent_type
+FROM pg_constraint c
+CROSS JOIN LATERAL unnest(c.conkey, c.confkey) AS k(child_att, parent_att)
+JOIN pg_attribute ca ON ca.attrelid = c.conrelid AND ca.attnum = k.child_att
+JOIN pg_attribute pa ON pa.attrelid = c.confrelid AND pa.attnum = k.parent_att
+WHERE c.contype = 'f'
+  AND ca.atttypid IN ('int2'::regtype, 'int4'::regtype) AND pa.atttypid = 'int8'::regtype;
+
+-- 5. Float money (by name), the money type, timestamp without time zone (beside a zone column it
+--    may be a future local time).
+SELECT a.attrelid::regclass AS table_name, a.attname,
+       format_type(a.atttypid, a.atttypmod) AS type,
+       CASE WHEN a.atttypid = 'timestamp'::regtype
+            THEN EXISTS (SELECT 1 FROM pg_attribute z
+                         WHERE z.attrelid = a.attrelid AND z.attnum > 0 AND NOT z.attisdropped
+                           AND z.attname ~* '(zone|tz)') END AS has_zone_column
+FROM pg_attribute a
+JOIN pg_class c ON c.oid = a.attrelid
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'p') AND a.attnum > 0 AND NOT a.attisdropped
+  AND n.nspname !~ '^(pg_|information_schema$)'
+  AND (a.atttypid IN ('timestamp'::regtype, 'money'::regtype)
+       OR (a.atttypid IN ('real'::regtype, 'double precision'::regtype)
+           AND a.attname ~* '(amount|price|cost|total|balance|fee|tax|salary|revenue|payment|charge|refund)'))
+ORDER BY 1, 2;
+
+-- 6. RLS enabled but not forced, or policies with RLS off; then login roles that bypass RLS.
+--    Behind a generated API, also list each exposed schema's tables WHERE NOT relrowsecurity.
+SELECT c.oid::regclass AS table_name, c.relrowsecurity AS rls_enabled,
+       c.relforcerowsecurity AS rls_forced,
+       (SELECT count(*) FROM pg_policy p WHERE p.polrelid = c.oid) AS policies,
+       pg_get_userbyid(c.relowner) AS owner
+FROM pg_class c
+WHERE c.relkind IN ('r', 'p')
+  AND ((c.relrowsecurity AND NOT c.relforcerowsecurity)
+       OR (NOT c.relrowsecurity AND EXISTS (SELECT 1 FROM pg_policy p WHERE p.polrelid = c.oid)));
+
+SELECT rolname, rolsuper, rolbypassrls
+FROM pg_roles
+WHERE rolcanlogin AND (rolsuper OR rolbypassrls);
+
+-- 7. Primary keys defaulting to random UUIDv4 (keys generated in the application do not show).
+SELECT c.conrelid::regclass AS table_name, a.attname,
+       pg_get_expr(d.adbin, d.adrelid) AS default_expr
+FROM pg_constraint c
+JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+JOIN pg_attrdef d ON d.adrelid = a.attrelid AND d.adnum = a.attnum
+WHERE c.contype = 'p'
+  AND pg_get_expr(d.adbin, d.adrelid) ~ '(gen_random_uuid|uuid_generate_v4|uuidv4)\(';
+
+-- 8. Constraints added NOT VALID and never validated.
+SELECT conrelid::regclass AS table_name, conname, contype
+FROM pg_constraint
+WHERE NOT convalidated
+ORDER BY 1, 2;
+
+-- 9. Mostly-NULL columns (ANALYZE first).
+SELECT schemaname, tablename, attname, null_frac
+FROM pg_stats
+WHERE schemaname !~ '^(pg_|information_schema$)' AND null_frac > 0.5
+ORDER BY null_frac DESC
+LIMIT 20;
+
+-- 10. Largest relations, with bytes per row for sizing (NULL until ANALYZE).
+SELECT c.oid::regclass AS relation, c.reltuples::bigint AS est_rows,
+       pg_size_pretty(pg_table_size(c.oid)) AS table_and_toast,
+       pg_size_pretty(pg_indexes_size(c.oid)) AS indexes,
+       pg_size_pretty(pg_total_relation_size(c.oid)) AS total,
+       CASE WHEN c.reltuples >= 10000 THEN round(pg_table_size(c.oid) / c.reltuples) END AS bytes_per_row
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+WHERE c.relkind IN ('r', 'm')
+  AND n.nspname !~ '^(pg_|information_schema$)'
+ORDER BY pg_total_relation_size(c.oid) DESC
+LIMIT 20;
+
+-- 11. Pooled tenancy (tables with tenant_id; rename to yours): unique indexes other than the PK
+--     and FKs to tenant-owned parents that omit it, and tables without RLS.
+WITH t AS (
+    SELECT c.oid AS relid, a.attnum, c.relrowsecurity
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'tenant_id' AND NOT a.attisdropped
+    WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition
+      AND n.nspname !~ '^(pg_|information_schema$)'
 )
-ORDER BY pg_relation_size(s.indexrelid) DESC
-LIMIT 20;
-
--- 4. Table and index sizes
-SELECT
-    t.schemaname,
-    t.tablename,
-    pg_size_pretty(pg_total_relation_size(format('%I.%I', t.schemaname, t.tablename))) AS total_size,
-    pg_size_pretty(pg_relation_size(format('%I.%I', t.schemaname, t.tablename))) AS table_size,
-    pg_size_pretty(
-        pg_total_relation_size(format('%I.%I', t.schemaname, t.tablename)) -
-        pg_relation_size(format('%I.%I', t.schemaname, t.tablename))
-    ) AS index_size
-FROM pg_tables t
-WHERE t.schemaname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY pg_total_relation_size(format('%I.%I', t.schemaname, t.tablename)) DESC
-LIMIT 20;
-
--- 5. Dead tuples (tables needing VACUUM)
-SELECT
-    schemaname, relname,
-    n_live_tup,
-    n_dead_tup,
-    ROUND(n_dead_tup * 100.0 / NULLIF(n_live_tup + n_dead_tup, 0), 2) AS dead_pct,
-    last_vacuum,
-    last_autovacuum
-FROM pg_stat_user_tables
-WHERE n_dead_tup > 1000
-ORDER BY n_dead_tup DESC
-LIMIT 20;
-
--- 6. Slow queries (requires pg_stat_statements extension)
--- Enable: CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
--- counts are cumulative since the last pg_stat_statements_reset()/stats reset; interpret over a known window.
-SELECT
-    queryid,
-    calls,
-    ROUND(total_exec_time::NUMERIC, 2) AS total_ms,
-    ROUND(mean_exec_time::NUMERIC, 2) AS avg_ms,
-    ROUND(max_exec_time::NUMERIC, 2) AS max_ms,
-    rows,
-    LEFT(query, 100) AS query_preview
-FROM pg_stat_statements
-WHERE calls > 10
-ORDER BY mean_exec_time DESC
-LIMIT 20;
-
--- 7. Current locks and blocking
-SELECT a.pid AS blocked_pid,
-       a.query AS blocked_query,
-       b.pid AS blocking_pid,
-       b.query AS blocking_query,
-       now() - a.query_start AS blocked_duration
-FROM pg_stat_activity a
-JOIN LATERAL unnest(pg_blocking_pids(a.pid)) AS bp(pid) ON true
-JOIN pg_stat_activity b ON b.pid = bp.pid
-ORDER BY blocked_duration DESC;
-
--- 8. Columns with high null ratio (potential design issues)
-SELECT
-    s.schemaname, s.tablename, s.attname,
-    s.null_frac AS null_ratio,
-    s.n_distinct
-FROM pg_stats s
-WHERE s.schemaname NOT IN ('pg_catalog', 'information_schema')
-AND s.null_frac > 0.5
-ORDER BY s.null_frac DESC
-LIMIT 20;
-
--- 9. Column alignment check (identify potential padding waste)
--- Shows column order with type sizes for manual review
-SELECT
-    c.table_schema, c.table_name, c.column_name, c.ordinal_position,
-    c.data_type,
-    CASE
-        WHEN c.data_type IN ('bigint', 'double precision', 'timestamp with time zone', 'timestamp without time zone') THEN 8
-        WHEN c.data_type IN ('integer', 'real', 'date') THEN 4
-        WHEN c.data_type = 'uuid' THEN 16
-        WHEN c.data_type = 'smallint' THEN 2
-        WHEN c.data_type = 'boolean' THEN 1
-        ELSE -1  -- variable length
-    END AS type_storage_bytes
--- storage size, not alignment (uuid is 1-byte/char aligned despite 16-byte storage); ordinal_position omits dropped columns, so this is a heuristic — inspect pg_attribute for true on-disk layout.
-FROM information_schema.columns c
-WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
-ORDER BY c.table_schema, c.table_name, c.ordinal_position;
+SELECT t.relid::regclass AS table_name, 'unique without tenant_id' AS finding,
+       pg_get_indexdef(i.indexrelid) AS detail
+FROM t JOIN pg_index i ON i.indrelid = t.relid
+WHERE i.indisunique AND NOT i.indisprimary AND NOT (t.attnum = ANY (i.indkey))
+UNION ALL
+SELECT t.relid::regclass, 'FK without tenant_id', pg_get_constraintdef(f.oid)
+FROM t
+JOIN pg_constraint f ON f.conrelid = t.relid AND f.contype = 'f'
+JOIN t p ON p.relid = f.confrelid
+WHERE NOT (t.attnum = ANY (f.conkey))
+UNION ALL
+SELECT t.relid::regclass, 'RLS not enabled', NULL
+FROM t
+WHERE NOT t.relrowsecurity
+ORDER BY 1, 2;

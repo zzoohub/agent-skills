@@ -1,80 +1,41 @@
 # Ad Policy & Compliance
 
-Ad creative is the asset that platforms review and regulators scrutinize. Run a
-compliance pass on every ad **before** launch. This file covers FTC disclosure,
-platform prohibited/restricted content, regulated verticals, claims substantiation,
-and accessibility.
+Scope: ad-platform policy, AI-content labels and the evidence an ad claim needs, with their sources. The operative rules for writing sit in SKILL.md Stage 3. Related law has one dated home elsewhere, each if available: endorsements, testimonials and reference prices in the copywriting skill's persuasion psychology (`copywriting/references/psychology/guide.md`); trial and auto-renewal terms in churn-prevention's compliance reference; comparative claims and competitor facts in competitor-pages' claims reference. As of 2026-10; policies change, so verify on the live policy page before export.
 
-> This skill produces drafts. Final responsibility for compliance sits with the
-> advertiser; platform ad review and applicable law are the enforcing authorities.
-> When in doubt on a regulated vertical, tell the user to get legal/compliance review.
+> This skill produces drafts. The advertiser carries final responsibility; platform review and the law enforce. Flag regulated or novel questions for legal review: this file is not legal advice.
 
----
+## Personal attributes
 
-## 1. FTC Endorsement & Disclosure (US)
+Meta and TikTok reject copy that asserts or implies the viewer's health, finances, race or ethnicity, religion, sexual orientation and similar attributes. The test: does the line tell viewers something about themselves? "Managing diabetes?" still does; the rewrite pattern is in SKILL.md Stage 3.
 
-Applies whenever an ad uses a testimonial, creator, influencer, UGC, or any
-"real person" framing — i.e., the **UGC angle** and the **SSS framework** this skill
-produces.
+## Claims and evidence
 
-- **Disclose material connections** clearly and conspicuously. If the person was paid,
-  gifted product, or is an employee/affiliate, say so.
-- **Placement**: the disclosure must be hard to miss — *in the video itself* (not only
-  the caption), in the spoken audio for audio-only formats, and before any "See more"
-  truncation on social.
-- **Acceptable**: "#ad", "#sponsored", "Paid partnership with [brand]", the platform's
-  Paid Partnership label — though the FTC cautions a platform tool *alone* may not be
-  adequate; pair it with an in-creative disclosure. **Not acceptable**: "#sp", "#collab",
-  "thanks [brand]", or disclosures buried in a hashtag wall.
-- **Typicality**: results shown must be typical, or carry a clear "results not typical" /
-  "individual results vary" qualifier alongside the generally expected result.
+An ad's factual claims need evidence on file before it runs, of the kind and amount the claim implies: "clinically proven" implies clinical studies; "#1" a named ranking with its scope and date; "saves 4 hours a week" a measurement of typical users, with method and date; a rating, its platform, count and date, matching what a viewer would find. The advertiser's site, deck or word states a claim; it does not substantiate it. Ask for the underlying study, dataset, review export or test log, and record it in the Claims log (SKILL.md Stage 3). Health, money and earnings claims carry the heaviest burden. With no evidence by launch, cut the claim or recast it as something the brand can own without data ("we built it to…").
 
-## 2. Platform Prohibited & Restricted Content
+## Restricted claims and creative
 
-| Area | Common restriction |
-|------|--------------------|
-| Personal attributes | Meta/TikTok bar copy that asserts or implies a user's race, health, sexual orientation, religion, or financial status. Rewrite "Are YOU diabetic?" → "Managing diabetes?" |
-| Before/After | Restricted or banned for weight loss, health, and cosmetic claims; avoid idealized-body imagery |
-| Health & weight loss | No unrealistic outcomes, no "miracle" framing, no fear-based countdown timers |
-| Financial products | Restricted; no guaranteed-returns/income claims; many require licensing or platform authorization |
-| Dating, gambling, alcohol, CBD/supplements, crypto, political | Special-category or pre-authorization rules; targeting limits apply |
-| Misleading creative | No fake UI, fake close/play buttons, non-functional features, or deceptive claims/imagery |
+- **Before/after**: restricted or banned for weight loss, health and cosmetics; no idealized-body imagery.
+- **Health**: no unrealistic outcomes, "miracle" framing or fear-driven countdowns.
+- **Financial**: no guaranteed returns or income; many products need a licence or platform authorization.
+- **Misleading creative**: no fake UI, fake play or close buttons, or functions the product lacks.
+- **Alcohol, gambling, crypto, supplements, dating**: authorization and market rules vary; read each platform's policy page.
 
-## 3. Regulated Verticals
+## Special ad categories (Meta)
 
-Finance, health/medical, crypto, gambling, alcohol, supplements, and political ads
-often require pre-authorization, restricted targeting, and restricted claims. Note
-that **Meta Special Ad Categories** (housing, employment, financial products and
-services — the former "credit" category, broadened Jan 2025 — and social
-issues/elections/politics) remove age, gender, and ZIP targeting — which changes the
-creative angles available.
-Check category status **before** briefing, not after.
+Housing, employment, and financial products and services: age generally fixed to 18–65+, all genders, locations with at least a 15-mile/25-km radius (15 km in Europe), no lookalike audiences, no demographic or behavior targeting and no detailed-targeting exclusions. Targeting can no longer qualify the audience, so the creative does, by saying plainly who the offer is for, and it never states or implies a preference for or against any group. Source: developers.facebook.com/documentation/ads-commerce/marketing-api/audiences/special-ad-category.
 
-## 4. Claims Substantiation
+Political, electoral and social-issue ads need advertiser authorization in the country and a "paid for by" disclaimer. Meta stopped serving them in the EU from 2025-10-06, and Google stopped political ads in the EU ahead of the TTPA regulation in October 2025. Sources: about.fb.com/news/2025/07/ending-political-electoral-and-social-issue-advertising-in-the-eu/; blog.google/around-the-globe/google-europe/political-advertising-in-eu/.
 
-- Every factual claim (stats, "#1", "fastest", clinical, earnings) needs evidence on
-  file **before** it runs.
-- Earnings/income claims need disclaimers and substantiation; add "results not typical"
-  where applicable.
-- Comparative claims ("better than [competitor]") need support and invite legal challenge.
-- **Do not invent proof.** If the brief lacks a real number, mark it
-  `[INSERT REAL STAT — SUBSTANTIATE]` rather than fabricating one.
+## Synthetic media and AI labels
 
-## 5. Accessibility
+- **TikTok**: significantly AI-generated or AI-modified content (fully generated images, video or audio; a person shown doing or saying what they did not) carries the AIGC label or your own clear disclaimer; undisclosed AIGC ads are rejected or restricted. Minor edits such as lighting or background removal are exempt. Source: ads.tiktok.com/help/article/tiktok-ads-policy-misleading-and-false-content.
+- **Meta**: ads made or significantly edited with Meta's generative tools are labelled, beside "Sponsored" when a photorealistic person was generated; since a June 2026 update, ads that industry-standard signals mark as made with third-party AI tools get an "AI info" label in "About this ad". Source: about.fb.com/news/2025/02/gen-ai-transparency-metas-ads-products/.
+- **EU AI Act Art. 50**: whoever publishes a deepfake (realistic AI-generated or manipulated image, audio or video) must disclose it, from 2026-08-02. Source: artificialintelligenceact.eu/transparency-rules-article-50/.
+- **New York** (GBL §396-b, from 2026-06-09): an advertiser who knows an ad shows a synthetic performer (an AI-made human not recognizable as a real person) must disclose it conspicuously; audio-only ads and AI used only to translate a real performer are excluded. Source: nysenate.gov/legislation/laws/GBS/396-B.
+- **Other markets** (Korea, for one): check local AI-label and endorsement rules before export.
 
-- **Image ads**: provide alt text per platform.
-- **Video ads**: captions/subtitles required (also lifts watch time for the majority who
-  view sound-off).
-- **Legibility**: minimum text contrast and font size readable at mobile and banner sizes.
+## Creators
 
----
+Creator disclosure goes in the creative itself, on screen and spoken, before any truncation. "#ad", "#sponsored" and "Paid partnership with [brand]" pass; "#sp", "#collab", "thanks [brand]" or a tag buried in a hashtag wall do not. A platform's paid-partnership label alone may not be enough.
 
-## Compliance Pass Checklist (run before launch)
-
-- [ ] Material connection disclosed on UGC/creator/testimonial ads — #ad / Paid Partnership, in-creative
-- [ ] No prohibited personal-attribute language ("you are X")
-- [ ] Health / finance / before-after claims within platform rules
-- [ ] Special Ad Category checked for the vertical (targeting + claim limits)
-- [ ] Every claim has substantiation on file; typicality qualifier where needed
-- [ ] No fake urgency, fake UI, or deceptive imagery
-- [ ] Alt text + captions present; legible at target sizes
+Record per creator: the paid-usage term (platforms, regions, end date), the partnership or Spark authorization, edit rights, the disclosure, and audio licensed for ads. A trending sound in a creator's organic post is usually not licensed for an ad; on TikTok, businesses use the Commercial Music Library for ads and branded content (ads.tiktok.com/help/article/commercial-music-library-creators). When the usage term ends, the ad stops.

@@ -1,237 +1,45 @@
-# Koota ECS Reference
+# Koota ECS
 
-Koota is an archetype-based ECS (Entity Component System) state management library from the pmndrs ecosystem, optimized for real-time apps running at 60fps+. It uses the term **Trait** instead of "Component" to avoid confusion with UI framework components.
+R3F integration: `react/ecs.md`.
 
-> For React integration (WorldProvider, hooks, R3F patterns): `react/ecs.md`
+## When it pays off
 
-## Table of Contents
+Past SKILL.md's State row (roughly 1k+ entities, or many composable behaviors: status effects, AI states, pickups), or for game rules to unit-test without a renderer. Callback traits hold `Object3D`s a worker can't reach, so only pure-data systems may move to a worker, past the threshold in `threading.md`.
 
-1. [Core Concepts](#core-concepts)
-2. [Systems as Plain Functions](#systems-as-plain-functions)
-3. [Separating ECS from UI State](#separating-ecs-from-ui-state)
+Simulation state goes in Koota; menus, HUD and settings stay in the framework's store. Neither mirrors the other every frame.
 
+## Traits
 
-## Core Concepts
+- **Schema traits** (SoA storage) for numbers that change every frame: `const Position = trait({ x: 0, y: 0, z: 0 })`. `entity.get(Position)` returns a snapshot, so writing to it changes nothing; write through `updateEach` or `entity.set`.
+- **Callback traits** (AoS storage) for references: `const MeshRef = trait(() => null as THREE.Object3D | null)`, which returns the stored reference. It stays `null` until a view attaches a mesh, so consumers null-guard.
+- **Tags**: `trait()` with no data. **Singletons**: add a trait to the world itself (`world.add(Time)`, `world.set(Time, { delta })`).
 
-### World
+## Queries and change detection
 
-The top-level container for all entities.
+```ts
+const Changed = createChanged()
 
-```typescript
-import { createWorld } from 'koota'
-const world = createWorld()
-```
-
-World-level traits act as singletons (like Bevy's Resources):
-
-```typescript
-const GameClock = trait({ elapsed: 0, delta: 0 })
-world.add(GameClock)
-world.set(GameClock, { elapsed: totalTime, delta: dt })
-const clock = world.get(GameClock)
-```
-
-### Traits
-
-Traits are the building blocks of state. Three patterns:
-
-**Schema-based (SoA storage)** -- each property stored in its own array. `entity.get()` returns a snapshot.
-
-```typescript
-import { trait } from 'koota'
-
-const Position = trait({ x: 0, y: 0, z: 0 })
-const Velocity = trait({ x: 0, y: 0, z: 0 })
-const Health = trait({ current: 100, max: 100 })
-```
-
-**Callback-based (AoS storage)** -- stores the returned object as-is. `entity.get()` returns a reference.
-
-```typescript
-const MeshRef = trait(() => new THREE.Mesh())
-const Transform = trait(() => new THREE.Object3D())
-```
-
-**Tag (no data)** -- boolean marker.
-
-```typescript
-const IsPlayer = trait()
-const IsEnemy = trait()
-const IsDead = trait()
-```
-
-### Entities
-
-```typescript
-// Spawn with defaults
-const player = world.spawn(IsPlayer, Position, Velocity, Health)
-
-// Spawn with initial values
-const goblin = world.spawn(
-  IsEnemy,
-  Position({ x: 10, y: 5, z: 0 }),
-  Health({ current: 50, max: 50 })
-)
-
-// Entity methods
-entity.add(Trait)              // add a trait
-entity.add(Trait(initialData)) // add with data
-entity.remove(Trait)           // remove a trait
-entity.has(Trait)              // check
-entity.get(Trait)              // read data
-entity.set(Trait, data)        // write data
-entity.destroy()               // destroy entity
-entity.changed(Trait)          // flag as changed (for change detection)
-```
-
-### Queries
-
-```typescript
-// Basic query
-world.query(Position, Velocity)
-
-// Mutable iteration (auto change detection)
-world.query(Position, Velocity).updateEach(([pos, vel]) => {
-  pos.x += vel.x * delta
-  pos.y += vel.y * delta
-  pos.z += vel.z * delta
-})
-
-// Read-only iteration
-world.query(Position).readEach(([pos]) => {
-  console.log(pos.x, pos.y)
-})
-
-// Entity iteration
-world.query(IsPlayer, Position).forEach((entity) => {
-  const pos = entity.get(Position)
-})
-```
-
-**Query modifiers:**
-
-```typescript
-import { Not, Or } from 'koota'
-
-world.query(Position, Not(Velocity))     // exclude
-world.query(Or(Velocity, Renderable))    // either
-world.query(Position, Not(IsDead))       // combined
-```
-
-**Change detection:**
-
-```typescript
-import { createAdded, createRemoved, createChanged } from 'koota'
-
-const added = createAdded()
-const changed = createChanged()
-
-// Entities where Position was just added
-world.query(Position, added(Position)).forEach(entity => { /* ... */ })
-
-// Entities where Velocity changed
-world.query(changed(Velocity)).forEach(entity => { /* ... */ })
-```
-
-### Relations
-
-Build entity graphs (parent/child, likes, targets):
-
-```typescript
-import { relation } from 'koota'
-
-const ChildOf = relation()
-child.add(ChildOf(parent))
-
-// Query children of a specific parent
-world.query(ChildOf(parent)).forEach(child => { /* ... */ })
-
-// Wildcard removal (remove all targets of a relation)
-const Likes = relation()
-player.remove(Likes('*'))
-```
-
-**Relation options:**
-
-```typescript
-const ChildOf = relation({ exclusive: true })           // only one target
-const Owns = relation({ autoRemoveTarget: true })       // destroy target when source destroyed
-```
-
-**Ordered relations:**
-
-```typescript
-import { ordered } from 'koota'
-const OrderedChildren = ordered(ChildOf)
-const children = parent.get(OrderedChildren)
-children.push(newChild)
-children.splice(1, 1)
-children.moveTo(0, 2)
-```
-
-### Event Subscriptions
-
-Lifecycle hooks are registered on the **world** (not the trait) and return an unsubscribe function:
-
-```typescript
-const unsubAdd = world.onAdd(Position, (entity) => { /* after trait added */ })
-const unsubRemove = world.onRemove(Position, (entity) => { /* before trait removed */ })
-const unsubChange = world.onChange(Position, (entity) => { /* after set() or changed() */ })
-
-unsubAdd() // stop listening
-```
-
-### createActions
-
-The recommended way to define world mutations:
-
-```typescript
-import { createActions } from 'koota'
-
-export const actions = createActions((world) => ({
-  spawnPlayer: () => world.spawn(
-    IsPlayer, Position({ x: 0, y: 0, z: 0 }), Velocity, Health({ current: 100, max: 100 })
-  ),
-  spawnEnemy: (x: number, z: number) => world.spawn(
-    IsEnemy, Position({ x, y: 0, z }), Health({ current: 50, max: 50 })
-  ),
-  destroyAllEnemies: () => {
-    world.query(IsEnemy).forEach(e => e.destroy())
-  },
-}))
-```
-
-## Systems as Plain Functions
-
-Koota has no built-in system scheduler. Systems are plain functions called in order:
-
-```typescript
-// systems/movement.ts
-export function movementSystem(world: World, delta: number) {
-  world.query(Position, Velocity).updateEach(([pos, vel]) => {
-    pos.x += vel.x * delta
-    pos.y += vel.y * delta
-    pos.z += vel.z * delta
-  })
+let dt = 0
+const move = ([p, v]) => { p.x += v.x * dt; p.y += v.y * dt; p.z += v.z * dt } // created once, not per frame
+export function movementSystem(world: World, step: number) {
+  dt = step
+  world.query(Position, Velocity, Not(IsFrozen)).updateEach(move)
 }
 
-// systems/cleanup.ts
-export function cleanupSystem(world: World) {
-  world.query(IsDead).forEach(e => e.destroy())
-}
+// a change-detected sync: only entities whose Position changed since the last run
+world.query(Changed(Position), MeshRef).readEach(([p, mesh]) => { mesh?.position.set(p.x, p.y, p.z) })
 ```
 
-Execution order matters -- call systems in the right sequence inside your game loop.
+- `updateEach` writes back and emits change events for traits tracked by `Changed` or `onChange` (`{ changeDetection: 'never' | 'always' }` overrides); `readEach` never writes. Detection is shallow: mutating an object or array value in place needs `entity.changed(Trait)`.
+- `world.onAdd` / `onRemove` / `onChange(Trait, fn)` return an unsubscribe function; call it on teardown.
+- One sync system copies ECS state into the scene graph; nothing else writes those transforms. `Changed` suits state that snaps; interpolated entities sync every frame, since `t` moves on frames without a step.
 
-## Separating ECS from UI State
+## Relations
 
-```typescript
-// Game/simulation state -- Koota
-const Position = trait({ x: 0, y: 0, z: 0 })
-const Health = trait({ current: 100, max: 100 })
+- `relation({ exclusive: true })` allows one target per source (a parent).
+- Cleanup: `autoDestroy: 'orphan'` destroys sources when their target is destroyed (hierarchies); `autoDestroy: 'target'` destroys targets when their source is destroyed (a container's items). `autoRemoveTarget` is deprecated.
+- `ordered(ChildOf)` keeps an ordered child list; spawn the parent with it first: `const parent = world.spawn(OrderedChildren)`, then `parent.get(OrderedChildren)`.
 
-// UI state (menus, HUD, settings) -- use your framework's state management
-// React: Zustand, Solid: createSignal, Svelte: writable store
-```
+## Loop
 
-Koota excels at many entities updated every frame. Framework state excels at simple event-driven UI state. They coexist cleanly.
+Systems are plain functions, and their order is a design decision. One `frame(world, dt)` runs input (devices → intent traits), the simulation systems on the fixed-step accumulator (`physics.md` § Main-thread loop), the sync into the scene graph, and last the cleanup of dead entities.

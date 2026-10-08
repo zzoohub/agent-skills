@@ -1,28 +1,25 @@
 ---
-title: Use Activity Component for Show/Hide
-impact: MEDIUM
-impactDescription: preserves state/DOM
+title: Preserve Toggled UI with Activity
 tags: rendering, activity, visibility, state-preservation
 ---
 
-## Use Activity Component for Show/Hide
-
-Use React's `<Activity>` (stable from React 19.2) to preserve state/DOM for expensive components that frequently toggle visibility.
-
-**Usage:**
+`<Activity>` (React 19.2+) hides a subtree without unmounting it, so its state and DOM survive while hidden. Use it for expensive tabs, panels or menus that users switch back to often.
 
 ```tsx
 import { Activity } from 'react'
 
-function Dropdown({ isOpen }: Props) {
+function Tabs({ tab }: { tab: 'feed' | 'settings' }) {
   return (
-    <Activity mode={isOpen ? 'visible' : 'hidden'}>
-      <ExpensiveMenu />
-    </Activity>
+    <>
+      <Activity mode={tab === 'feed' ? 'visible' : 'hidden'}><Feed /></Activity>
+      <Activity mode={tab === 'settings' ? 'visible' : 'hidden'}><Settings /></Activity>
+    </>
   )
 }
 ```
 
-Avoids expensive re-renders and state loss. While hidden, the children's Effects are unmounted (cleanups run) and their updates are deferred; they re-mount when the Activity becomes visible again.
+While hidden, the subtree's Effects are cleaned up and its updates are deferred; the Effects run again when it becomes visible. Anything that must stop while hidden (media playback, timers) belongs in an Effect with a cleanup.
 
-Reference: [React `<Activity>`](https://react.dev/reference/react/Activity)
+*Break:* hidden trees keep their DOM and memory. Don't keep many heavy or rarely revisited panels alive; unmount those.
+
+Source: https://react.dev/reference/react/Activity

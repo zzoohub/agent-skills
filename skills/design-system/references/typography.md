@@ -1,100 +1,54 @@
-# Typography System
+# Typography
 
-## Font Stack
+## Families and Weights
 
-```json
-{
-  "fontFamily": {
-    "sans":  { "$value": "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif", "$type": "fontFamily" },
-    "mono":  { "$value": "'JetBrains Mono', 'Fira Code', 'SF Mono', monospace", "$type": "fontFamily" }
-  }
-}
-```
+- `fontFamily.sans` `["Inter", "system-ui", "sans-serif"]`; `fontFamily.mono` `["JetBrains Mono", "ui-monospace", "Menlo", "monospace"]` (arrays, so tools quote each name).
+- `fontWeight` (`$type: fontWeight`): normal 400, medium 500, semibold 600, bold 700.
 
-Inter is the default recommendation — it has optical sizing, variable weight support, and excellent screen readability. Replace with project's brand font; the scale below stays the same.
+A brand font replaces Inter without changing the scale. Inter has no CJK glyphs: each shipped language gets its family after Inter (`Pretendard`, `Noto Sans JP`, `Noto Sans SC`) and a looser body line-height (1.5–2.0×, per JLREQ), set per language in the theme layer (`:root:lang(ja) { … }`), never per component. One shared CJK fallback renders Japanese with Chinese glyph forms, or the reverse. CJK fonts carry no true italics; emphasize with weight.
 
-**Non-Latin scripts:** Inter carries no CJK glyphs — shipping ko/ja/zh means
-adding a per-script family to the stack (e.g. `'Inter', 'Pretendard'` for
-Korean, `'Noto Sans JP'`/`'Noto Sans SC'` for ja/zh) so CJK doesn't fall to
-system default while Latin renders Inter. CJK body text also wants looser
-line-height (~1.7× vs the Latin-calibrated values below — dense ideographs
-need the air) and no italic styling (CJK fonts don't carry true italics).
-Keep the scale's size steps; override `lineHeight` per script via a theme
-layer, not per component.
+## Scale
 
-## Type Scale
+| Style | rem (px) | Line height | Weight | Use |
+|---|---|---|---|---|
+| `display` | 1.875 (30) | 1.2 | bold | hero |
+| `heading.lg` | 1.5 (24) | 1.333 | semibold | page title |
+| `heading.md` | 1.25 (20) | 1.4 | semibold | section title |
+| `heading.sm` | 1 (16) | 1.5 | semibold | card title |
+| `body.lg` | 1.125 (18) | 1.556 | normal | long-form |
+| `body.md` | 1 (16) | 1.5 | normal | default |
+| `body.sm` | 0.875 (14) | 1.429 | normal | secondary |
+| `caption` | 0.75 (12) | 1.333 | medium | labels, metadata |
+| `code` | 0.875 (14) | 1.429 | normal, mono | code |
 
-Named styles, not raw sizes. Every text element in the UI maps to one of these.
+Each style is one composite token; rem sizes follow the user's font setting.
 
 ```json
 {
-  "typography": {
-    "display": {
-      "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "30px", "lineHeight": "36px", "fontWeight": "{fontWeight.bold}", "letterSpacing": "-0.025em" },
-      "$type": "typography"
-    },
+  "type": {
     "heading": {
       "lg": {
-        "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "24px", "lineHeight": "32px", "fontWeight": "{fontWeight.semibold}", "letterSpacing": "-0.02em" },
-        "$type": "typography"
-      },
-      "md": {
-        "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "20px", "lineHeight": "28px", "fontWeight": "{fontWeight.semibold}", "letterSpacing": "-0.015em" },
-        "$type": "typography"
-      },
-      "sm": {
-        "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "16px", "lineHeight": "24px", "fontWeight": "{fontWeight.semibold}", "letterSpacing": "-0.01em" },
-        "$type": "typography"
+        "$type": "typography",
+        "$value": {
+          "fontFamily": "{fontFamily.sans}",
+          "fontSize": "1.5rem",
+          "fontWeight": "{fontWeight.semibold}",
+          "lineHeight": 1.333
+        }
       }
-    },
-    "body": {
-      "lg": {
-        "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "18px", "lineHeight": "28px", "fontWeight": "{fontWeight.normal}", "letterSpacing": "0" },
-        "$type": "typography"
-      },
-      "md": {
-        "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "16px", "lineHeight": "24px", "fontWeight": "{fontWeight.normal}", "letterSpacing": "0" },
-        "$type": "typography"
-      },
-      "sm": {
-        "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "14px", "lineHeight": "20px", "fontWeight": "{fontWeight.normal}", "letterSpacing": "0" },
-        "$type": "typography"
-      }
-    },
-    "caption": {
-      "$value": { "fontFamily": "{fontFamily.sans}", "fontSize": "12px", "lineHeight": "16px", "fontWeight": "{fontWeight.medium}", "letterSpacing": "0.02em" },
-      "$type": "typography"
-    },
-    "code": {
-      "$value": { "fontFamily": "{fontFamily.mono}", "fontSize": "14px", "lineHeight": "20px", "fontWeight": "{fontWeight.normal}", "letterSpacing": "0" },
-      "$type": "typography"
     }
   }
 }
 ```
 
-## Responsive Typography
+Tracking is its own token (`tracking.tight` −0.02em for headings, `tracking.wide` 0.02em for captions): em scales with the size, and strict DTCG allows only px or rem inside a typography composite. React Native receives the em string; multiply it by the style's font size. A new scale picks its ratio by density (about 1.2 for dense apps, 1.25–1.333 for content) and snaps each step to whole pixels at a 16px root; a missing size goes through token admission, never a one-off.
 
-Display and heading sizes adapt to the viewport. Body text stays the same — 16px is readable everywhere.
+## Fluid Sizes
 
-### Web (CSS clamp)
+Only display and heading styles scale with the viewport. The web overrides the generated size after importing it; React Native keeps the token size.
 
 ```css
-:root {
-  --typography-display-fontSize: clamp(24px, 4vw, 30px);
-  --typography-heading-lg-fontSize: clamp(20px, 3vw, 24px);
-  /* body sizes stay fixed */
-}
+:root { --ds-type-display-font-size: clamp(1.5rem, 1.2rem + 1.5vw, 1.875rem); }
 ```
 
-### React Native
-
-> See `references/react-native/typography.md` for responsive typography hook and font loading. (also linked directly from SKILL.md)
-
-> **Cross-platform note:** The two platforms scale type in opposite directions relative to the token. On web, `clamp(24px, 4vw, 30px)` treats the 30px token as the desktop **ceiling** and shrinks toward 24px on small viewports. On React Native, the 30px token is the phone **baseline** and tablets bump it up ~10%. So the same named token does not render at an identical px on every platform/breakpoint — the token defines the reference size, not a fixed rendered size. If you need pixel parity across platforms, pick one convention per token (e.g. treat 30px as the desktop/tablet ceiling everywhere and step phones down).
-
-## Usage Principle
-
-If you're setting a `fontSize` that isn't from the type scale, stop and ask: does the scale need a new entry, or does an existing entry actually fit?
-
-Extend the scale when a legitimate new use case appears (e.g., pricing display, stat counter). Don't create one-off sizes for margin cases.
+Rem bounds follow the user's font setting, and the rem term keeps the middle responsive to zoom, which pure `vw` is not. Keep the maximum at or under 2.5× the minimum so 200% zoom still doubles the text (WCAG 1.4.4).

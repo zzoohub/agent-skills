@@ -1,257 +1,87 @@
 # A/B Test Results Analysis
 
-**Layer:** experiment **analysis** (significance testing, segments, novelty, revenue impact, ratio metrics). For experiment **design** (hypothesis, sample size, variant build, ramp), use the **cro** skill.
+**Layer:** experiment **analysis** only; design (sizing, ramp, the test card) belongs to the **cro** skill, if available.
 
-## Table of Contents
+## 1. Read the Design Record
 
-1. [When to Use This Reference](#when-to-use-this-reference)
-2. [Analysis Framework](#analysis-framework)
-3. [Statistical Rigor](#statistical-rigor)
-4. [Common Pitfalls](#common-pitfalls)
-5. [PostHog Experiment Analysis](#posthog-experiment-analysis)
-6. [Experiment Report Template](#experiment-report-template)
+Start from the test card in the experiment log (default `biz/growth/experiments.md`; caller may redirect). Its pre-registered Ship / Iterate / Kill rule governs the call; §4 is the default when the card has none.
 
+α belongs to the card, never to the analysis: stricter (e.g. 0.01) for one-way or high-stakes changes such as pricing, looser only for cheap, reversible calls. No record → assume α 0.05 two-sided, 80% power, the change's target outcome as primary and revenue per user as guardrail; state the MDE and margin you assumed, and label the readout "exploratory: no pre-registered design".
 
-## When to Use This Reference
+Sanity-check power: n per arm ≈ 16·p(1−p)/δ² at 80% power and α 0.05, with δ the absolute MDE; a holdout beside a far larger treated arm needs ≈ 8·p(1−p)/δ² by itself. An underpowered test can't show "no effect", only "inconclusive".
 
-Use when analyzing experiment results from PostHog (or any A/B testing tool). This covers the analysis methodology — experiment design and setup is handled by the **cro** skill.
+## 2. Validity Before Results
 
----
+- **Sample ratio mismatch (SRM):** chi-square on assignment counts against the planned split, at a strict threshold (p < 0.0005–0.001; Microsoft's platform uses 0.0005). The raw ratio can't tell: 48/52 is noise at 1,000 users and a bug at 100,000. SRM invalidates the readout: find the cause (assignment after filtering, bots, a redirect dropping one arm), fix, rerun.
+- **Pre-period balance** (returning units): compare the arms on the primary metric over the 2 weeks before exposure. A gap comparable to the measured effect means a bucketing bug or carry-over from an earlier test on the same buckets: re-salt the assignment and rerun.
+- **Exposure rule:** when exposure rates match by arm (next bullet), use the platform's readout. A hand-written query must replicate it: assign at first exposure, exclude units that saw several variants, count outcomes only after exposure.
+- **Assigned → exposed, per arm:** count eligible, assigned and exposed units in each arm and account for every assigned-but-unexposed unit (never returned, became ineligible, logging gap). Control must log the trigger counterfactually, where it would have seen the change. Exposure rates differing by arm (test them like SRM) mean the treatment changed who reaches the trigger: make all assigned units (intent-to-treat) the primary read and the exposed-only cut secondary.
+- **A primary the treatment prompts:** when the variant itself asks for the primary's action (an invite prompt read on invites sent, a banner read on its own clicks), the primary rises by construction. Read the next downstream step (invites accepted, activated invitees, repeat use) per assigned unit in both arms; if it doesn't move, report the primary's lift as mechanical and decide on the downstream step, noting the deviation from the card.
+- **Unit and interference:** analyze at the randomization unit (account, inviter or cluster: cluster-robust errors or per-cluster aggregates). Marketplaces, social and referral features leak treatment across arms: flag it; the design should randomize by cluster or switchback.
+- **Runtime:** whole weeks at the fixed split; ramp days excluded, since a split that changes mid-test confounds time with arm.
 
-## Analysis Framework
+## 3. Looking Early
 
-Follow this sequence for every experiment. Skipping steps leads to bad shipping decisions.
+Before the planned n, stop only for harm or bugs (SRM, a guardrail past its margin, errors); an interim CI spanning 0 and the MDE means keep running, not Iterate. Never stop early for a win unless the design is sequential with a pre-registered boundary: stopping at the first p < 0.05 on daily looks multiplies false wins.
 
-### 1. Check Prerequisites
+"Keep running" is not the whole interim read. Pre-commit the call for each plausible final CI (template), so a flat ending can't be recast as a win later, and name what an early rollout would disturb: control units still inside their outcome window (switched mid-window, so their outcomes mix both arms), the planned n and α, the novelty read, guardrail power, and other tests on the same users. A rollout that can't wait keeps a holdout.
 
-Before looking at results:
+## 4. Decide From the Primary CI
 
-- **Minimum sample size reached?** Check against the sample size the experiment *pre-committed at design time* (the cro skill's experiments reference owns the design table). The required n depends heavily on the baseline rate: n per variant ≈ 16·p(1−p)/(absolute MDE)² at 80% power. The often-quoted "~1,600 per variant for a 10% lift" holds only at a ~50% baseline — at a 5% baseline the same relative lift needs ~32,000 per variant.
-- **Minimum runtime reached?** At least 1 full business cycle (7 days minimum, 14 days recommended). Weekend behavior often differs from weekday.
-- **No data quality issues?** Check for logging errors, bot traffic, assignment imbalance between variants.
+| Primary-metric CI at the planned n | Default call |
+|---|---|
+| Lower bound > 0; every guardrail shown non-inferior | **Ship** (point estimate below the MDE: a maintenance-cost call, ship only if ~free to maintain) |
+| Inside ±MDE, containing 0 | **Kill**: no meaningful effect. Keeping the change anyway is a product decision on standalone value against maintenance cost, never reported as a win |
+| Contains 0 and reaches past ±MDE | **Iterate**: inconclusive; keep control, rerun bolder or larger as a new test, never extend this one |
+| Upper bound < 0 | **Kill**; record what was learned |
+| Any guardrail's CI reaches past its margin | Don't ship, whatever the primary says: **Iterate** if the harm is fixable, else **Kill** (unpowered guardrail: §5) |
 
-If any of these fail, stop. Do not analyze partial results — that's "peeking" and it inflates false positive rates.
+## 5. Metric Family
 
-### 2. Primary Metric Analysis
+- The primary metric decides, uncorrected in a two-arm test. Pre-registered arms against control are a confirmatory family: control the family-wise error across them (Holm, or Dunnett) and decide without a rerun.
+- Guardrails get one-sided non-inferiority tests against their margins. A guardrail whose CI half-width exceeds its margin at the planned n was never powered: write "guardrail unpowered" and ship only a reversible change, holding out a slice after launch to watch that metric.
+- Secondary metrics explain the mechanism; they never rescue a flat primary.
+- Unplanned segments and arms are exploratory: correct with Benjamini–Hochberg, then confirm with a rerun. Segments belong in the card; a segment win inside a flat total is a hypothesis.
+- A test that can't be powered ramps on guardrails only and is reported as directional.
 
-Answer: **Did the variant beat control on the primary metric?**
+## 6. Statistics That Change the Call
 
-| Result | Interpretation | Action |
-|--------|---------------|--------|
-| Significant improvement (p < 0.05) | Variant is better | Proceed to secondary analysis |
-| Significant decline (p < 0.05) | Variant is worse | Kill the variant |
-| Not significant | Inconclusive | If the pre-committed sample/duration was reached, accept the null — don't extend a running test to chase significance (that reintroduces peeking). If it never reached its planned N, let it finish first. |
+- **Ratio metrics** (analysis unit ≠ randomization unit, e.g. clicks per session or average order value with users randomized): delta method, or a bootstrap by randomization unit. Revenue per user, randomized by user, is a per-unit mean: a t-test is valid; cap its heavy tail at a pre-registered percentile (p99–p99.9), and CUPED (a pre-period covariate) can then cut the remaining variance.
+- **Sequential** designs: read their always-valid intervals, wider at any given n than fixed-horizon ones.
+- **Bayesian** readouts: "chance to win" is not an effect size. Read the credible interval against the MDE like a CI; stopping the first day the probability crosses 95% inflates false wins like p-value peeking. Note which engine the platform ran.
 
-**Report both**:
-- **Statistical significance**: p-value or confidence interval
-- **Practical significance**: Is the effect size meaningful? A 0.3% improvement might be statistically significant with enough users but practically meaningless.
+## 7. Novelty and Change Aversion
 
-### 3. Secondary Metrics
+Plot lift by days since first exposure, split new vs existing users. New users, who never saw control, lifting like existing ones → not novelty. Existing users negative, then recovering → change aversion: wait before calling. Under 2 weeks of exposure → write "novelty unassessed".
 
-Check for unexpected side effects:
+## 8. Revenue Impact
 
-- Did the variant improve conversion but decrease retention?
-- Did it improve signup but decrease activation?
-- Did it improve one metric while degrading revenue?
+- Size impact on the triggered population (users who saw the change), with revenue per converting user for conversion lifts and the post-novelty lift (§7), never the whole-run average.
+- Commit to the CI's lower bound: a winning test's point estimate is inflated (winner's curse).
+- Recompute the lift without the top contributors (the top 1% of units by the metric, or the largest accounts): a lift that vanishes without them is theirs, not the population's; name them.
+- A lift above 2× the planned MDE → check instrumentation first (Twyman's law).
+- Never sum test wins into a forecast; a standing holdout measures cumulative impact.
 
-Secondary metric movements don't need to be statistically significant to be concerning — if you see a trend, note it.
+## 9. Holdout and Creative Readouts
 
-### 4. Segment Analysis
-
-Does the effect differ across user segments?
-
-Priority segments to check:
-- **New vs. returning users** — New users respond differently to changes
-- **Acquisition channel** — Organic vs. paid users may react differently
-- **Device type** — Desktop vs. mobile
-- **Plan tier** — Free vs. paid users
-- **Geography** — If relevant to the product
-
-A segment-level win can hide in an overall null result. An overall win might be driven by only one segment.
-
-### 5. Novelty Check
-
-Compare **week 1 lift vs. week 2+ lift**.
-
-- If week 1 lift > week 2+: Novelty effect. The improvement will fade. Be cautious about shipping. (Heuristic: week-2+ lift below ~half of week-1 = treat as novelty; smaller gaps are usually noise.)
-- If week 1 lift ≈ week 2+: Sustained effect. Safe to ship.
-- If week 1 lift < week 2+: Compound effect. Even better — the improvement grows with time.
-
-### 6. Revenue Impact Estimation
-
-Annualize the observed effect:
-
-```
-Daily revenue impact = (Variant conversion rate - Control conversion rate) × Daily traffic × revenue per conversion
-Annual revenue impact = Daily impact × 365
-```
-
-Use revenue per *converting* user (ARPPU/first-order value), not blended ARPU, and annualize the
-sustained post-novelty lift, not week-1. Include confidence intervals. The point estimate is rarely
-the actual outcome.
-
-### 7. Final Recommendation
-
-One of three:
-
-| Decision | When |
-|----------|------|
-| **Ship** | Significant improvement on primary metric, no negative secondary effects, effect is sustained past week 1 |
-| **Iterate** | Promising direction but effect is small, or secondary metrics are concerning. Design a follow-up experiment. |
-| **Kill** | No improvement or negative impact. Document learnings and move on. |
-
----
-
-## Statistical Rigor
-
-### Significance Threshold
-
-- Standard: **p < 0.05** (95% confidence)
-- For high-stakes changes (pricing, core flow): **p < 0.01** (99% confidence)
-- For quick iteration tests: **p < 0.10** (90% confidence) is acceptable if you're running many small experiments
-
-### Multiple Comparisons
-
-If testing multiple metrics or segments, apply **Bonferroni correction**:
-
-```
-Adjusted threshold = 0.05 / number of comparisons
-```
-
-Testing 5 metrics? Each needs p < 0.01 to claim significance at the 0.05 family-wise level.
-
-### Confidence Intervals Over P-Values
-
-Report confidence intervals, not just p-values. A CI of [+2%, +15%] tells you more than "p = 0.03". It shows the range of plausible effect sizes.
-
-### Ratio Metrics Need the Delta Method
-
-Standard tests assume one independent observation per randomization unit. Ratio metrics violate
-that — revenue per user (heavy-tailed spend), clicks per *session* when you randomized by *user*,
-AOV — so naive per-row t-tests understate variance and inflate false positives. Approximate the
-ratio's variance with the **delta method** (or bootstrap by randomization unit), and winsorize
-heavy-tailed revenue metrics before testing.
-
-### Sequential Testing Caution
-
-If using PostHog's experiment tool with sequential testing (which allows checking results before the experiment ends):
-- Sequential testing controls for peeking, so it's safe to check early
-- However, stopping early reduces power — you might miss real effects
-- If the experiment doesn't reach significance early, let it run to full sample size
-
----
-
-## Common Pitfalls
-
-### Peeking Without Sequential Testing
-Checking results daily and stopping when significant inflates false positives from 5% to 20-30%. Either use sequential testing or commit to a fixed sample size upfront.
-
-### Stopping at First Significance
-Statistical significance can fluctuate. A result that's significant at day 5 might not be at day 10. Always run for the pre-committed duration.
-
-### Ignoring Practical Significance
-A 0.1% conversion improvement with p = 0.02 on a page with 100 visitors/day = 0.1 additional conversions/day. Probably not worth the complexity of maintaining the variant.
-
-### Not Accounting for Seasonality
-An experiment running only on weekdays or only during a holiday period may not generalize. Ensure the test period covers at least one full business cycle.
-
-### Testing Too Many Things Simultaneously
-Each concurrent experiment risks interaction effects. If experiments A and B both affect the signup flow, their combined effect may differ from either alone. Limit concurrent experiments on the same user flow.
-
-### SRM (Sample Ratio Mismatch)
-Run a chi-squared test on the assignment counts — **p < 0.001 means SRM** (the standard threshold).
-The raw ratio alone can't tell: 48/52 is normal noise at 1,000 users and a screaming bug at 100,000.
-On SRM, check:
-- Is the assignment happening before any filtering?
-- Are bots being assigned unevenly?
-- Is there a redirect that drops users from one variant?
-
-SRM invalidates the entire experiment. Fix the bug before re-running.
-
----
-
-## PostHog Experiment Analysis
-
-### Reading PostHog Results
-
-PostHog experiments show:
-- **Win probability**: Bayesian probability that a variant beats control (>95% = significant)
-- **Credible interval**: Range of plausible effect sizes
-- **Trend over time**: How the metric changed during the experiment
-
-Bayesian is PostHog's default; its newer experimentation engine also offers a **frequentist mode**
-(selectable per experiment or org-wide). The >95% win-probability bar applies to the default
-Bayesian readout.
-
-### Using PostHog for Analysis
-
-Via a PostHog capability (MCP tools or the UI), if available:
-
-| Analysis | PostHog Feature | How |
-|----------|----------------|-----|
-| Get experiment results | **Experiments** (results readout) | Retrieve results by experiment ID |
-| Custom metric analysis | **HogQL** | Filter events by feature flag variant |
-| Segment analysis | **HogQL** breakdown | Break down experiment events by user properties |
-| Retention impact | **Retention** insight / HogQL | Compare D7/D30 retention between variants |
-
-### HogQL for Custom Experiment Analysis
-
-```sql
--- Compare conversion rate between variants.
--- Filter on the $feature/<flag-key> property: PostHog stamps it on every event sent
--- while the flag is active. ($feature_flag / $feature_flag_response exist only on
--- $feature_flag_called events — filtering on those would exclude all conversion events.)
-SELECT
-  properties['$feature/experiment-key'] AS variant,
-  COUNT(DISTINCT person_id) AS users,
-  COUNT(DISTINCT CASE WHEN event = 'purchase_completed' THEN person_id END) AS conversions,
-  ROUND(
-    COUNT(DISTINCT CASE WHEN event = 'purchase_completed' THEN person_id END) * 100.0 /
-    COUNT(DISTINCT person_id), 2
-  ) AS conversion_rate
-FROM events
-WHERE properties['$feature/experiment-key'] IN ('control', 'test')
-  AND timestamp >= '2025-01-01'
-GROUP BY variant
-```
-
----
+- **Program holdouts** (lifecycle email, save offers, referral programs): lift = treated − holdout on the program's primary outcome per eligible unit, with a CI, at the planned horizon.
+- **Referral programs:** tracked referrals include word of mouth that would have come anyway; the true effect is on total signups, readable only under cluster randomization (market, company domain, team). With an inviter-level holdout, record attribution the same way in both arms (unrewarded share links, "who referred you?") and compare referred signups per eligible user.
+- **Ad creative tests:** platform split tests suffer divergent delivery — each creative reaches a different audience mix, so the winner is creative plus audience (Braun & Schwartz, Journal of Marketing, 2025): the right pick for that platform and campaign setup, but no evidence that the message works elsewhere. To test the message itself, randomize who sees it (a landing-page or email test). Read cost per outcome with CIs, then the cohort quality each creative brought (`utm_content`; retention reference § Channel Quality).
 
 ## Experiment Report Template
 
-Store in the analytics reports dir (default `biz/analytics/reports/{experiment-name}-results.md`; caller may redirect):
+Output: `reports/{experiment}-results.md` in the analytics dir (default `biz/analytics/`; caller may redirect).
 
 ```markdown
-# Experiment: [Name]
-
-## Summary
-- **Hypothesis**: [If we do X, then Y will improve by Z%]
-- **Primary metric**: [Metric name]
-- **Duration**: [Start] — [End] ([N] days)
-- **Sample size**: Control: [N], Variant: [N]
-- **Result**: Ship / Iterate / Kill
-
-## Results
-
-| Metric | Control | Variant | Δ | Significance |
-|--------|---------|---------|---|--------------|
-| Primary: [name] | X% | Y% | +Z% | p = 0.XX / CI [a%, b%] |
-| Secondary: [name] | | | | |
-
-## Segment Analysis
-[Notable segment differences]
-
-## Novelty Check
-- Week 1 lift: +X%
-- Week 2+ lift: +Y%
-- Assessment: Sustained / Novelty effect
-
-## Revenue Impact
-- Estimated annual impact: $X (CI: $Y — $Z)
-
-## Learnings
-[What did we learn, regardless of result?]
-
-## Next Steps
-[Ship as-is / Design follow-up / Move to next experiment]
+# Experiment: [name] — [Ship | Iterate | Kill | interim: no call] ([card rule | default: CI vs MDE])
+<!-- ≤300 words + the results table and queries; decision first; sections are a menu: omit what doesn't apply, heading included -->
+**Decision:** [call] — confidence [high | med | low: SKILL.md scale], because [one line]
+**Design:** [card link] · unit · primary · α · MDE · planned vs actual n · dates · [pre-registered | exploratory]
+**Validity:** SRM p = [x] · eligible → assigned → exposed per arm · pre-period balance · exposure rule · runtime · interference [none | flagged] · primary prompted by the treatment [no | downstream step per arm]
+| Metric | Role | Control | Variant | Δ (95% CI) | MDE / margin | Read |
+**Segments:** [pre-specified; anything else labeled exploratory]
+**Novelty:** [by days since exposure | unassessed (<2 weeks)]
+**Impact:** [triggered population, post-novelty lift; CI lower bound per year; without the top contributors]
+**Interim: final CI → call:** [lower bound > 0 → … · inside ±MDE → Kill; keeping it is a maintenance-cost call, not a win · spans 0 and past ±MDE → Iterate as a new test · upper bound < 0 → … · a guardrail past its margin → don't ship] · an early rollout would disturb: [control units mid-window, n, novelty read, guardrails, other tests]
+**Learning and next step:** [what we learned] · [ship | rerun bolder or larger | remove; flat or sub-MDE → keep only for standalone value worth its upkeep] — owner, date
 ```

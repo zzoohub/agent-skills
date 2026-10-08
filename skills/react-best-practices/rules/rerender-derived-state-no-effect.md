@@ -1,40 +1,44 @@
 ---
-title: Calculate Derived State During Rendering
-impact: MEDIUM
-impactDescription: avoids redundant renders and state drift
-tags: rerender, derived-state, useEffect, state
+title: Use Effects Only to Synchronize with External Systems
+tags: effects, useEffect, derived-state, events, subscriptions
 ---
 
-## Calculate Derived State During Rendering
+An Effect runs after React commits and again whenever its dependencies change. Used for anything except synchronizing with an external system, it adds a render, lets state drift and repeats actions. Classify the need before writing `useEffect`:
 
-If a value can be computed from current props/state, do not store it in state or update it in an effect. Derive it during render to avoid extra renders and state drift. Do not set state in effects solely in response to prop changes; prefer derived values or keyed resets instead.
+| Need | Where it goes |
+|---|---|
+| A value computed from props or state | Render ([rerender-memo](./rerender-memo.md) only if it costs ≥ 1 ms) |
+| A response to a user action | The event handler |
+| Resetting state when a prop changes | A `key` on the component |
+| An external store with a current value (media query, online status, a held modifier key) | `useSyncExternalStore`, one module-level subscription per source |
+| App data | The route loader, a Server Component or the installed query library |
+| One-time app init | Module scope, or a module-level `didInit` guard |
+| An external system (socket, widget, DOM API, global shortcuts through one shared listener) | An Effect with cleanup and primitive deps (`user.id`, not `user`), one Effect per concern |
 
-**Incorrect (redundant state and effect):**
+Strict Mode runs each Effect's setup and cleanup an extra time in development, during hydration too on React 19.3+; code that breaks under it is missing a cleanup.
 
-```tsx
-function Form() {
-  const [firstName, setFirstName] = useState('First')
-  const [lastName, setLastName] = useState('Last')
-  const [fullName, setFullName] = useState('')
+Render loops: "Too many re-renders" means a setter runs during render (`onClick={setOpen(true)}` calls it; pass `() => setOpen(true)`). "Maximum update depth exceeded" means an Effect sets state it depends on, often through an object or function dependency recreated every render: derive the value, or depend on primitives.
 
-  useEffect(() => {
-    setFullName(firstName + ' ' + lastName)
-  }, [firstName, lastName])
+**Incorrect (derived state in an Effect):** `useEffect(() => setFullName(first + ' ' + last), [first, last])`. **Correct:** `const fullName = first + ' ' + last`.
 
-  return <p>{fullName}</p>
-}
-```
-
-**Correct (derive during render):**
+**Incorrect (an action modeled as state plus an Effect; it also re-fires when `theme` changes):**
 
 ```tsx
-function Form() {
-  const [firstName, setFirstName] = useState('First')
-  const [lastName, setLastName] = useState('Last')
-  const fullName = firstName + ' ' + lastName
-
-  return <p>{fullName}</p>
-}
+const [submitted, setSubmitted] = useState(false)
+useEffect(() => {
+  if (submitted) { post('/api/register'); showToast('Registered', theme) }
+}, [submitted, theme])
+return <button onClick={() => setSubmitted(true)}>Submit</button>
 ```
 
-References: [You Might Not Need an Effect](https://react.dev/learn/you-might-not-need-an-effect)
+**Correct:**
+
+```tsx
+function handleSubmit() {
+  post('/api/register')
+  showToast('Registered', theme)
+}
+return <button onClick={handleSubmit}>Submit</button>
+```
+
+Sources: https://react.dev/learn/you-might-not-need-an-effect · https://react.dev/blog/2026/09/09/react-19-3

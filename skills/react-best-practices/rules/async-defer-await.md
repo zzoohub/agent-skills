@@ -1,82 +1,14 @@
 ---
-title: Defer Await Until Needed
-impact: HIGH
-impactDescription: avoids blocking unused code paths
-tags: async, await, conditional, optimization
+title: Await Only on the Path That Needs the Value
+tags: async, await, conditional, waterfalls
 ---
 
-## Defer Await Until Needed
+An `await` placed before a branch makes every path wait, including paths that return without the value.
 
-Move `await` operations into the branches where they're actually used to avoid blocking code paths that don't need them.
+**Incorrect:** `const data = await fetchUserData(id)`, then `if (skip) return { skipped: true }`: the skip path waits for data it never uses. **Correct:** return on `skip` first, then await.
 
-**Incorrect (blocks both branches):**
+When a condition combines an awaited flag with a cheap synchronous check, test the cheap one first: `if (isBetaUser && (await getFlag('new-editor')))`. Keep the original order when the "cheap" check is expensive, depends on the flag, or side effects must run in a fixed order.
 
-```typescript
-async function handleRequest(userId: string, skipProcessing: boolean) {
-  const userData = await fetchUserData(userId)
-  
-  if (skipProcessing) {
-    // Returns immediately but still waited for userData
-    return { skipped: true }
-  }
-  
-  // Only this branch uses userData
-  return processUserData(userData)
-}
-```
+Never reorder an authorization check to save a call: load tenant-scoped, then authorize on the loaded row ([server-auth-actions](./server-auth-actions.md)).
 
-**Correct (only blocks when needed):**
-
-```typescript
-async function handleRequest(userId: string, skipProcessing: boolean) {
-  if (skipProcessing) {
-    // Returns immediately without waiting
-    return { skipped: true }
-  }
-  
-  // Fetch only when needed
-  const userData = await fetchUserData(userId)
-  return processUserData(userData)
-}
-```
-
-**Another example (early return optimization):**
-
-```typescript
-// Incorrect: always fetches permissions
-async function updateResource(resourceId: string, userId: string) {
-  const permissions = await fetchPermissions(userId)
-  const resource = await getResource(resourceId)
-  
-  if (!resource) {
-    return { error: 'Not found' }
-  }
-  
-  if (!permissions.canEdit) {
-    return { error: 'Forbidden' }
-  }
-  
-  return await updateResourceData(resource, permissions)
-}
-
-// Correct: fetches only when needed
-async function updateResource(resourceId: string, userId: string) {
-  const resource = await getResource(resourceId)
-  
-  if (!resource) {
-    return { error: 'Not found' }
-  }
-  
-  const permissions = await fetchPermissions(userId)
-  
-  if (!permissions.canEdit) {
-    return { error: 'Forbidden' }
-  }
-  
-  return await updateResourceData(resource, permissions)
-}
-```
-
-This optimization is especially valuable when the skipped branch is frequently taken, or when the deferred operation is expensive.
-
-For `await getFlag()` combined with a cheap synchronous guard (`flag && someCondition`), see [Check Cheap Conditions Before Async Flags](./async-cheap-condition-before-await.md).
+*Break:* if most paths need the value, start it early alongside other work instead ([async-parallel](./async-parallel.md)); deferring it would only serialize it.

@@ -1,140 +1,103 @@
-# Email Marketing
+# Email
 
-Strategy, sequence design, and execution for email marketing across SaaS lifecycle stages (welcome, nurture, onboarding, re-engagement, win-back, newsletters, cold outreach, subject lines, deliverability).
+Lifecycle, broadcast and cold email: what to send, to whom and when, and how to tell whether it worked. Every email task starts here.
 
-**Scope:** in-app copy goes to the copywriting core (`SKILL.md`); popup/modal design to the cro skill; churn-specific emails such as dunning to the churn-prevention skill; analytics to the product-analytics skill.
+An email program earns its place by causing behavior that would not have happened anyway, and every send spends sender reputation. Most underperforming email is a trigger, audience or offer problem that looks like a copy problem: fix it in that order.
 
----
+| Read next when you are… | File |
+|---|---|
+| Choosing or designing a program: welcome, onboarding, trial, nurture, re-engagement, win-back, lapsed trial, newsletter; branching on behavior | `references/email/sequence-templates.md` |
+| Writing or editing an email: from, subject, preview, body and voice, CTA, personalization, A/B tests | `references/email/copy-guidelines.md` |
+| Prospecting cold, or checking consent law by country | `references/email/cold-outreach.md` |
+| Setting up a domain or stream, fixing spam placement, unsubscribe and suppression policy, consent capture | `references/email/deliverability.md` |
 
-## Email Marketing Framework
+**Boundaries.** Billing-event notices (dunning, card-expiry alerts, renewal reminders, the cancellation confirmation) and cancel flows belong to the churn-prevention capability, if available (`churn-prevention/references/dunning-playbook.md`, `churn-prevention/references/cancel-flow-patterns.md`); win-back starts after its confirmation. Price-change notices are written here, with the terms from pricing and the notice window from churn-prevention; never invent either. Popup and signup-form design, and in-product onboarding flows, go to cro (popup copy: `references/copy-frameworks.md` § Promo units and paywalls); lift readouts and cohort analysis to product-analytics.
 
-### 1. Assess
-- **Sequence type**: Welcome, nurture, onboarding, re-engagement, win-back, cold outreach?
-- **Audience context**: Where are they in the journey? What do they know? What do they need?
-- **Goals**: Activation, conversion, retention, re-engagement, sales?
+## 1. Frame
 
-### 2. Core Principles
+Inspect first: the current emails with their per-provider numbers, the tracking plan, the list itself (how each person joined, their consent record, last activity, plan; check that counts and dates agree before trusting them), and for win-back the cancel reasons already captured. Then ask once, in one batch, only what the inputs don't answer; otherwise assume the default and list it under Assumptions (≤3 lines, at the top of the output).
 
-- **One Email, One Job** — Every email has exactly one purpose and one CTA. When an email tries to do two things, neither gets done well — and you can't tell from metrics which one failed. If you need to accomplish two goals, that's two emails.
+1. **Goal event.** Which event proves the email worked? Default: the activation event in the tracking plan (default `biz/analytics/tracking-plan.md`; caller may redirect). If none exists, name the event you would need; never write against "engagement".
+2. **Trigger data.** Can the ESP see the trigger and the goal event, and exit on the goal? Default no: schedule by day and give every email a "skip if already did X" condition marked "needs event X".
+3. **Class.** Transactional (completes or reports on something the user already agreed to: receipt, password reset, security alert, account status), lifecycle (helps them use what they already have) or marketing (sells something new: upgrade, add-on, event, newsletter, cart recovery, a pitch to a lapsed trial). The class decides consent, the unsubscribe header, the stream and the sender address (`references/email/deliverability.md`); marketing never shares the subdomain or From address that carries transactional mail. Unsure → marketing. A message mixing transactional and marketing content stays transactional only while its subject and opening are transactional (the FTC's primary-purpose test); keep transactional mail pure anyway.
+4. **Relationship and consent.** Group the recipients by how each came to you (customer, former customer, trial that never paid, lead, newsletter subscriber, unknown) and by consent (opted in, declined, no record). The country law table in `references/email/cold-outreach.md` is the floor, not the decision: anyone who gave you their address but declined marketing, or has no consent record, gets none, whatever the law allows. Each group gets the kind of mail it signed up for; a group that fits no stream gets nothing. Default when the list can't show consent: no record.
+5. **Countries and mailbox providers.** Count the recipient domains: Gmail, Yahoo and Microsoft rules bind only their own mailboxes; regional providers such as Naver and Daum in Korea filter by their own.
+6. **Baseline.** Per provider: click or goal-event rate, unsubscribes per send, spam rate (Postmaster Tools). None → say what to instrument first.
+7. **Collisions.** In-app, push and sales touches aimed at the same people in the same week. Default: email yields to an in-app message the user will see first, and to the account's sales owner.
+8. **Offers and eligibility.** An offer (discount, credit, extension) goes only to the group it was made for, on pricing's terms; who qualifies is the owner's call, under Decisions for you with your recommendation. Default: write the version without the offer, attach the offer as a variant pending that decision, and keep a newcomer discount away from customers paying full price.
 
-- **Value Before Ask** — Provide value in early emails before asking for conversion. People ignore emails from senders who only take. The first 2-3 emails in any sequence should make the reader's life better with zero strings attached — that builds the trust that makes later conversion emails work.
+**Done** = the goal-event rate of recipients minus that of a random holdout over the program window, with unsubscribes and spam complaints per send as guardrails. Every automated non-transactional program ships with a holdout: default 10%, or 5% once more than ~50k people enter a month. Record it as a test card in the cro capability's format, if available (default `biz/growth/experiments.md`; caller may redirect); the lift readout belongs to product-analytics. Break: transactional and legally required mail gets no holdout; a flow too small to detect the lift you care about within a quarter gets a time-boxed on/off test, reported as directional.
 
-- **Relevance Over Volume** — Better to send fewer, targeted emails than many generic ones. Every irrelevant email trains the reader to stop opening your emails. One well-timed, behavior-triggered email outperforms five time-based blasts.
+| The request | Path | Deliver |
+|---|---|---|
+| One email (announcement, notice, single nudge) | Frame 1-5, plus 8 if it carries an offer; copy-guidelines | One per-email block |
+| A program (onboarding, trial, nurture, re-engagement, win-back) | Full frame; sequence-templates; copy-guidelines | Program spec + per-email blocks |
+| A one-off send to an existing or old list (launch, promotion, "we're back") | Full frame, 4 and 8 first; one variant per relationship group; waves, warmest first (`references/email/deliverability.md` § Ramp) | Program spec with Segments + a per-email block per group |
+| Newsletter or broadcast | Frame 1 and 3-5; the frequency rule | Per-email block, multi-link allowed |
+| Cold outreach | cold-outreach, law first | Per-email blocks at the cold budget |
+| "We're going to spam", a new domain, sender rules | deliverability: Triage or Setup | Ranked findings and fixes, ≤400 words |
+| Strategy only, no copy | Frame; program spec | Program spec + one line per email |
 
-- **Clear Path Forward** — Every email tells the reader exactly what to do next. Ambiguity kills action. If the reader finishes your email thinking "nice, but what now?", the email failed regardless of how good the copy was.
+## 2. Program rules
 
-### 3. Sequence Strategy
-- **Length**: Match sequence length to the buying cycle (SaaS trial: 5-7 emails, Enterprise: 8-12)
-- **Timing**: Respect frequency. Day 0, 1, 3, 5, 7 for intensive onboarding. Weekly for nurture.
-- **Subject lines**: Curiosity > benefit > urgency. Keep them tight — 40-60 characters, with ~35-40 visible on mobile (see `references/email/copy-guidelines.md`). Test personalization.
-- **Preview text**: Complement the subject line, don't repeat it. Use as a second hook.
-
-### 4. Segmentation & Engagement Tiers
-
-- **Segmentation axes (send-side):** lifecycle stage, activation/Aha state, plan tier, engagement recency, behavioral trigger, persona/industry. "Segment harder" in the diagnosing table means cutting along one of these axes — not blasting the whole list.
-- **Engagement tiers:** treat the list as `engaged (0-30d)`, `cooling (31-90d)`, `dormant (90d+)`. Mail engaged segments most freely, throttle cooling, route dormant into re-engagement then sunset (see `references/email/deliverability.md` — List Hygiene and Consent Capture).
-- **Dynamic blocks vs separate sends:** use dynamic content blocks (e.g. case study by industry) when the core message is shared; split into separate sends when the goal or CTA differs by segment.
-- Cohort/segment **analysis** (who retains, why) belongs to the product-analytics skill; this section owns the email-sending *application* of segments.
-
-### 5. Send Timing & Frequency Governance
-
-- **Frequency cap:** set a per-user marketing cap (~3-5 marketing emails/week, tighter for cooling/dormant tiers). Exceeding it is the upstream cause of the ">0.5% unsubscribe" and complaint-rate rows in the diagnosing table.
-- **Priority when a user qualifies for multiple sends:** behavioral/lifecycle-triggered > broadcast/promo. Hold marketing sends while a user is in an active onboarding or transactional-critical branch.
-- **Always exempt transactional and dunning** from the cap (dunning itself is owned by the churn-prevention skill).
-- **Wall-clock:** send at recipient-local time where the ESP supports it; use built-in send-time optimization as a directional aid, not a substitute for relevance. Day-of-week and region matter for broadcasts; behavior-triggered emails fire when the trigger occurs regardless of clock. Define explicit send windows for global lists.
-
----
-
-## When to Use Which Reference
-
-| Scenario | Reference |
-|----------|-----------|
-| Designing sequence flows and timing | `references/email/sequence-templates.md` |
-| Writing email copy, subject lines, CTAs, A/B test design | `references/email/copy-guidelines.md` |
-| Catalog of email types by lifecycle category (triggers and goals) | `references/email/email-types.md` |
-| B2B cold outreach and follow-ups | `references/email/cold-outreach.md` |
-| Deliverability, DNS, warm-up, list hygiene | `references/email/deliverability.md` |
-
----
-
-## Sequence Design Process
-
-1. **Define the goal** — One clear outcome for the entire sequence
-2. **Map the flow** — Each email's job and how it connects to the next
-3. **Add branch points** — Where should the sequence split based on user behavior? (See `references/email/sequence-templates.md` for branching patterns)
-4. **Set timing** — Delays between emails based on urgency and user behavior
-5. **Write emails** — Use `references/email/copy-guidelines.md` for structure and tone
-6. **Set up measurement** — Track clicks, conversions, unsubscribes per email (opens directional only). Tag email links with UTMs so the product-analytics skill can attribute conversions; per-send engagement lives in the ESP, cohort/retention analysis goes to product-analytics. Sync unsubscribes/complaints/bounces to a global suppression list (see `references/email/deliverability.md`).
-
----
+- **One email, one job, one primary CTA.** Break: newsletters and digests are multi-link by design.
+- **Trigger on behavior, exit on the goal, skip what's done.** A scheduled email that doesn't check events nags people who already finished and congratulates people who never started. Never trigger, branch, sunset or judge on opens: Apple Mail Privacy Protection pre-fetches tracking pixels, so opens are inflated and prove nothing about reading.
+- **Engaged** means a click, a reply or product activity, never an open. In B2B, a click seconds after delivery, or every link clicked at once, is a security scanner; branch on what happens after the click (signed in, finished the step).
+- **Value before the ask, except at high intent.** A trial ending, a pricing-page visit or a hit usage limit asks first.
+- **Per-recipient truth.** A line true only for some recipients ("your 3 reports", "your price stays locked", "20% off your first year back") carries its condition in the block's Only if field; recipients who fail it get a variant without it, or no send. One offer-first email to a mixed list fails this rule.
+- **Frequency.** B2B SaaS default: at most 2 non-triggered marketing sends a week and 1 triggered email a day per person. Raise it only when holdout lift outweighs the unsubscribe and complaint cost; recipients see your volume (Gmail's Manage subscriptions lists each sender's recent count beside an Unsubscribe button). When one person qualifies for several sends, triggered beats broadcast; hold marketing while someone is in onboarding or a billing flow. Transactional mail is exempt.
+- **Send windows.** Broadcasts land in each recipient's local working hours, or the hours your own click data favors; non-urgent triggered mail waits out the recipient's night.
+- **Segments.** Split into separate sends when the goal or CTA differs by segment; use a dynamic block when only the proof or example differs.
 
 ## Default Output Format
 
-**Output:** when asked to save a sequence/campaign and a file-write capability is present, write to the email content dir (default `biz/marketing/content/email/`; caller may redirect the `biz/<area>/` root) — otherwise return inline. If the file already exists, update it in place rather than creating a duplicate.
+Save each program to the email content directory (default `biz/marketing/content/email/`; caller may redirect), updating an existing file in place; with no file-write capability, return it inline. **Drafts only:** never send, schedule or activate an email, campaign or automation, in an ESP or anywhere else, without the caller's explicit approval.
 
-**Drafts only.** Never send, schedule, or activate an email, campaign, or automation (in an ESP or otherwise) without the caller's explicit approval — produce the drafts and hand them back.
+Both blocks are menus: drop any field that doesn't apply, label included.
 
-When creating email sequences, produce this structure unless the user requests something different:
-
-### Sequence Overview
+**Program spec** (≤200 words)
 ```
-Sequence: [Name]
-Trigger: [What starts the sequence]
-Goal: [Primary outcome]
-Length: [N emails over N days]
-Timing: [Delay between emails]
-Exit conditions: [When someone leaves the sequence early]
-Branch points: [Key decision points based on user behavior]
-```
-
-### Per Email
-```
-Email [#]: [Name]
-Send: [Timing / trigger]
-Subject: [Subject line]
-Preview: [Preview text]
----
-[Full email copy]
----
-CTA: [Button text] → [Destination]
-Branch: [If applicable — what happens based on action/inaction]
-Segment/Conditions: [If applicable]
+Program: [name] · Class: [transactional | lifecycle | marketing] · Stream: [subdomain, From address]
+Goal event: [event] · Metric: [goal-event rate, recipients minus holdout, over N days]
+Entry: [trigger + conditions] · Exit: [goal event; unsubscribe; higher-priority program]
+Segments: [group → what it gets · consent basis · size]
+Holdout: [share | none: transactional] · Guardrails: [unsubscribes and spam rate per send, with limits]
+Emails: [one line each: job, trigger or delay, skip-if, branch]
+Decisions for you: [offer eligibility and other owner calls, each with your recommendation]
+Assumptions: [defaults applied, ≤3 lines]
 ```
 
-For strategy-only requests (no copy), produce the overview table with timing, purpose, and subject line direction per email — skip full copy.
-
+**Per email** (body budget: transactional ≤125 words, lifecycle and marketing ≤200, cold ≤80, newsletter by section)
+```
+Email [#]: [job, ≤6 words] · Send: [trigger or delay; recipient-local window] · Skip if: [event]
+To: [group · consent basis] · Only if: [the condition behind each line true for only some recipients]
+From: [name <address>] · Reply-to: [a monitored inbox]
+Subject: [the first ~30 characters carry the meaning]
+Preview: [completes the subject, never repeats it]
 ---
-
-## Diagnosing Email Problems
-
-> **Open-rate caveat (Apple Mail Privacy Protection):** Apple Mail accounts for roughly 62% of email opens, and MPP affects roughly 55–60% of all opens (Litmus email client market share, July 2026 data — re-check before quoting). For recipients who open in the **Apple Mail app with MPP enabled** (default-on since iOS 15, Sept 2021), Mail pre-fetches the tracking pixel via proxy and registers an "open" whether or not the message was read — inflating open rates and making them an **unreliable** primary signal. MPP keys on the Apple Mail *app* (on any device), not on Apple hardware: someone reading in the Gmail app on an iPhone is unaffected. Treat open rate as directional only; **prioritize click rate, reply rate, and conversion rate** for diagnosis.
-
-**Metric definitions (the denominator matters):** rates below use **delivered** as the denominator unless noted — click rate = unique clicks / delivered; reply rate = replies / delivered; unsubscribe rate = unsubscribes / delivered; complaint rate = complaints / delivered (Google Postmaster's spam rate uses inbox-delivered, excluding mail already filtered to spam); bounce rate = bounces / sent. CTOR (clicks / unique opens) inherits opens' MPP unreliability — use it only directionally.
-
-When metrics are underperforming, the problem usually lives in a specific layer. Work top-down:
-
-| Symptom | Likely cause | What to check |
-|---------|-------------|---------------|
-| Low click rate (<2% of delivered) | Subject line, deliverability, OR copy | Click rate is the most reliable engagement signal post-MPP. Check inbox placement via Google Postmaster Tools / mail-tester. If deliverable, the subject + preview text + body aren't earning attention. |
-| Opens reported but no clicks | Copy or CTA mismatch (or MPP false opens) | The email isn't delivering on the subject line's promise, the CTA is unclear/high-friction — or "opens" are MPP pre-fetches and the email was never actually read. Cross-check with reply rate / link clicks. |
-| Clicks but no conversion | Landing page or offer | The email did its job — the problem is downstream. Check landing page alignment with email promise. |
-| High unsubscribe (>0.5%) | Frequency or relevance | Sending too often, or content doesn't match what they signed up for. Segment harder or reduce frequency. (0.3-0.5% is a caution band — not yet "high" but worth watching; see `references/email/deliverability.md` — Healthy List Indicators.) |
-| Low reply rate on cold (below the ~3.4% 2026 platform average) | Personalization or ask | The email reads like a template or asks too much. See `references/email/cold-outreach.md` (Benchmarks). |
-| Declining click rates over time | List fatigue | Start re-engagement on declining clicks; sunset/remove non-clickers after 90 days if re-engagement fails (don't rely on opens). |
-| Spam complaint rate > 0.1% | Relevance, frequency, or consent | Google's rule: keep complaint rate under 0.1%; reaching 0.3% or higher causes graduated delivery damage and loss of mitigation eligibility (Google Postmaster Tools). Audit how recipients consented (see `references/email/deliverability.md` — Consent Capture) and how often you send. See also its Gmail / Yahoo / Microsoft Sender Requirements section. |
-
+[body]
 ---
+CTA: [button text] → [destination]
+Branch: [what each recipient gets next, by what they did]
+Length: [N words]
+```
 
-## Tool Integrations
+After the blocks, **Questions for you**: each gap tag as one direct question for the owner; without a program spec, also its Decisions for you, each with your recommendation. Subject alternates only when each arm can reach ~10k recipients (smaller tests can't detect realistic lifts; `references/email/copy-guidelines.md`) or when the caller asks; then two, from different angles, one recommended. Strategy-only requests get the program spec and one line per email (job, trigger, subject direction), ≤400 words in all.
 
-| Tool | Best For |
-|------|----------|
-| Customer.io | Behavior-triggered sequences, SaaS onboarding |
-| Mailchimp | Newsletter, simple automations |
-| Resend | Transactional + marketing for developers |
-| SendGrid | High-volume transactional email |
-| Kit (ConvertKit) | Creator-focused email marketing |
-| Loops | SaaS lifecycle email — marketing + product + transactional in one, native Stripe triggers |
-| Postmark | Deliverability-critical transactional (separate transactional/broadcast streams) |
+## Self-Review
 
----
+Fix, don't report. Each email: (1) one job, tied to the goal event; (2) the subject says what's inside, or the first line pays off its curiosity; the preview is set and doesn't repeat the subject; (3) the first line is the hook and the first two state the point plainly, since previews and AI summaries draw on them; it reads as one person writing to one person, signed by a person when replies are welcome; (4) one primary CTA (newsletters excepted); (5) every merge token has a fallback; every number, deadline, name and quote is real or carries the core proof rule's gap tag, and an untrue line was rewritten to a true one doing the same job, not dropped, keeping the requester's wording where a stated condition makes it true; (6) every line true for only some recipients carries its Only if condition. Each program or send: (7) every group mailed has a consent basis for this class of mail, declined or unknown consent gets no marketing, and each group gets what it signed up for; offers reach only eligible groups, with eligibility under Decisions for you; (8) entry, exit on the goal, skip-ifs, branches, class and stream, holdout, metric and guardrails are set; (9) nothing triggers, branches, sunsets or is judged on opens; (10) collisions with in-app, push, sales and billing mail are resolved. (11) **Footprint:** every body within its budget; program spec ≤200 words; strategy-only ≤400; subject alternates only when powered or asked; no line names this guide's rules or steps.
+
+## Diagnosis
+
+First split every metric by mailbox provider. A drop at one provider is placement (Triage in `references/email/deliverability.md`); a drop everywhere is audience, offer or content. Rates use delivered mail as the denominator (unique clicks, replies, unsubscribes and complaints, each ÷ delivered; bounces ÷ sent); Postmaster's spam rate divides by mail delivered to the inbox. Compare against your own trailing median, not an industry average.
+
+| Symptom | Likely cause | Check first |
+|---|---|---|
+| Clicks fell at one provider | Placement | Triage in deliverability.md |
+| Clicks fell everywhere | Fatigue, audience drift or a weaker offer | Sends per person in the last 30 days; clicks by list source and tenure |
+| Clicks, but no goal event | The landing step breaks the email's promise | Same promise, same offer, one step to act? (page fixes: cro) |
+| Recipients convert, the holdout converts as much | Not incremental | Cut, retarget or re-time the program; never scale it |
+| Unsubscribes above ~2× your median | Frequency or relevance | Sends per person; does the content match what they signed up for? |
+| Spam rate at or above 0.1% | Consent source, frequency or an expectation gap | Which list sources and signup cohorts the recent sends reached; Postmaster's trend, since ESP complaint counts miss Gmail |
+| Cold replies low | The list, not the copy | Relevance test and kill rule in cold-outreach.md |

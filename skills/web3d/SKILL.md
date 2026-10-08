@@ -1,308 +1,132 @@
 ---
 name: web3d
 description: |
-  Build 3D and immersive web experiences with Three.js (WebGPU-first), TSL shaders, Koota ECS, Rapier physics, Rust WASM, and WebXR.
-  Use this skill whenever the user works on: 3D scenes, WebGL/WebGPU rendering, Three.js shaders (TSL/node materials), VR/AR/XR/mixed reality, spatial computing, immersive experiences, 3D physics simulation, ECS game architecture, particle systems, procedural geometry, glTF models, spatial audio, hand tracking, controller input, head-mounted displays, or any task involving three/webgpu, three/tsl, koota, @dimforge/rapier3d, or WebXR.
-  Also trigger when the user mentions "three.js", "webxr", "webgpu", "TSL", "node material", "shader", "ECS", "rapier", or "wasm" in a 3D/game context.
-  Do NOT use for UX/IA, spatial-interaction comfort, or experience design of XR apps (use ux-design); this skill owns the rendering/engine implementation, not the UX.
+  Implements real-time 3D and XR on the web: three.js (WebGPU or WebGL, TSL
+  shaders), React Three Fiber and drei, glTF pipelines (meshopt, KTX2), Rapier
+  physics, Koota ECS, Rust WASM, workers and WebXR. Use when building, debugging,
+  profiling, upgrading or migrating a 3D scene, product viewer or configurator,
+  shader or GPU particles, physics, adding VR/AR to an existing scene, or a
+  frame-rate, color or GPU-memory problem, or when code touches three,
+  @react-three/*, koota, @dimforge/rapier3d or navigator.xr. Do NOT use for
+  3D/XR UX, IA or comfort design (ux-design), or CSS 3D effects and view
+  transitions (design-system, react-view-transitions).
 ---
 
-# Web 3D & XR Development
+# Web 3D & XR
 
-**Testing**: Test the *simulation* layer, not the draw call. Koota systems are pure functions (Vitest), Rapier stepping is deterministic (`takeSnapshot`), and WASM exports test directly — write these first. GPU-bound paths (shaders, render output) need a real context (Playwright with `--enable-unsafe-webgpu`) or pixel-snapshot regression, not unit tests. See `references/testing.md`.
+## Premise
 
-## Tech Stack
+Real-time 3D on the web is a budget problem under device and backend fragmentation: frame time at the display's refresh rate, GPU memory, seconds to the first interactive frame, and heat (phones throttle within minutes). The weakest device you promise sets the budget. Build the smallest stack that does the job; every layer past renderer and scene graph needs a trigger. In XR the budget is a comfort floor: a dropped frame is nausea, not jank. On an existing scene, what works today is the baseline every change keeps.
 
-| Layer | Technology |
-|---|---|
-| Rendering | Three.js (WebGPU-first, WebGL fallback) |
-| Shaders | TSL (Three Shader Language) |
-| State (Simulation) | Koota ECS |
-| Physics | Rapier (Rust WASM) |
-| High-perf Compute | Rust WASM (custom modules) |
-| XR | WebXR Device API |
-| Assets | glTF 2.0 |
+## Modes
 
-Framework bindings (React Three Fiber) are layered on top; the core stack itself is framework-agnostic.
+- **Build** (default): a new scene or feature. Stage 0, Decide, Build.
+- **Add a mode** to a working scene (XR or AR, a WebGPU path, post-processing, a second view): Stage 0, § Add a mode, then the Build steps it touches.
+- **Diagnose** (slow, janky, leaking, black, off-color, broken after an upgrade): § Diagnose, before changing code.
+- **Migrate** (WebGL to WebGPU, GLSL to TSL) only for a payoff the Renderer row names: `references/shaders.md` § Migrating from GLSL, run as an added mode until the switch.
+
+**Proportionality.** Budgets size the reply, never the analysis: every request gets the framing, the numbers and the trap checks. A local change (a material, a light, one bug) reads the renderer setup and the code it touches, skips the Stage 0 questions and Decide rows it doesn't cross, and makes the smallest patch: no blind retuning; an open decision states its predicted effect. A prototype renders on the floor device with its poster and failure paths and ships the tooling its gates need (frame probe, remount loop, visual baseline); only device runs may stay open, named.
+
+**Version gates and probes.** A tag such as (r185+) marks a three.js API that exists only from that release: check the installed version (`node_modules/three/package.json`) and each tagged or non-default API in its source or typings before building on it; below the gate, use the fallback given; never upgrade unasked. Drift fastest: three's WebGPU, TSL and XR APIs (its Migration Guide), @react-three/xr options, drei under `WebGPURenderer`, Koota, @react-three/rapier. Probe a capability where it is used (`isSessionSupported` when the XR entry mounts), never at startup for every visitor, never as a device tier: phones and headsets both support XR; tiers come from measured frame time or the user.
+
+**Another engine** (Babylon.js, PlayCanvas): engine-neutral parts only; never port unasked.
+
+**Ownership.** 3D/XR experience and comfort design belong to ux-design (if available); this skill implements. UX specs are acceptance criteria: never redesign them or write `docs/ux/`; report gaps.
+
+## Stage 0 — Frame
+
+**Read first** (defaults; the caller may redirect): the UX doc and screen specs (`docs/ux/ux-design.md`, `docs/ux/screens/*.md`); the feature spec (`docs/prd/features/*.md`); `package.json`, the lockfile and the renderer setup (engine and version, R3F, GLSL, EffectComposer, header control, XR). On an existing scene, also its loop, shared loader, camera, controls and units.
+
+**Ask once, in one batch,** only what code and specs can't answer, each with its default. A subagent that can't prompt applies the defaults and lists the questions in its report.
+- **Job:** what 3D does that a poster, video or turntable can't (showcase, configurator, spatial data, simulation, XR). Default: the feature spec's job, else a viewer; "look impressive" means a poster or video, the canvas loaded on interaction.
+- **Floor device:** default a mid-range Android phone 3–4 years old; for XR, the lowest headset in scope at the rate the session runs. Measure its rate (often 90–120 Hz) with the frame probe (`references/performance.md` § Budget).
+- **Host:** a page section (LCP, scroll, SSR, auth popups, embeds) or a dedicated app. Default: a section of an existing page, the stricter case.
+- **Assets:** source, `gltf-transform inspect` totals, and whether code addresses parts by name. Default: inspect what exists, else placeholder primitives with the gap listed.
+- **Reach:** WebGL 2 is the guarantee; WebGPU isn't Baseline (MDN BCD, 2026-10: missing in Firefox on Linux and Android). iOS has no WebXR, so Apple AR means Quick Look with USDZ (`references/web-xr.md` § Support and features).
+
+**Done means** (defaults; the UX spec overrides), on the floor device:
+- Smooth: ≥ 99% of frame intervals within 1.5× the target interval over a 5-minute soak. Count dropped frames; never average fps.
+- Headroom: p95 main-thread work per frame ≤ 70% of the budget; GPU time where timer queries exist, else reported unmeasured.
+- Poster first, interactive within 5 s on throttled 4G; host LCP and INP no worse.
+- GPU memory ≤ 256 MB on phones, back to baseline after 10 remounts.
+- No GPU, a failed load and device loss each render something.
+
+## Decide
+
+Default, then when to choose otherwise.
+
+- **Custom renderer at all.** One product with AR: `<model-viewer ar>`. A renderer only for custom shading, composition or interaction; its Apple AR is then a USDZ export (`references/web-xr.md` § Quick Look).
+- **Renderer** (hard to reverse). Greenfield: `WebGPURenderer` from `three/webgpu` (r167+; TSL, compute, automatic WebGL 2 fallback). `WebGLRenderer` when code depends on GLSL, `onBeforeCompile` or an EffectComposer (three's or pmndrs `postprocessing`), or a needed helper fails the grep rule. Migrate a working WebGL app only for a named payoff (TSL, compute, a WebGPU-only feature, a win measured on the floor device): WebGPU isn't automatically faster, and phones without it run the fallback. XR: a WebGL backend until WebGPU XR is verified on the headset (`references/web-xr.md` § Backend first).
+- **State** (hard to reverse). Scene graph plus a small store; Koota at roughly 1k+ entities or many composable behaviors. The world stays on the main thread (traits hold `Object3D`s).
+- **Physics.** Rapier on the main thread: fixed 60 Hz step, rendered interpolated. A worker only when the step's p95 tops about 15% of the frame budget on the floor device; bodies the user holds or drives stay on the main thread (a worker adds ≥ 1 frame of latency).
+- **Compute.** JS first. GPU-resident per-element work: TSL compute (limited on WebGL 2). Heavy CPU numerics after a measured JS baseline: Rust WASM; rayon only with isolation and a measured win.
+- **Threads** (hard to reverse). `postMessage` plus transferables; no COOP/COEP. Isolation only when SharedArrayBuffer is measured necessary, on the 3D route only, keeping the `postMessage` path: it breaks OAuth and payment popups and blocks cross-origin assets (`references/threading.md`).
+- **Geometry.** meshopt; Draco only for static payloads where geometry dominates (needs a `DRACOLoader`).
+- **Textures.** KTX2: UASTC for normal, ORM and hero color, ETC1S for the rest; ≤ 2048 px on phones. WebP or AVIF (full RGBA in VRAM) only when download, not VRAM, binds. Uncompressed ≈ w×h×4×1.33 bytes: one 4096² texture ≈ 89 MB.
+- **Look.** Explicit tone mapping: Neutral for product color, AgX for cinematic. A small prefiltered environment map; static shadows baked or rendered once. Break for stylized or unlit art.
+- **Content.** glTF (`.glb`); configurators and Gaussian splats: `references/assets.md` § Configurators, § Splats.
+
+**Grep rule.** Under `WebGPURenderer` (either backend, even with `forceWebGL`), a helper is WebGL-only when its source, or the file defining a binding it imports (not three core or a package index), matches `ShaderMaterial|RawShaderMaterial|onBeforeCompile|createDerivedMaterial|ShaderChunk`. It fails about 35 drei 10.7.9 helpers and uikit 1.0 (list and replacements: `references/react/drei.md`). Re-run it after upgrades; never trust a list.
+
+## Add a mode
+
+1. **Baseline.** Record what the existing path does and measures (frames, memory, LCP, one reference view). Until the user enters the mode, that path runs exactly as before: no new startup probe or download, no changed renderer flag, shared loader or material. The mode loads and applies its settings on entry and restores them on exit; changing shared setup is a separate, named change with its own verification.
+2. **Invariants.** Check each one the mode imposes against the existing code: units, camera ownership, the output transform (who tone-maps, and what a bypassed post stack did), DOM overlays, input, who owns the loop and the drawing-buffer size, the mode's budget. XR: `references/web-xr.md` § Adding XR to an existing scene.
+3. **Engine first.** Before writing code, read what the installed engine does with each value you will change (XR: three's `WebXRManager.updateCamera` or `XRManager`).
+4. **One boundary.** Convert content once (a root group or the asset pipeline), never the engine-owned side (camera, XR rig, reference space); then convert or justify each value the boundary doesn't carry. For a scale s: camera near/far, fog range, point and spot intensity (× s²) and `distance`, shadow-camera bounds and `normalBias`, LOD distances, raycaster `far`, physics gravity and speeds, audio distances, control limits.
+5. **Spike** the mode with the heaviest existing view on the target device: scale, color, overlays, input, frame rate.
+6. **Name the rejected alternative** and its reason (units: scaling the camera or rig, which the engine overwrites or leaks into view-space fog and lighting).
+
+## Diagnose
+
+1. **Symptom and history.** The symptom in the user's words, and what changed before it appeared (an upgrade, an asset, a browser, a device; the lockfile diff and git history show most); reproduce it where it was seen.
+2. **After an upgrade, diff defaults before tuning**: read the migration guide for every version crossed (three's look-changing ones: `references/performance.md` § Color and output). Then find the cause (same file, § Diagnosis).
+3. **Strip compensations** stacked on the root error (exposure, light multipliers, manual gamma, color hacks, a lowered DPR) with the fix, or it double-corrects.
+4. **Fix at the cause**, smallest patch; each fix's isolated effect, before → after on the same device.
+5. **Side effects and a guard.** List what else the fix touches (other materials, custom shaders, brand colors, routes sharing the renderer or loader, visual baselines); ship the guard that would have caught it (`references/testing.md` § Guards).
+
+## Build
+
+1. **Budget first.** Write the Done-means targets, floor device named, before scene code.
+2. **Lifecycle skeleton before content.**
+   - Init failure (no WebGL 2, adapter denied, `init()` rejects) shows the poster and a message.
+   - Size from the container (`ResizeObserver`), not `window`; cap DPR at 2 (1.5 on fill-bound phones).
+   - Pause the loop, workers and audio when the tab hides or the canvas leaves the viewport: hidden tabs stop `requestAnimationFrame`, not workers or AudioWorklets.
+   - Device loss: on `WebGPURenderer` wrap `renderer.onDeviceLost` (r170+), keeping three's halting handler; on `WebGLRenderer` listen for `webglcontextlost`/`restored`; then rebuild.
+   - Teardown frees GPU resources, loader caches and workers, then the renderer (`references/assets.md` § Dispose).
+3. **Page citizenship.** Code-split three.js. The poster is the LCP image; mount the canvas on visibility, idle or interaction. OrbitControls sets `touch-action: none`, trapping page scroll on phones: use `pan-y` with horizontal-only rotation, or a tap-to-interact gate. Honor `prefers-reduced-motion`. One renderer per page; several views share one canvas through scissored viewports (drei `<View>`). The canvas gets an accessible name and a DOM alternative.
+4. **Assets, then the spike.** Inspect, optimize, load with matching decoders, and pre-warm behind the poster so the first interaction never compiles or uploads (`references/assets.md`). Before feature work, spike the skeleton plus the heaviest asset at target DPR on the floor device; if that alone takes half the frame budget or memory cap, re-decide now: model-viewer, lower DPR, baked lighting, smaller textures (`references/performance.md` § Budget).
+5. **Frame loop.**
+   - `THREE.Timer` (core r179+, addons before; `Clock` deprecated r183) with `timer.connect(document)`; per frame `timer.update(t)`, then `dt = Math.min(timer.getDelta(), 0.1)`.
+   - Fixed-step simulation, rendered by interpolating the last two states; otherwise 90 and 120 Hz displays judder.
+   - Per frame: no allocation, no framework `setState`, no scene-wide raycast.
+   - Picking: raycast pickables only, on pointer events; NDC from `canvas.getBoundingClientRect()`, never `window.inner*`; three-mesh-bvh for dense meshes; a movement threshold separates tap from drag.
+6. **XR comfort.** Implement the UX spec's numbers. Where it is silent, ship teleport plus snap turn (smooth locomotion opt-in, none in passthrough) at a rate the floor headset holds, and list the gap.
+7. **Verify on the floor device, then test.** Measure every Done-means number there. Tests: simulation first, GPU by visual diff (`references/testing.md`).
+
+## Report back
+
+Write for whoever asked, in their terms. The budget limits the record, not the content: ≤ 120 words for a local fix, ≤ 300 otherwise, tables included; every material finding (a trap, a side effect, a risk to the existing path, an unverified assumption) gets a line, over budget if need be, saying why. Sections are a menu: omit what doesn't apply, heading included.
+- **Answer** in the user's framing: symptom → cause → fix → what they will see change; for a non-engineer, two or three plain sentences on how it got this way.
+- **Numbers**: target vs measured, or each change's isolated effect before → after on the same device, ranked; each labeled measured, proxy or unmeasured.
+- **Decisions**: choice, reason, rejected alternative, when to revisit; what was left untouched on purpose; each non-default flag or tagged API and where it was confirmed.
+- **Limits and open questions**: unsupported platforms, what each failure path shows, UX-spec gaps; each question with its default and predicted effect.
+
+A table only where rows compare values; no private notation; never narrate this skill's steps.
+
+## Self-Review
+
+- Every Done-means item checked on the floor device, failure paths included; a proxy number is labeled and passes nothing.
+- Helpers pass the grep rule; both backends ran (`forceWebGL: true` for the second).
+- Each non-default flag and tagged API confirmed in the installed version, file named; the fallback below its gate.
+- Added mode: existing path unchanged (no new startup probe or download, same loader and flags, same numbers); reference view matches across modes; five enter/exit cycles restore everything.
+- XR: WebGL backend unless WebGPU XR was verified on the headset; one unit boundary, dependents listed; only used session features; no new runtime third-party fetch; locomotion per spec, else teleport plus snap turn.
+- Diagnosis: cause and history stated; compensations removed; side effects listed; guard shipped.
+- Per frame: no allocation, `setState` or scene-wide raycast; `dt` clamped; fixed-step simulation, interpolated; the first interaction compiles and uploads nothing (trace).
+- three.js code-split; loop, workers and audio pause when hidden or offscreen; reduced motion honored.
+- COOP/COEP only for SharedArrayBuffer: 3D route only, set in production, `postMessage` fallback exercised.
+- Footprint: reply within its word budget, tables counted, every material finding present; no private notation or tutorial code.
 
 ## Reference Files
 
-Read the relevant reference file when working on a specific domain:
-
-| File | When to read |
-|---|---|
-| `references/shaders.md` | TSL syntax, node materials, compute shaders, custom effects |
-| `references/ecs.md` | Koota traits, queries, systems, game loop |
-| `references/physics.md` | Rapier raw API, rigid bodies, colliders, Worker pattern |
-| `references/web-xr.md` | WebXR Device API, session types, input sources, hand tracking |
-| `references/wasm.md` | Rust WASM setup, wasm-bindgen, memory patterns |
-| `references/threading.md` | Multi-thread architecture, Worker separation, SharedArrayBuffer |
-| `references/assets.md` | glTF optimization pipeline, texture best practices |
-| `references/performance.md` | General 3D performance: instancing, LOD, draw calls, GPU budget |
-| `references/audio.md` | Spatial/positional audio, `AudioListener`, XR listener sync |
-| `references/testing.md` | Testing strategy: simulation layer (unit) vs GPU-bound code (visual) |
-
-### Framework-Specific References
-
-| Framework | References |
-|---|---|
-| **React** (R3F + Drei) | `references/react/setup.md`, `references/react/drei.md`, `references/react/ecs.md`, `references/react/physics.md`, `references/react/web-xr.md`, `references/react/wasm.md`, `references/react/performance.md` |
-
-## Staying Current
-
-This is a fast-moving domain. The architectural patterns and principles in this skill are stable, but specific API signatures may change. When writing code that touches a specific library's API, verify against the latest official documentation with a doc-lookup tool if one is available. Prioritize a lookup for: Three.js node material APIs, WebXR hook signatures, Koota trait/query API, and Rapier component props.
-
----
-
-## WebGPU-First Setup
-
-Import from `three/webgpu` instead of `three`. This gives WebGPU rendering with automatic WebGL 2 fallback. WebGPU has shipped in every major engine (Chromium, Safari 26, and Firefox — Windows since 141, all macOS since 147), but real-world coverage is still partial (as of 2026-10): Firefox on Linux is Nightly-only, Firefox on Android is behind a flag, and older/low-end mobile GPUs have not caught up. Treat the **WebGL 2 fallback path as the actual guarantee**, not a coverage percentage — design and test for both backends, and feature-detect before assuming WebGPU (see below).
-
-```typescript
-import * as THREE from 'three/webgpu'
-
-const renderer = new THREE.WebGPURenderer({
-  antialias: true,
-  alpha: true,
-  powerPreference: 'high-performance',
-})
-await renderer.init()
-
-const scene = new THREE.Scene()
-const camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000)
-camera.position.z = 5
-
-renderer.setSize(width, height)
-renderer.setAnimationLoop(() => {
-  renderer.render(scene, camera)
-})
-document.body.appendChild(renderer.domElement)
-
-// Keep camera aspect + drawing buffer in sync with the viewport (required for every app)
-window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight
-  camera.updateProjectionMatrix()
-  renderer.setSize(window.innerWidth, window.innerHeight)
-})
-```
-
-WebGPURenderer init is **async** -- await it before starting the render loop.
-
-### Init Failure & Fallback
-
-`renderer.init()` can reject (no `navigator.gpu`, adapter request denied, headless CI). Always feature-detect and degrade gracefully — `WebGPURenderer` falls back to WebGL 2 automatically, but you still want to handle the case where neither is available and surface a user-facing message instead of throwing inside your mount:
-
-```typescript
-async function createRenderer(): Promise<THREE.WebGPURenderer | null> {
-  if (!('gpu' in navigator) && !window.WebGL2RenderingContext) {
-    return null // neither backend — show a "3D not supported" state
-  }
-  const renderer = new THREE.WebGPURenderer({ antialias: true })
-  // forceWebGL: true lets you force the WebGL 2 path for testing or known-bad GPUs
-  try {
-    await renderer.init()
-  } catch (err) {
-    console.error('WebGPU init failed; renderer fell back to WebGL or is unusable', err)
-    return null
-  }
-  return renderer
-}
-```
-
-### Context / Device Loss (runtime)
-
-Init success doesn't end the story — the GPU can disappear at runtime (driver reset, OS GPU switch, tab eviction). Unhandled, the scene silently freezes or goes black:
-
-```typescript
-// WebGL (fallback path): listen on the canvas; resources are gone after restore
-renderer.domElement.addEventListener('webglcontextlost', (e) => {
-  e.preventDefault()   // signal intent to restore
-  pauseSimulation()
-})
-renderer.domElement.addEventListener('webglcontextrestored', () => {
-  reinitRenderer()     // textures/buffers must be re-uploaded — rerun your createRenderer() path
-  resumeSimulation()
-})
-```
-
-On the WebGPU path, loss surfaces as the underlying `GPUDevice.lost` promise (resolving with a `reason`; `'destroyed'` means you did it on purpose). The device handle is backend-internal in Three — the practical recovery is the same: tear down and re-run your `createRenderer()` path, then re-add scene resources.
-
-Use **Node materials** (`MeshStandardNodeMaterial`, `MeshPhysicalNodeMaterial`, etc.) instead of classic materials when targeting TSL/WebGPU.
-
-### Vite Configuration
-
-```typescript
-// vite.config.ts
-import { defineConfig } from 'vite'
-import wasm from 'vite-plugin-wasm'
-import topLevelAwait from 'vite-plugin-top-level-await'
-
-export default defineConfig({
-  plugins: [wasm(), topLevelAwait()],
-  build: { target: 'esnext' },
-  server: {
-    headers: {
-      // Required only if using SharedArrayBuffer (WASM threads)
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-})
-```
-
-Add the React plugin (`@vitejs/plugin-react`). The COOP/COEP headers above apply only to the Vite dev/preview server — in production you must set the same two headers at your host/CDN, or `SharedArrayBuffer` silently becomes unavailable.
-
----
-
-## Core Three.js Patterns
-
-### Scene Graph
-
-```typescript
-const mesh = new THREE.Mesh(
-  new THREE.SphereGeometry(1, 32, 32),
-  new THREE.MeshStandardNodeMaterial({ color: 'hotpink', roughness: 0.4 })
-)
-mesh.position.set(0, 1, 0)
-mesh.castShadow = true
-scene.add(mesh)
-```
-
-### Render Loop
-
-Mutate objects directly in the render loop. Never trigger framework re-renders at 60fps.
-
-```typescript
-const clock = new THREE.Clock()
-renderer.setAnimationLoop((time) => {
-  const delta = clock.getDelta()
-  mesh.rotation.y += delta
-  renderer.render(scene, camera)
-})
-```
-
-`delta` is seconds since last frame -- use it for frame-rate-independent animation. **Clamp it**: after a hidden-tab return or debugger pause, `getDelta()` comes back seconds long and explodes physics/tween math — `const dt = Math.min(delta, 0.1)`.
-
-### Loading Assets
-
-```typescript
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
-
-const manager = new THREE.LoadingManager()
-manager.onError = (url) => console.error(`Asset failed to load: ${url}`) // otherwise silent
-
-const loader = new GLTFLoader(manager)
-loader.setMeshoptDecoder(MeshoptDecoder)
-
-// loadAsync rejects on 404/decode failure — wrap in try/catch in production so a
-// missing model renders a fallback instead of leaving a blank scene.
-const gltf = await loader.loadAsync('/model.glb')
-const model = gltf.scene
-scene.add(model)
-
-// Play animations
-const mixer = new THREE.AnimationMixer(model)
-const action = mixer.clipAction(gltf.animations[0])
-action.play()
-
-// In render loop:
-mixer.update(delta)
-```
-
-### Event System (Raycasting)
-
-```typescript
-const raycaster = new THREE.Raycaster()
-const pointer = new THREE.Vector2()
-
-canvas.addEventListener('pointermove', (event) => {
-  pointer.x = (event.clientX / window.innerWidth) * 2 - 1
-  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1
-})
-
-// In render loop:
-raycaster.setFromCamera(pointer, camera)
-const intersects = raycaster.intersectObjects(scene.children)
-if (intersects.length > 0) {
-  // intersects[0].object, intersects[0].point, etc.
-}
-```
-
----
-
-## Architecture: Separating Concerns
-
-### Thread Architecture
-
-3D/XR apps are performance-critical. **Pick the device class and its budget first** — draw calls / triangles / DPR per platform in `references/performance.md` — because a scene built without a budget retrofits into a rewrite. On XR the budget is a comfort floor, not a target: missed frames are motion sickness, not just jank. Then offload heavy work from the main thread to keep rendering smooth.
-
-| Thread | Responsibility |
-|---|---|
-| **Main thread** | Rendering + XR frame + UI |
-| **Worker 1** | Physics (Rapier WASM) |
-| **Worker 2** | ECS system tick (Koota) |
-| **Worker N** | Procedural generation, pathfinding, etc. (pool) |
-| **WASM Threads** | Massive parallel compute (Rust rayon) |
-| **GPU Compute** | Particles, boids, post-processing (TSL compute shaders) |
-| **AudioWorklet** | Spatial audio processing |
-
-The general pattern: Workers write simulation results into `SharedArrayBuffer`, main thread reads every frame to update Three.js transforms. This requires COOP/COEP headers (already in the Vite config above).
-
-**Hidden tabs pause rendering, not simulation**: `requestAnimationFrame` stops when the tab hides, but Workers (physics, ECS) and AudioWorklets keep running — burning battery and advancing the simulation away from the last rendered frame. Listen for `visibilitychange` and pause/resume the worker tick together with the render loop (and clamp `delta` on return — see Render Loop).
-
-For full details on Worker separation, data transfer patterns (postMessage vs SharedArrayBuffer vs Transferable), and WASM threading setup, see `references/threading.md`.
-
-### State Boundaries
-
-| Domain | Tool | Why |
-|---|---|---|
-| Simulation state (entities, positions, health, AI) | Koota ECS | Archetype storage, batch iteration, 60fps+ updates |
-| UI state (menus, HUD, settings) | Framework state (Zustand, signals, stores) | Simple event-driven get/set, no entity overhead |
-| Physics state | Rapier | WASM-powered, deterministic, handled by physics world |
-| Render state | Three.js | Scene graph, materials, animations |
-
-Koota manages the game/simulation world. Framework state manages everything outside the game loop (pause menu, settings, inventory UI). They coexist cleanly -- see `references/ecs.md` for the core ECS patterns.
-
-### System Execution Order
-
-Systems are plain functions called in order. The order matters.
-
-```typescript
-function gameLoop(world: World, delta: number) {
-  inputSystem(world)
-  movementSystem(world, delta)
-  collisionSystem(world)
-  syncTransformsSystem(world)   // ECS -> Three.js scene graph
-  cleanupSystem(world)
-}
-```
-
----
-
-## glTF 2.0 Asset Pipeline
-
-glTF (`.glb`) is the only asset format. See `references/assets.md` for the full optimization pipeline and texture best practices.
-
----
-
-## Quick Reference: Common Imports
-
-```typescript
-// Core
-import * as THREE from 'three/webgpu'
-
-// TSL
-import { Fn, uniform, float, vec2, vec3, vec4, color,
-  positionLocal, normalLocal, positionView, normalView, uv, time,
-  sin, cos, mix, smoothstep, mx_noise_float,
-  texture, storage, instanceIndex } from 'three/tsl'
-
-// ECS
-import { createWorld, trait, relation } from 'koota'
-
-// Physics (raw Rapier)
-import RAPIER from '@dimforge/rapier3d'
-```
-
-For framework-specific imports (R3F, Drei, etc.), see `references/react/setup.md`.
+Read a file when the task reaches it: `references/performance.md` (frame probe, diagnosis, color and output, levers), `references/assets.md` (pipeline, configurators, splats, pre-warm, dispose), `references/shaders.md` (TSL, compute, post-processing, migration), `references/threading.md` (workers, isolation, Vite config), `references/web-xr.md` (backend, adding XR to a scene, features, Quick Look), `references/testing.md` (tiers, mode parity, guards, GPU CI), `references/physics.md` (Rapier), `references/ecs.md` (Koota), `references/wasm.md`, `references/audio.md`. R3F projects also read each core file's `references/react/` twin, plus `references/react/setup.md` (Canvas, loading, `useFrame`, events) and `references/react/drei.md` (drei or uikit under `WebGPURenderer`).

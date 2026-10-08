@@ -1,346 +1,191 @@
-# Expo / React Native i18n with react-i18next
+# Expo / React Native with i18next
 
-**Docs: [docs.expo.dev — Localization](https://docs.expo.dev/versions/latest/sdk/localization/) | [react.i18next.com](https://react.i18next.com/) | [i18next.com](https://www.i18next.com/)**
+Verified against Expo SDK 57 (58 in beta), i18next 26 and react-i18next 17 on 2026-10-08. If the lockfile majors differ, follow that version's docs (docs.expo.dev/guides/localization, i18next.com, react.i18next.com). Locale lists are placeholders.
 
-Stack: `expo-localization` + `i18next` + `react-i18next`. TypeScript 5+.
-
-## Table of Contents
-
-1. [Setup](#setup)
-2. [Type Safety](#type-safety)
-3. [Usage](#usage)
-4. [Lazy Loading Namespaces](#lazy-loading-namespaces)
-5. [Language Switching](#language-switching)
-6. [Native Locale Config (app.json)](#native-locale-config-appjson)
-7. [Android Language Detection](#android-language-detection)
-8. [Common Pitfalls](#common-pitfalls)
-
----
-
-## Setup
+## Install
 
 ```bash
-bun add expo-localization i18next react-i18next @formatjs/intl-pluralrules
+npx expo install expo-localization expo-sqlite i18next react-i18next \
+  @formatjs/intl-locale @formatjs/intl-pluralrules @formatjs/intl-localematcher
 ```
 
-> Hermes (React Native's engine) does **not** implement `Intl.PluralRules` on any version, and i18next's plural backend requires it. `@formatjs/intl-pluralrules` polyfills it — import it before i18next init (see below).
+`expo-sqlite` is only for an in-app language picker.
 
-### File Structure
+## Polyfills
 
-```
-src/
-├── lib/i18n/
-│   ├── index.ts          # i18next init + export
-│   ├── resources.ts      # Resource map
-│   └── types.ts          # Type definitions
-├── locales/
-│   ├── en/
-│   │   ├── common.json
-│   │   ├── auth.json
-│   │   └── errors.json
-│   ├── es/
-│   ├── id/
-│   ├── ja/
-│   ├── ko/
-│   └── pt-BR/
-└── app/
-    └── _layout.tsx       # Import i18n here
+Hermes implements only `Intl.Collator`, `NumberFormat`, `DateTimeFormat` and `getCanonicalLocales` (`NumberFormat.formatToParts` on Android only); check `doc/IntlAPIs.md` in the Hermes repo for your version. `PluralRules`, `Locale`, `RelativeTimeFormat`, `ListFormat`, `DisplayNames`, `Segmenter` and `DurationFormat` throw. Load polyfills first, in this order (checked 2026-10):
+
+```ts
+// src/lib/i18n/polyfills.ts: imported before i18next and the matcher
+import '@formatjs/intl-locale/polyfill-force.js'; // pluralrules and the matcher need Intl.Locale
+import '@formatjs/intl-pluralrules/polyfill-force.js'; // -force: feature detection is slow on Android
+import '@formatjs/intl-pluralrules/locale-data/en.js'; // and one per other shipped language; pt covers pt-BR
+// then only the constructors the app calls, e.g. @formatjs/intl-relativetimeformat + its locale-data
 ```
 
-### Resources & Config
+Skip what you can avoid: language names come from a static map of endonyms ("Deutsch", "Português (Brasil)"), and number input is parsed with `getLocales()[0].decimalSeparator`, not `formatToParts`.
 
-```typescript
-// src/lib/i18n/resources.ts
-import enCommon from '@/locales/en/common.json';
-import enAuth from '@/locales/en/auth.json';
-import enErrors from '@/locales/en/errors.json';
-// ... import other locales similarly
+## Resolve and init
 
-export const resources = {
-  en: { common: enCommon, auth: enAuth, errors: enErrors },
-  es: { common: esCommon, auth: esAuth, errors: esErrors },
-  id: { common: idCommon, auth: idAuth, errors: idErrors },
-  ja: { common: jaCommon, auth: jaAuth, errors: jaErrors },
-  ko: { common: koCommon, auth: koAuth, errors: koErrors },
-  'pt-BR': { common: ptBRCommon, auth: ptBRAuth, errors: ptBRErrors },
-} as const;
-
-export const defaultNS = 'common';
-export type SupportedLocale = keyof typeof resources;
-export const supportedLocales = Object.keys(resources) as SupportedLocale[];
-```
-
-```typescript
-// src/lib/i18n/index.ts
-import 'expo-sqlite/localStorage/install'; // synchronous localStorage polyfill — must be before any localStorage usage
-// Hermes ships no Intl.PluralRules — polyfill before i18next init (all Hermes versions). Import locale-data per language.
-import '@formatjs/intl-pluralrules/polyfill-force';
-import '@formatjs/intl-pluralrules/locale-data/en';
-import '@formatjs/intl-pluralrules/locale-data/es';
-import '@formatjs/intl-pluralrules/locale-data/id';
-import '@formatjs/intl-pluralrules/locale-data/ja';
-import '@formatjs/intl-pluralrules/locale-data/ko';
-import '@formatjs/intl-pluralrules/locale-data/pt';
+```ts
+// src/lib/i18n/index.ts: the first import in app/_layout.tsx
+import './polyfills';
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { getLocales } from 'expo-localization';
-import { resources, defaultNS, supportedLocales, type SupportedLocale } from './resources';
+import { match } from '@formatjs/intl-localematcher';
+import { resources, supportedLocales, type SupportedLocale } from './resources'; // { en: { common, auth }, de: {…}, 'pt-BR': {…} }
 
-const LANGUAGE_KEY = 'app.language';
-
-function getDeviceLocale(): SupportedLocale {
-  const deviceLang = getLocales()[0]?.languageCode ?? 'en';
-  return supportedLocales.includes(deviceLang as SupportedLocale)
-    ? (deviceLang as SupportedLocale) : 'en';
-}
-
-function getSavedLocale(): SupportedLocale | null {
-  const saved = globalThis.localStorage.getItem(LANGUAGE_KEY);
-  return saved && supportedLocales.includes(saved as SupportedLocale)
-    ? (saved as SupportedLocale) : null;
+export function resolveLocale(tags = getLocales().map((l) => l.languageTag)): SupportedLocale {
+  for (const tag of tags) { // one tag at a time: a best fit over [es-MX, en-US] returns en
+    try {
+      const hit = match([tag], supportedLocales, 'und'); // es-MX → es, pt-PT → pt-BR, zh-TW → zh-Hant
+      if (hit !== 'und') return hit as SupportedLocale;
+    } catch {} // malformed device tag
+  }
+  return 'en'; // no match: a language those users read (SKILL.md §2b), not automatically the source
 }
 
 i18n.use(initReactI18next).init({
   resources,
-  lng: getSavedLocale() ?? getDeviceLocale(),
-  defaultNS,
-  fallbackLng: 'en',
-  interpolation: { escapeValue: false },
-  react: { useSuspense: false },  // required for React Native
+  lng: resolveLocale(),
+  fallbackLng: 'en', // the default load: 'all' walks pt-BR → pt → en; end in a language every market reads
+  defaultNS: 'common',
+  returnEmptyString: false, // an empty translation falls back instead of rendering blank
+  interpolation: { escapeValue: false }, // React already escapes
+  initAsync: false, // bundled resources are ready on first render
 });
 
 export default i18n;
+```
 
-export async function changeLanguage(locale: SupportedLocale) {
-  await i18n.changeLanguage(locale);
-  globalThis.localStorage.setItem(LANGUAGE_KEY, locale);
+- Don't set `load: 'languageOnly'` while you ship regional bundles: it reads `pt` for pt-BR and never the `pt-BR` bundle. Object `fallbackLng` is for chains across languages (`{ 'de-CH': ['fr', 'it'], default: ['en'] }`).
+- `react: { useSuspense: false }` is optional with bundled resources; with lazy namespaces, keep Suspense or render after `ready`.
+- Format numbers and dates with the first device tag whose `languageCode` is the UI's language (en-GB under `en`), else the UI locale; a tag in another language puts its month names in your UI.
+- The 24-hour clock and week start are device settings `Intl` can't see: pass `hourCycle: 'h23'` or `'h12'` from `getCalendars()[0].uses24hourClock`, and start calendars on `firstWeekday` (1 = Sunday).
+
+## One language source of truth
+
+Choose by when switching must work, and on which devices:
+- **The OS per-app setting:** declare `supportedLocales` in the plugin (Native config) and follow the OS; `useLocales()` re-renders on a change (iOS restarts the app). It is native config, so it, and every locale added to it later, ships only in a new binary after store review; Android offers the setting from Android 13, so older devices get the device language only.
+- **An in-app picker** when users need the switch before that build, on Android 12 or older, in a language other than the OS's, or as one choice across devices. It is JavaScript (`i18n.changeLanguage`, no restart unless direction flips), so it ships over the air while its storage module is already in the binary; adding expo-sqlite or any other native module needs a build. Store the choice on the profile, cache it with `import 'expo-sqlite/localStorage/install'` (synchronous, so no first-render flash; read `globalThis.localStorage`), and treat an OS language change since the last launch as a new choice.
+
+Either way, report the resolved locale and the device zone with the push-token registration so push renders in them; email reads the profile, which the report fills until the user chooses explicitly:
+
+```tsx
+// app/_layout.tsx
+const locales = useLocales();
+const calendars = useCalendars();
+useEffect(() => {
+  const stored = readStoredLocale(); // yours: the picker's choice; null when following the OS or after an OS language change
+  const locale = resolveLocale(stored ? [stored] : locales.map((l) => l.languageTag));
+  i18n.changeLanguage(locale);
+  if (user) reportDeviceLocale({ locale, timeZone: calendars[0]?.timeZone }); // your API: token row; profile if unset
+}, [locales, calendars, user]);
+```
+
+## RTL
+
+Layout follows the device by default: React Native allows RTL, so an Arabic or Hebrew device mirrors the app (on iOS only when that language is in `supportedLocales`).
+- **No RTL locale shipped:** set the plugin's `"supportsRTL": false`, or Android devices set to Arabic mirror your English UI.
+- **Testing:** `"forcesRTL": true` in a development build.
+- **Direction** comes from `getLocales()[0].textDirection` or `I18nManager.isRTL`, never a hand-kept language list.
+- **Switching between an LTR and an RTL language at runtime** needs a reload; Expo Go resets RTL, so test in a development build. Expo Router's `LocaleProvider direction={…}` flips navigation (headers, gestures) only.
+
+```ts
+if (shouldBeRTL !== I18nManager.isRTL) {
+  I18nManager.allowRTL(shouldBeRTL);
+  I18nManager.forceRTL(shouldBeRTL);
+  await Updates.reloadAsync(); // expo-updates
 }
 ```
 
-```tsx
-// src/app/_layout.tsx
-import '@/lib/i18n'; // Side-effect import — must be first
-```
-
-**Regional fallback chains:** `fallbackLng` also takes an object for region→language→base resolution, paired with `load: 'languageOnly'`:
-
-```typescript
-fallbackLng: { 'pt-BR': ['pt', 'en'], default: ['en'] },
-load: 'languageOnly', // 'pt-BR' device locale loads the 'pt' bundle
-```
-
----
-
-## Type Safety
-
-```typescript
-// src/lib/i18n/types.ts
-import { resources, defaultNS } from './resources';
-
-declare module 'i18next' {
-  interface CustomTypeOptions {
-    defaultNS: typeof defaultNS;
-    resources: (typeof resources)['en'];
-  }
-}
-```
-
-Gives autocomplete for `t('auth:login.title')`, errors on missing keys, namespace-aware resolution. Ensure this file is in `tsconfig.json` includes.
-
----
-
-## Usage
-
-```tsx
-import { useTranslation } from 'react-i18next';
-
-function LoginScreen() {
-  const { t } = useTranslation('auth');
-  return (
-    <View>
-      <Text>{t('login.title')}</Text>
-      <Button title={t('login.submit')} onPress={handleLogin} />
-    </View>
-  );
-}
-```
-
-### Interpolation
+## Plurals and rich text
 
 ```json
-{ "greeting": "Hello, {{name}}!" }
-```
-```tsx
-t('greeting', { name: 'Alice' })
+// locales/es/common.json: JSON v4 (v3 is removed); suffixes come from Intl.PluralRules; the variable must be `count`
+{ "items_one": "{{count}} artículo", "items_many": "{{count}} de artículos", "items_other": "{{count}} artículos" }
 ```
 
-### Pluralization (JSON v4)
-
-Uses `Intl.PluralRules` suffixes. Variable must be `count`.
-
-```json
-// locales/en/common.json — one/other
-{ "items_one": "{{count}} item", "items_other": "{{count}} items" }
-```
-
-```json
-// locales/ja/common.json — other only
-{ "items_other": "{{count}}個のアイテム" }
-```
-
-```json
-// locales/ko/common.json — other only
-{ "items_other": "{{count}}개 항목" }
-```
+- **es, fr, it and pt must ship `_many`.** i18next 26 tries `key_many`, then the bare key, then the fallback language, so 1,000,000 renders in English. `i18next-cli status` reports a missing `_many` as optional and passes; a missing ru `_few` fails it.
+- **Number words:** for a count of 0, i18next tries `key_zero` first in every language, so "No items yet" goes there; `_one` also covers 21 in ru, so it never says "one".
+- **Sharing ICU catalogs with a Next.js app:** use-intl (next-intl's core; augment `AppConfig` on `'use-intl'`) on the same polyfills and resolver gives one API and the `next-i18n.md` gate script: `<IntlProvider locale messages timeZone>` at the root (`timeZone` from `getCalendars()`), `t.rich` chunks inside `<Text>`; `i18next-icu` only where i18next already runs.
 
 ```tsx
-t('items', { count: 0 })   // "0개 항목" (ko) / "0 items" (en)
-t('items', { count: 1 })   // "1 item" (en) / "1個のアイテム" (ja)
-t('items', { count: 5 })   // "5 items" (en) / "5개 항목" (ko)
-```
-
-### Rich Text (Trans Component)
-
-```tsx
-import { Trans } from 'react-i18next';
-
-// "terms": "Agree to our <bold>Terms</bold> and <link>Privacy</link>."
+// "terms": "Agree to our <link>Privacy Policy</link>."
 <Trans
   i18nKey="terms"
-  components={{
-    bold: <Text style={{ fontWeight: 'bold' }} />,
-    link: <TouchableOpacity onPress={openPrivacy} />,
-  }}
+  parent={Text} // raw strings must render inside <Text>
+  components={{ link: <Text style={styles.link} onPress={openPrivacy} /> }}
 />
 ```
 
----
+A `TouchableOpacity` as the link throws: it is a View, so its text sits outside `<Text>`.
 
-## Lazy Loading Namespaces
+## Lazy namespaces
 
-For larger apps, use `i18next-resources-to-backend` instead of bundling all translations:
+Metro needs literal `import()` paths; a template literal fails the build (`InvalidRequireCallError`). Use a static loader map:
 
-```bash
-bun add i18next-resources-to-backend
-```
-
-```typescript
+```ts
 import resourcesToBackend from 'i18next-resources-to-backend';
 
-i18n
-  .use(initReactI18next)
-  .use(resourcesToBackend(
-    (language: string, namespace: string) =>
-      // unwrap the module's default export — dynamic JSON import resolves to { default: {...} }
-      import(`@/locales/${language}/${namespace}.json`).then((m) => m.default ?? m)
-  ))
-  .init({
-    lng: initialLocale,
-    fallbackLng: 'en',
-    ns: ['common'],
-    defaultNS: 'common',
-    interpolation: { escapeValue: false },
-    react: { useSuspense: false },
-  });
+const loaders: Record<string, Record<string, () => Promise<unknown>>> = {
+  de: { common: () => import('@/locales/de/common.json'), settings: () => import('@/locales/de/settings.json') }, // one row per locale
+};
+
+i18n.use(resourcesToBackend((lng: string, ns: string) => loaders[lng]?.[ns]?.()));
 ```
 
----
+With `resources` in `init`, i18next never calls the backend and lazy keys render raw: set `partialBundledLanguages: true` to bundle `common` and lazy-load the rest, or drop `resources` and `initAsync: false` when every namespace is lazy. The JSON still ships in the binary: lazy loading saves parse time and memory, not download size.
 
-## Language Switching
+## Types
 
-```tsx
-import { changeLanguage, type SupportedLocale } from '@/lib/i18n';
+Type keys against the base: augment i18next's `CustomTypeOptions` with `defaultNS: 'common'` and `resources: (typeof resources)['en']`, in a file inside tsconfig's `include`.
 
-const LANGUAGES = [
-  { code: 'en', name: 'English' },
-  { code: 'es', name: 'Español' },
-  { code: 'id', name: 'Bahasa Indonesia' },
-  { code: 'ja', name: '日本語' },
-  { code: 'ko', name: '한국어' },
-  { code: 'pt-BR', name: 'Português (Brasil)' },
-] as const;
-
-async function handleChange(locale: SupportedLocale) {
-  await changeLanguage(locale);
-}
-```
-
----
-
-## Native Locale Config (app.json)
+## Native config
 
 ```json
 {
   "expo": {
-    "ios": {
-      "infoPlist": { "CFBundleAllowMixedLocalizations": true }
-    },
-    "locales": {
-      "es": "./languages/es.json",
-      "id": "./languages/id.json",
-      "ja": "./languages/ja.json",
-      "ko": "./languages/ko.json",
-      "pt-BR": "./languages/pt-BR.json"
-    }
-  }
-}
-```
-
-Locale file format:
-```json
-{
-  "ios": { "CFBundleDisplayName": "앱 이름", "NSCameraUsageDescription": "카메라 사용 설명" },
-  "android": { "app_name": "앱 이름" }
-}
-```
-
-Two distinct fields — don't conflate them:
-
-- `expo.locales` (above) localizes **app metadata** (display name, permission strings) and needs `CFBundleAllowMixedLocalizations`.
-- The **expo-localization config plugin** `supportedLocales` enables the OS-level per-app "preferred language" picker on iOS and Android. It is *not* in the example above — add it under `plugins`:
-
-```json
-{
-  "expo": {
+    "ios": { "infoPlist": { "CFBundleAllowMixedLocalizations": true } },
+    "locales": { "de": "./languages/de.json", "pt-BR": "./languages/pt-BR.json" },
     "plugins": [
-      ["expo-localization", { "supportedLocales": { "ios": ["en", "es", "ko"], "android": ["en", "es", "ko"] } }]
+      ["expo-localization", {
+        "supportedLocales": { "ios": ["en", "de", "pt-BR"], "android": ["en", "de", "pt-BR"] },
+        "supportsRTL": false
+      }]
     ]
   }
 }
 ```
 
-(Verify field names against the current expo-localization version — Expo SDK has advanced well past the SDK 53 / v17 era.)
+Two fields, two jobs: `expo.locales` translates app metadata (`{ "ios": { "CFBundleDisplayName": "…", "NSCameraUsageDescription": "…" }, "android": { "app_name": "…" } }`); the plugin's `supportedLocales` enables the OS per-app language setting.
 
----
+## Gates
 
-## Android Language Detection
+`i18next-cli` (it replaces the deprecated `i18next-parser`) covers gates 1 and 4: `status` exits non-zero on a missing or blank key; `lint` flags hardcoded strings and, at `'error'`, concatenation. ICU catalogs (use-intl, `i18next-icu`) use the gate script in `next-i18n.md`.
 
-Android doesn't reset the app when device language changes. Listen for `AppState`:
+```ts
+// i18next.config.ts
+import { defineConfig, recommendedAcceptedAttributes } from 'i18next-cli';
 
-```typescript
-import { AppState } from 'react-native';
-import { getLocales } from 'expo-localization';
-
-AppState.addEventListener('change', (nextState) => {
-  if (nextState === 'active') {
-    const deviceLocale = getLocales()[0]?.languageCode;
-    // Check if device locale changed and handle accordingly
-  }
+export default defineConfig({
+  locales: ['en', 'de', 'pt-BR'],
+  extract: { input: ['src/**/*.{ts,tsx}'], output: 'src/locales/{{language}}/{{namespace}}.json' },
+  lint: {
+    acceptedTags: 'all', // the default list holds HTML tags only and never checks <Text>
+    acceptedAttributes: [...recommendedAcceptedAttributes, 'accessibilityLabel', 'accessibilityHint'],
+    checkConcatenation: 'error',
+  },
 });
 ```
 
----
+Gates 2–3 need a script for JSON v4, since `status` passes both a missing es `_many` and a renamed `{{count}}`. Per locale and key family (the `_<category>` suffix stripped), the union of `{{name}}` and `<tag>` names equals the base's, and a family with `_other` has `_<category>` for every entry of `new Intl.PluralRules(locale).resolvedOptions().pluralCategories` (`_ordinal_` families: `{ type: 'ordinal' }`). `_zero` is i18next's exact match for 0 in every language, so it is never dead (and required only where 0 is its own category, as in ar); report any other `_<category>` the locale lacks (ja `_one`): it never renders. Prove it red with both defects and green on complete families.
 
-## Common Pitfalls
+## Pitfalls
 
-| Pitfall | Solution |
+| Pitfall | Fix |
 |---|---|
-| `compatibilityJSON: 'v3'` | Removed — only JSON v4 supported |
-| AsyncStorage for language | Use `expo-sqlite/localStorage/install` polyfill — synchronous, no startup flash |
-| Missing `react: { useSuspense: false }` | Required for React Native |
-| RTL change without reload | `I18nManager.forceRTL()` requires `Updates.reloadAsync()` |
-| Format logic in translations | Prefer `Intl` APIs in code |
-| Missing `escapeValue: false` | React Native already escapes — double-escaping breaks output |
-| Loading all namespaces at startup | Use `i18next-resources-to-backend` for lazy loading |
-| `Intl.PluralRules` unavailable | Hermes ships none (any version). Polyfill on every build: `@formatjs/intl-pluralrules/polyfill-force` + locale-data, imported before i18next init |
-| Bare `localStorage` undefined | Access via `globalThis.localStorage` (the `expo-sqlite/localStorage/install` polyfill assigns it on `globalThis`; no-op on web) |
+| `compatibilityJSON: 'v3'`, `key_plural` or `key_0` keys | i18next 24 removed the old JSON formats and loads only v4: convert with i18next-v4-format-converter (keys with the default `_` separator) as part of the next locale's launch; never pin i18next below 24 to keep them |
+| `initImmediate` | Renamed `initAsync` in i18next 24 |
+| A plural renders in the fallback language on device | No `Intl.PluralRules` for that language (polyfill or its locale-data missing): since 24, i18next falls back to the dev language |

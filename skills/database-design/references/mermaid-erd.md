@@ -1,85 +1,32 @@
-# Mermaid ERD Quick Reference
+# Mermaid ERD
 
-Use this syntax for the ERD section embedded in `docs/arch/database.md` (see SKILL.md → Output). The ERD is not a standalone file.
-
-## Basic Structure
+The Model section of the database design doc holds one `erDiagram`: entities, keys and cardinality. Columns live in the DDL, so list only key columns.
 
 ```mermaid
 erDiagram
-    user_accounts {
+    customers ||..o{ orders : places
+    orders ||--|{ order_lines : contains
+    products ||..o{ order_lines : "sold as"
+    customers {
+        uuid tenant_id PK
         uuid id PK
-        text email UK
-        text name
-        timestamptz created_at
-        timestamptz updated_at
     }
-
     orders {
         uuid id PK
-        uuid user_id FK
-        order_status status
-        timestamptz created_at
-        timestamptz updated_at
+        uuid tenant_id FK
+        uuid customer_id FK
     }
-
-    order_items {
-        uuid id PK
-        uuid order_id FK
+    order_lines {
+        uuid order_id PK, FK
+        int line_no PK
         uuid product_id FK
-        int quantity
-        numeric unit_price
     }
-
     products {
         uuid id PK
-        text name
-        numeric price
-        jsonb attributes
-        timestamptz created_at
+        text sku UK
     }
-
-    user_accounts ||--o{ orders : "places"
-    orders ||--|{ order_items : "contains"
-    products ||--o{ order_items : "referenced by"
 ```
 
-## Relationship Cardinality
+The cardinality glyph nearest an entity describes that entity's side. A solid line (`--`) is an identifying relationship (the parent key is part of the child's key, as in `order_lines`); a dotted line (`..`) is non-identifying.
 
-```
-||--||   exactly one to exactly one
-||--o{   exactly one to zero or more
-||--|{   exactly one to one or more
-|o--o{   zero or one to zero or more
-```
-
-Read left to right: left side of `--` describes left entity, right side describes right entity.
-
-`--` = identifying relationship (child depends on the parent, e.g. the FK is part of the child's PK); `..` (dashed) = non-identifying (the FK is nullable or not part of the PK).
-
-| Meaning | Left | Right |
-|---------|------|-------|
-| exactly one | `\|\|` | `\|\|` |
-| zero or one | `\|o` | `o\|` |
-| zero or more | `}o` | `o{` |
-| one or more | `}\|` | `\|{` |
-
-The crow's-foot (`{`/`}`) and circle (`o`) always sit nearest the entity they qualify, so the glyph flips between the left and right side of `--`. Only `||` (exactly one) is symmetric.
-
-## Column Markers
-
-| Marker | Meaning |
-|--------|---------|
-| `PK` | Primary Key |
-| `FK` | Foreign Key |
-| `UK` | Unique Key |
-
-Combine markers with a comma when a column has multiple roles, e.g. `uuid order_id PK, FK` for a composite-key (identifying) junction table.
-
-## Rules for This Skill
-
-1. Use PostgreSQL type names as column types (uuid, bigint, text, timestamptz, numeric, jsonb) — PK type matches the table's actual PK choice (UUID v7 by default, BIGINT for high-volume internal tables — see SKILL.md "Primary Key Type Decision")
-2. Quote table names only if they collide with reserved words (rare with plural names — e.g., `"groups"`)
-3. Include PK, FK, UK markers
-4. Keep relationship labels short (verb phrases: "places", "contains", "belongs to")
-5. Group related tables visually — Mermaid renders top-to-bottom by default
-6. For large schemas (15+ tables), split into logical groupings with comments
+Key types match the DDL; markers `PK`, `FK`, `UK` combine with commas. Past about 15 tables, draw one diagram per bounded context plus one of the cross-context links.

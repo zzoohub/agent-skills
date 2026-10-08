@@ -1,85 +1,25 @@
 ---
-title: Use React DOM Resource Hints
-impact: HIGH
-impactDescription: reduces load time for critical resources
-tags: rendering, preload, preconnect, prefetch, resource-hints
+title: Start Critical Fetches Early with Resource Hints
+tags: rendering, preload, preconnect, lcp, resource-hints
 ---
 
-## Use React DOM Resource Hints
+The browser finds a resource late when only CSS, JavaScript or a post-hydration render references it. React DOM's hint APIs emit `<link>` tags during render, so the fetch starts with the HTML. Hint only what the first view needs, starting with the LCP resource: every extra preload competes for bandwidth.
 
-**Impact: HIGH (reduces load time for critical resources)**
-
-React DOM provides APIs to hint the browser about resources it will need. These are especially useful in server components to start loading resources before the client even receives the HTML.
-
-- **`prefetchDNS(href)`**: Resolve DNS for a domain you expect to connect to
-- **`preconnect(href)`**: Establish connection (DNS + TCP + TLS) to a server
-- **`preload(href, options)`**: Fetch a resource (stylesheet, font, script, image) you'll use soon
-- **`preloadModule(href)`**: Fetch an ES module you'll use soon
-- **`preinit(href, options)`**: Fetch and evaluate a stylesheet or script (a stylesheet requires a `precedence` option: `reset`, `low`, `medium` or `high`)
-- **`preinitModule(href)`**: Fetch and evaluate an ES module
-
-**Example (preconnect to third-party APIs):**
+`prefetchDNS` and `preconnect` warm an origin; `preload(href, { as })` fetches a file the page needs; `preloadModule(href, { as: 'script' })` requires its `as`; `preinit` and `preinitModule` also execute a script or apply a stylesheet, and a stylesheet passed to `preinit` needs a `precedence`.
 
 ```tsx
-import { preconnect, prefetchDNS } from 'react-dom'
+import { preconnect, preload, preinit } from 'react-dom'
 
-export default function App() {
-  prefetchDNS('https://analytics.example.com')
+function RootDocument({ children }: { children: React.ReactNode }) {   // outside Next.js; see below
   preconnect('https://api.example.com')
-
-  return <main>{/* content */}</main>
-}
-```
-
-**Example (preload critical fonts and styles):**
-
-```tsx
-import { preload, preinit } from 'react-dom'
-
-export default function RootLayout({ children }) {
-  // Preload font file
   preload('/fonts/inter.woff2', { as: 'font', type: 'font/woff2', crossOrigin: 'anonymous' })
-
-  // Fetch and apply critical stylesheet immediately (precedence is required for stylesheets)
   preinit('/styles/critical.css', { as: 'style', precedence: 'high' })
-
-  return (
-    <html>
-      <body>{children}</body>
-    </html>
-  )
+  return <html><body>{children}</body></html>
 }
 ```
 
-**Example (preload modules for code-split routes):**
+Give the LCP image `fetchPriority="high"` and never `loading="lazy"`. In Next.js, `next/image` is lazy by default, so give the LCP image `fetchPriority="high"` or `loading="eager"` (`priority` is deprecated since 16); load fonts with `next/font`, which preloads them and sizes the fallback, not a manual `preload`. For the next route's code, use the router's prefetch on intent (Next's `<Link>` prefetching, TanStack Router's `defaultPreload: 'intent'`) instead of hand-written chunk paths, which are hashed in production.
 
-```tsx
-import { preloadModule, preinitModule } from 'react-dom'
+*Break:* don't preload what the HTML already references early; the preload scanner finds it.
 
-function Navigation() {
-  const preloadDashboard = () => {
-    preloadModule('/dashboard.js', { as: 'script' })
-  }
-
-  return (
-    <nav>
-      <a href="/dashboard" onMouseEnter={preloadDashboard}>
-        Dashboard
-      </a>
-    </nav>
-  )
-}
-```
-
-**When to use each:**
-
-| API | Use case |
-|-----|----------|
-| `prefetchDNS` | Third-party domains you'll connect to later |
-| `preconnect` | APIs or CDNs you'll fetch from immediately |
-| `preload` | Critical resources needed for current page |
-| `preloadModule` | JS modules for likely next navigation |
-| `preinit` | Stylesheets/scripts that must execute early |
-| `preinitModule` | ES modules that must execute early |
-
-Reference: [React DOM Resource Preloading APIs](https://react.dev/reference/react-dom#resource-preloading-apis)
+Sources: https://react.dev/reference/react-dom#resource-preloading-apis · https://react.dev/reference/react-dom/preloadModule · https://nextjs.org/docs/app/api-reference/components/image

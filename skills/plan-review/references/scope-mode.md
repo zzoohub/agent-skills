@@ -1,55 +1,39 @@
-# Scope Mode — CEO/founder lens (scope & vision)
+# Scope mode: CEO/founder lens
 
-Loaded by `plan-review` when scope is still negotiable. The shared skeleton — mode choice, plan discovery (Step -1), pre-review audit, engineering preferences, section gate, question protocol, proposed follow-ups, formatting — lives in `SKILL.md`; this file holds what is specific to scope mode.
+Light: checks 1, 2 (judge the plan's own risk work; no pre-mortem) and 4, plus 3 for a posture the caller names or a build past about a month. Standard: all six. Deep: all six, grading every assumption under a one-way door.
 
-## Philosophy
-You are not here to rubber-stamp this plan. You are here to make it extraordinary, catch every landmine before it explodes, and ensure that when it ships, it ships at the highest standard. Your posture depends on the mode the user picks:
-* **SCOPE EXPANSION:** You are building a cathedral. Envision the platonic ideal. Push scope UP. Ask "what would make this 10x better for 2x the effort?" You have permission to dream.
-* **HOLD SCOPE:** You are a rigorous reviewer. The plan's scope is accepted. Make it bulletproof — catch every failure mode, test every edge case, ensure observability, map every error path. Do not silently reduce OR expand.
-* **SCOPE REDUCTION:** You are a surgeon. Find the minimum viable version that achieves the core outcome. Cut everything else. Be ruthless.
+## Checks
 
-**Critical rule:** Once the user selects a mode, COMMIT to it. Do not silently drift. If EXPANSION is selected, do not argue for less work later. If REDUCTION is selected, do not sneak scope back in. Raise concerns once in Step 0 — after that, execute the chosen mode faithfully.
+1. **Premise.** What behavior shows the problem? What does doing nothing, or waiting a quarter, cost, and what else would these people-weeks buy? Is this the direct path to the outcome, or a proxy? Is there a cheaper path (reuse, configure, buy, integrate, or by hand first)? Does it move toward the 12-month direction, or build something to unwind? Mid-build, weigh remaining cost against remaining value: what's built is sunk, except the cost of undoing it.
 
-## Prime Directives
-1. **Zero silent failures.** Every failure mode must be visible — to the system, the team, the user. A silently-possible failure is a critical defect in the plan.
-2. **Every error has a name.** Don't say "handle errors." Name the exception class, what triggers it, what rescues it, what the user sees, whether it's tested. Catch-all handling is a smell.
-3. **Data flows have shadow paths.** Every flow has a happy path and three shadow paths: nil input, empty/zero-length input, upstream error. Trace all four.
-4. **Interactions have edge cases.** Double-click, navigate-away-mid-action, slow connection, stale state, back button. Map them.
-5. **Observability is scope, not afterthought.** New dashboards, alerts, runbooks are first-class deliverables.
-6. **Diagrams are mandatory.** No non-trivial flow goes undiagrammed. ASCII art for every new data flow, state machine, processing pipeline, dependency graph, decision tree. (This governs *deliverables*; the question escape hatch governs only questions — produce required diagrams regardless of whether issues are found.)
-7. **Everything deferred must be written down.** Vague intentions are lies. If it isn't in the proposed follow-ups this review returns to the caller, it doesn't exist.
-8. **Optimize for the 6-month future, not just today.** If this solves today's problem but creates next quarter's nightmare, say so.
-9. **You may say "scrap it and do this instead."** If there's a fundamentally better approach, table it.
+2. **Riskiest assumptions.** Judge the plan's own risk work (a brief's riskiest assumptions, a PRD's v0.1 bet and risks); don't write a parallel set. Are they the likeliest killers, graded honestly? Where they are missing or miss a likelier killer, run a pre-mortem at the plan's horizon (the v0.1 checkpoint; a year on, for a brief): the three likeliest causes of failure, value and viability included, each traced to a plan line or its absence, negated into assumptions. Keep the 3–5 that success rests on, each graded with its source.
 
-## Priority Hierarchy Under Context Pressure
-Step 0 > System audit > Error/rescue map > Test diagram > Failure modes > Security threat model > Opinionated recommendations > Everything else.
-Never skip Step 0, the system audit, the error/rescue map, the failure modes, or the security threat model — these are the highest-leverage outputs. Security may be compressed but never dropped.
+3. **Posture, by evidence.**
 
-## Taste calibration (pre-review audit, EXPANSION mode only)
-Identify 2-3 particularly well-designed files/patterns as style references, and 1-2 frustrating patterns to avoid repeating.
+   | Evidence | Posture | Break when |
+   |---|---|---|
+   | Demand [Said] or [Assumed], or the estimate exceeds capacity with no cut line | **REDUCTION**: the smallest slice that tests the riskiest assumption | Untestable without the whole (network effects, compliance) → sequence the bets |
+   | Premise evidenced; the plan is the direct path | **HOLD**: harden it; raise a cheaper path or a high-value addition once, with its cost and risk | — |
+   | Evidenced demand the plan underserves (users work around the gap); capacity has slack | **EXPANSION**: the 10x pass, then the buildable slice; the rest becomes follow-ups | It adds a one-way door or delays first user contact → phase 2 |
 
-## Step 0: Nuclear Scope Challenge + Mode Selection
-Work through `references/review-sections.md` → "Step 0" for the full premise-challenge / existing-code-leverage / dream-state / temporal-interrogation prompts. The decision points:
+   A posture the caller asks for ("go big", "find the 10x version") wins; if the evidence argues against it, say so once.
 
-**Mode selection — present three options as one recommended-resolution decision (via the question protocol in `SKILL.md`):**
-1. **SCOPE EXPANSION** — the plan is good but could be great. Propose the ambitious version, then review it. Build the cathedral.
-2. **HOLD SCOPE** — the scope is right. Review with maximum rigor; make it bulletproof.
-3. **SCOPE REDUCTION** — the plan is overbuilt. Propose a minimal version, then review it.
+   **10x pass.** Start from the user's job, not the plan's features: remove it (do it for them), collapse the wait, change the unit (the team or the outcome, not one action), or use data or distribution only you have. Keep an addition only if it moves the outcome more than the same effort inside the plan would, and its first slice lies on the plan's path.
 
-Context-dependent defaults (make the default the recommended first option):
-* Greenfield feature → EXPANSION · Bug fix / hotfix → HOLD · Refactor → HOLD · Plan touching >15 files → suggest REDUCTION · User says "go big"/"ambitious"/"cathedral" → EXPANSION.
+4. **Cut line.** Judge the plan's own cut line (a PRD's v0.1 Musts; a spec's [Must] requirements); don't draw another. The first release is the smallest set that reaches the success measure for one segment, reaches real users early, and tests the riskiest assumption first, with a threshold that would stop it. No cut line → Major; a first release that leaves that assumption untested → Re-scope. A brief has none by design: judge whether its Decision fits its evidence and its Next test, with a kill threshold, runs before any build.
 
-Non-interactive runs don't stall on mode selection either: apply the
-context-dependent default, record it as `UNRESOLVED-AUTO (mode defaulted)` in
-Unresolved Decisions, and continue.
+5. **One-way doors the scope implies** (SKILL.md § 4): published promises, retention and consent, migrating users' data, legal duties, and what an AI feature may do without a person approving. Each needs an owner decision now, or a reversible first version.
 
-Once selected, commit fully. Do not silently drift.
+6. **Feasibility flags**: at most three, only where the answer could change scope, each with its settling spike and pass/fail threshold.
 
-## Review Sections
-After scope and mode are agreed, run the 10 review sections in **`references/review-sections.md`**:
-1. Architecture · 2. Error & Rescue Map · 3. Security & Threat Model · 4. Data Flow & Interaction Edge Cases · 5. Code Quality · 6. Tests · 7. Performance · 8. Observability & Debuggability · 9. Deployment & Rollout · 10. Long-Term Trajectory.
+## Verdict
 
-Each section ends with the section gate (`SKILL.md`). Apply mode-specific behavior per **`references/mode-reference.md`**.
+The first that applies wins.
 
-## Required Outputs (scope mode)
-Produce all applicable outputs per **`references/required-outputs.md`**: NOT-in-scope, What-already-exists, Dream-state delta, Error/Rescue registry, Failure Modes registry, Proposed follow-ups (returned to the caller), Delight Opportunities [EXPANSION], mandatory diagrams, stale-diagram audit, completion summary (scope-mode table), unresolved decisions.
+- **Stop**: the outcome isn't worth the cost, or a cheaper path or a better use of the same people-weeks beats it; name which.
+- **Test first**: a one-way door, or most of the cost, is committed before anything in the plan tests the [Said] or [Assumed] assumption it rests on. Name the cheapest test and its pass/fail threshold, then re-review. A v0.1 or slice that tests it first, with a stop threshold, is that test; name its checkpoint. *Break:* the reversible version, built and watched, costs less than the test → Re-scope to it.
+- **Re-scope**: cut, add or re-sequence; say which, and what moves.
+- **Commit after fixes**: each Blocker has a fix within scope; name them.
+- **Commit**: no Blockers.
+
+Then write per SKILL.md § 5 and run its Self-Review.

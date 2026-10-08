@@ -2,99 +2,61 @@
 title: Avoid Boolean Prop Proliferation
 impact: CRITICAL
 impactDescription: prevents unmaintainable component variants
-tags: composition, props, architecture
+tags: composition, props, architecture, variants
 ---
 
-## Avoid Boolean Prop Proliferation
+## Avoid Boolean Props; Create Explicit Variants
 
-Don't add boolean props like `isThread`, `isEditing`, `isDMThread` to customize
-component behavior. Each boolean doubles possible states and creates
-unmaintainable conditional logic. Use composition instead.
+Don't customize one component's behavior with flags like `isThread`, `isEditing`
+or `isDMThread`. Each flag doubles the states to reason about and allows
+impossible combinations. Give each use case its own component that names what
+it renders and composes shared parts.
 
-**Incorrect (boolean props create exponential complexity):**
+**Incorrect (flags fork one component):**
 
 ```tsx
-function Composer({
-  onSubmit,
-  isThread,
-  channelId,
-  isDMThread,
-  dmId,
-  isEditing,
-  isForwarding,
-}: Props) {
+function Composer({ isThread, channelId, isEditing, isForwarding }: Props) {
   return (
     <form>
-      <Header />
       <Input />
-      {isDMThread ? (
-        <AlsoSendToDMField id={dmId} />
-      ) : isThread ? (
-        <AlsoSendToChannelField id={channelId} />
-      ) : null}
-      {isEditing ? (
-        <EditActions />
-      ) : isForwarding ? (
-        <ForwardActions />
-      ) : (
-        <DefaultActions />
-      )}
-      <Footer onSubmit={onSubmit} />
+      {isThread ? <AlsoSendToChannelField id={channelId} /> : null}
+      {isEditing ? <EditActions /> : isForwarding ? <ForwardActions /> : <DefaultActions />}
     </form>
   )
 }
 ```
 
-**Correct (composition eliminates conditionals):**
+**Correct (explicit variants over shared parts):**
 
 ```tsx
-// Channel composer
-function ChannelComposer() {
-  return (
-    <Composer.Frame>
-      <Composer.Header />
-      <Composer.Input />
-      <Composer.Footer>
-        <Composer.Attachments />
-        <Composer.Formatting />
-        <Composer.Emojis />
-        <Composer.Submit />
-      </Composer.Footer>
-    </Composer.Frame>
-  )
-}
-
-// Thread composer - adds "also send to channel" field
 function ThreadComposer({ channelId }: { channelId: string }) {
   return (
-    <Composer.Frame>
-      <Composer.Header />
-      <Composer.Input />
-      <AlsoSendToChannelField id={channelId} />
-      <Composer.Footer>
-        <Composer.Formatting />
-        <Composer.Emojis />
-        <Composer.Submit />
-      </Composer.Footer>
-    </Composer.Frame>
+    <ThreadProvider channelId={channelId}>
+      <Composer.Frame>
+        <Composer.Input />
+        <AlsoSendToChannelField channelId={channelId} />
+        <Composer.Footer>
+          <Composer.Submit />
+        </Composer.Footer>
+      </Composer.Frame>
+    </ThreadProvider>
   )
 }
 
-// Edit composer - different footer actions
-function EditComposer() {
+function EditMessageComposer({ messageId }: { messageId: string }) {
   return (
-    <Composer.Frame>
-      <Composer.Input />
-      <Composer.Footer>
-        <Composer.Formatting />
-        <Composer.Emojis />
-        <Composer.CancelEdit />
-        <Composer.SaveEdit />
-      </Composer.Footer>
-    </Composer.Frame>
+    <EditMessageProvider messageId={messageId}>
+      <Composer.Frame>
+        <Composer.Input />
+        <Composer.Footer>
+          <Composer.CancelEdit />
+          <Composer.SaveEdit />
+        </Composer.Footer>
+      </Composer.Frame>
+    </EditMessageProvider>
   )
 }
 ```
 
-Each variant is explicit about what it renders. We can share internals without
-sharing a single monolithic parent.
+Each variant states its provider (where its state comes from), its parts and its
+actions. The internals stay shared without a monolithic parent.

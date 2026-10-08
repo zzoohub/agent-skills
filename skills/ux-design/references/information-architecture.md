@@ -1,277 +1,84 @@
 # Information Architecture
 
-Structural design of information spaces. IA determines how users find, understand, and move through content.
+Structure comes from the objects users name and the words they use, and is judged by whether people find things, never by counting clicks.
 
-## Table of Contents
+## Objects first
 
-1. [Core Principle](#core-principle)
-2. [Dan Brown's 8 Principles of IA](#dan-browns-8-principles-of-ia)
-3. [Navigation Patterns](#navigation-patterns)
-4. [IA Design Process](#ia-design-process)
-5. [Search vs. Browse](#search-vs-browse)
-6. [Cross-Linking Strategy](#cross-linking-strategy)
-7. [Common IA Anti-Patterns](#common-ia-anti-patterns)
+Before any sitemap, list the objects users name (from the PRD, support tickets, search logs, the architecture's Ubiquitous Language and users' own words), each with:
+- **relationships** (a project has tasks; a task has one assignee);
+- **lifecycle states** (draft, active, archived, deleted), each of which becomes a filter value, a status label and a deep-link case;
+- **roles × actions** (who can view, create, edit, approve, delete);
+- **one home and one route**; everywhere else links to it.
 
----
+Top-level navigation lists the objects or workspaces users switch between, never features, teams or the org chart. *Break when* the product is one linear task: the flow is the navigation.
 
-## Core Principle
+## Navigation model
 
-> IA is invisible when done right. Users find what they need without thinking about structure.
+Start from the archetype of the primary role's top task (SKILL.md Stage 0):
 
-The goal is not to organize content logically — it's to organize content the way **users expect it to be organized**. Logic and user expectation often diverge.
+| Archetype | Navigation | Density, guidance | Signature risk |
+|---|---|---|---|
+| Occasional transaction (booking, filing) | Linear | One question per page; save and resume | Abandonment at the ask |
+| Daily workspace (projects, CRM, editor) | Object sidebar, command palette | Dense; shortcuts, bulk actions | Discoverability, permissions |
+| Feed or consumption | 3–5 tabs | Minimal chrome | Empty on day 1 |
+| Marketplace | Role switch | A home per role | Role confusion, trust |
+| Admin console | Search first; settings by scope | Dense; audit trail | Destructive bulk actions |
 
----
+Then size it:
+- **Count:** as many top-level destinations as users switch between often. Tab and navigation bars hold 3–5 (platform guidance); "More" never holds a top task. Slots are a budget: a new destination must beat the weakest current one on top-task frequency, else it nests under its parent object or lives in search and the command palette. *Break when* one destination dominates: hub and spoke.
+- **Depth:** drilling down is fine while each level's labels predict what lies below. Flatten when users bounce between siblings to compare them; for daily tasks, add accelerators (recent items, pins, search, a command palette) rather than flattening everything.
+- **Roles:** roles with different jobs get a home each, landing on their top tasks and the items awaiting them (a moderator lands on the flagged posts, not the product's overview), plus a visible switch when one person holds two (buyer and seller). Hiding what a role can't use is not a home for it.
+- **Platforms:** separate apps (a native phone app beside the web app) each make some top tasks first-class (phones typically: triage, approvals, status, replies); elsewhere a task gets a read path or an "open on desktop" hand-off, never a cramped port. A responsive web app keeps every task usable at 320 CSS px (`ergonomics.md` § Floors, Reflow): window size changes prominence, not what can be done.
+- **Growth and badges:** labels stay true as content grows, so no counts or "new" inside label text. A badge counting items awaiting this user's action (approvals, assignments, unread mentions) does belong on navigation: it is how a role finds its top task. Count only what needs this person, cap the number shown, clear it when acted on, and give it a text equivalent ("Assigned to you, 3").
 
-## Dan Brown's 8 Principles of IA
+## Labels
 
-### 1. Principle of Objects
-Treat content as a living, breathing thing with lifecycles, behaviors, and attributes.
-- A "product" isn't just a page — it has a name, price, status, relationships, and history
-- Design the object model before designing the navigation
+Each label predicts what lies behind it, in users' words, and differs clearly from its siblings. Reject org names, code names and vague buckets ("Resources"). Settle label disputes with first-click tests, not opinions.
 
-### 2. Principle of Choices
-Present meaningful choices. More isn't better — relevant is better.
-- Each navigation level: up to ~5-9 options (Miller's Law, general ceiling). Top-level nav is tighter — see `cognitive-principles.md` (Miller's Law): 5 max on mobile, 7 on desktop, and a hard 5 for a mobile tab bar.
-- Every option must be clearly distinct from its siblings
-- If users can't predict what's behind a label, the label fails
+## Anti-patterns
 
-### 3. Principle of Disclosure
-Show only enough information to help users understand what they'll find if they dig deeper.
-- Progressive disclosure: summary → detail → full content
-- Each level answers: "Do I want to go deeper?"
-- Never front-load complexity
+Root causes, checked first in a review: one structural fix clears many symptoms, and a symptom patched alone comes back elsewhere.
 
-### 4. Principle of Exemplars
-Show examples of content when describing categories.
-- "Electronics" with a thumbnail of a laptop is clearer than "Electronics" alone
-- Previews, thumbnails, and excerpts reduce navigation uncertainty
+| Anti-pattern | What you see | Fix |
+|---|---|---|
+| Navigation mirrors the product (features, modules, data model) or the org chart, not user tasks | One task spans several sections; labels name modules or teams; every role hunts in the same places | Regroup around each role's top tasks and objects |
+| A role without a home | Its work sits under another role's navigation; it lands on a screen built for someone else | A landing per role: its top tasks and waiting items |
+| Junk drawer | A vague bucket ("More", "Other", "Tools") holds a top task | Re-sort by task; nest under the parent object |
+| One object, several homes or names | The same thing under different labels; users ask which is right | One home and one glossary term; cross-links elsewhere |
+| Depth where users compare | Bouncing between siblings | Flatten that level, or add compare and accelerators |
 
-### 5. Principle of Front Doors
-Assume users arrive at any page, not just the homepage.
-- Every screen needs: identity (where am I?), orientation (what's here?), navigation (where can I go?)
-- Deep links, search results, and shared URLs all bypass the homepage
+## Settings by scope
 
-### 6. Principle of Multiple Classification
-Offer multiple ways to find the same content.
-- Browse by category + search by keyword + filter by attribute
-- Users have different mental models — support all of them
-- Example: music by artist, genre, mood, or activity
+Split settings by whom they affect: me (profile, notifications, preferences); this workspace (members, roles, integrations); billing; admin and security. Each setting has one home, linked from where the need arises (a "Notification settings" link on a notification). Add a setting only when groups of users need opposite behavior, defaulting to the larger group's; otherwise decide.
 
-### 7. Principle of Focused Navigation
-Don't mix different types of navigation in the same system.
-- Primary nav: top-level sections
-- Local nav: within-section movement
-- Utility nav: account, settings, help
-- Never blend these into a single menu
+## Front doors and deep links
 
-### 8. Principle of Growth
-Design for scale. The IA should accommodate 10x content without restructuring.
-- Category names should remain accurate as content grows
-- Avoid specific counts in labels ("3 Categories" breaks when it becomes 12)
-- Plan for content types that don't exist yet
+People arrive anywhere: shared links, notifications, email, search results. Every screen says where it is (title, object context, a parent link or breadcrumb) and what can be done there. Each deep link handles:
+- **no access:** who can grant it, and a way to request it;
+- **another workspace or account:** switch to it, saying so, if the user belongs to it; else name the account that has access and offer to switch;
+- **deleted:** what happened, and where to go instead;
+- **moved or renamed:** a redirect;
+- **signed out:** sign in, then land on the target.
 
----
+Routes are part of the IA: one canonical route per object view, and filters, tabs and selections worth sharing or returning to live in the URL.
 
-## Navigation Patterns
+## Search and the command palette
 
-### Pattern Selection Guide
+Size search by the volume per core object in a heavy account (SKILL.md Stage 0), roughly: tens → browse; hundreds → filters and saved views; thousands → search first. Search also earns prominence when users know what they want or labels vary. Daily workspaces add a command palette (⌘K or Ctrl+K) that reaches both objects and actions. Zero results is a designed state: echo the query, suggest fixes, offer to browse.
 
-| User Task | Best Pattern | Why |
-|-----------|-------------|-----|
-| Switch between 3-5 top-level sections | Tab Bar (mobile) / Top Nav (web) | Persistent, visible, one-tap access |
-| Drill into hierarchical content | Stack Navigation | Mental model of depth, easy back |
-| Access utility/settings without leaving context | Modal / Bottom Sheet | Overlay preserves context |
-| Browse many categories on large screens | Sidebar / Drawer | Scalable, collapsible |
-| Complete a multi-step linear task | Wizard / Stepper | Progress visible, steps enforced |
+## Validate
 
-### Tab Bar (Mobile)
+- **Card sort** (open), before structuring, to learn how users group and name things. About 15 participants give stable patterns (NN/g); items people disagree on need cross-links or better labels.
+- **Tree test or first-click test** on each role's top tasks, before building. Set the bar by stakes: in Albert and Tullis's review of 98 tree-test studies (reported by NN/g; median 62%), 61–80% success is good, 80–90% very good and over 90% excellent; mission-critical or revenue tasks aim above 90%. Report directness (right first time, no backtracking) beside success: success reached only after backtracking still means a misleading label. The best yardstick is the previous structure's result on the same tasks; comparing two trees takes about 50 participants per tree. Wrong first clicks show which label misleads: fix it and retest.
 
-```
-┌─────────────────────────────────┐
-│                                 │
-│         Content Area            │
-│                                 │
-├────┬────┬────┬────┬────────────┤
-│ 🏠 │ 🔍 │ ➕ │ 💬 │ 👤        │
-│Home│Find│New │Chat│Profile     │
-└────┴────┴────┴────┴────────────┘
-```
+## Restructure
 
-Rules:
-- 3-5 items maximum (never more than 5)
-- Icons + labels always (icon-only fails accessibility)
-- Order: most used → least used, left → right
-- Highlight current section clearly
-- Badge indicators for unread/pending items
+Restructure only when the as-is fails top tasks (first-click or tree-test failures, search terms that miss, support themes) or new objects have no home; otherwise relabel and add accelerators. Daily experts pay the relearning cost: keep old names as search and command-palette aliases for a release, and judge success by existing users' top-task time as well as new users' success.
 
-### Stack Navigation (Drill-Down)
+Every shipped route change is a one-way door, and so is reverting one: people, bookmarks, sent emails and help articles have adapted to the move, so a reversal is a second migration, not an undo. Prefer fixing forward (relabel, cross-link, alias, a badge where the work waits); a reversal gets the same notices and test as any restructure. Never redirect a moved-to route back to a route that permanently redirected to it: browsers cache permanent redirects, so the pair can loop. Keep the moved-to route serving, or move forward to a new route and redirect both old routes to it.
 
-```
-[List] → [Detail] → [Sub-detail]
-  ←  Back    ←  Back
-```
-
-Rules:
-- Always show back affordance (chevron + previous title)
-- Title reflects current content, not section name
-- Swipe-back gesture on iOS (edge swipe from left)
-- Deep stacks (>3 levels) indicate IA needs flattening
-
-### Bottom Sheet
-
-```
-┌─────────────────────────────────┐
-│      Parent Screen (dimmed)     │
-├─────────────────────────────────┤
-│  ━━━ (drag handle)              │
-│                                 │
-│  Sheet Content                  │
-│  - Option A                     │
-│  - Option B                     │
-│  - Option C                     │
-│                                 │
-└─────────────────────────────────┘
-```
-
-Rules:
-- Use for contextual actions, filters, selections
-- Drag handle always visible
-- Tap outside or swipe down to dismiss
-- Three snap points: peek (25%), half (50%), full (90%)
-- Never nest bottom sheets
-
-### Sidebar (Web / Tablet)
-
-```
-┌──────────┬──────────────────────┐
-│ Section A│                      │
-│ Section B│    Content Area      │
-│ Section C│                      │
-│ ──────── │                      │
-│ Settings │                      │
-│ Help     │                      │
-└──────────┴──────────────────────┘
-```
-
-Rules:
-- Collapsible on smaller viewports (hamburger trigger)
-- Group related items with dividers or headings
-- Current section highlighted
-- Utility items (Settings, Help) at bottom, separated
-- Max depth: 2 levels (section → subsection)
-
----
-
-## IA Design Process
-
-### Step 1: Content Inventory
-List every piece of content and functionality the product needs to support.
-- Pages/screens, features, settings, help content
-- Content types: static, dynamic, user-generated, system-generated
-- Relationships: parent-child, siblings, cross-references
-
-### Step 2: Card Sort (Discover User Mental Models)
-```
-Open Sort:  Users create their own groups and name them
-Closed Sort: Users sort cards into predefined categories
-Hybrid Sort: Predefined categories + option to create new ones
-```
-- Minimum 15 participants for reliable patterns
-- Look for: agreement (~60%+ same grouping is a useful rule of thumb, not a hard gate) and disagreement (signals ambiguity)
-- Use disagreements to identify content that needs multiple access paths
-
-### Step 3: Define Hierarchy
-
-```
-Level 0: App/Site (implicit — user already knows they're "in the app")
-Level 1: Primary sections (Tab bar / Top nav — 3-5 items)
-Level 2: Sub-sections or content lists
-Level 3: Detail views
-Level 4+: Avoid if possible — flatten or use search
-```
-
-Rule: If a user needs >3 taps/clicks to reach core content, the IA is too deep.
-
-### Step 4: Tree Test (Validate)
-- Give users tasks: "Find where you'd change your notification settings"
-- Measure: success rate, directness (first click correct?), time
-- Pass threshold (directional rules of thumb, not absolute — hard tasks legitimately score lower): aim for >80% success and >60% directness on primary tasks
-- Below that: restructure and retest
-
-### Step 5: Create Sitemap
-
-```
-[App Root]
-├── Home
-│   ├── Feed
-│   └── Recommendations
-├── Search
-│   ├── Results
-│   └── Filters
-├── Create
-│   ├── New Post
-│   └── Drafts
-├── Messages
-│   ├── Inbox
-│   └── Thread
-└── Profile
-    ├── Settings
-    ├── Account
-    └── Help
-```
-
-Deliverable format: Mermaid diagram or ASCII tree in docs.
-
----
-
-## Search vs. Browse
-
-| Signal | Favor Search | Favor Browse |
-|--------|-------------|-------------|
-| Content volume | >100 items | <100 items |
-| User knows what they want | Yes — specific query | No — exploring |
-| Content is homogeneous | Yes (all products, all articles) | No (mixed types) |
-| User vocabulary matches content | Yes | No — needs exposure first |
-
-### Search Best Practices
-- Search box: visible on every screen (or one tap away)
-- Auto-suggest after 2+ characters
-- Show recent searches
-- Handle typos (fuzzy matching)
-- Empty results: suggest alternatives, never dead-end
-- Filter/sort results by relevance, date, category
-
-### Browse Best Practices
-- Show content previews (not just labels)
-- Enable filtering and sorting
-- Support "endless scroll" with clear section breaks
-- Provide "back to top" on long lists
-
----
-
-## Cross-Linking Strategy
-
-Not all content fits neatly into one category. Cross-linking solves this.
-
-### Techniques
-- **Related items**: "You might also like" (content-based similarity)
-- **Contextual links**: Deep link from one section to another (e.g., product → review)
-- **Breadcrumbs**: Show path for deep content (web primarily)
-- **Universal search**: Find anything regardless of section
-- **Shortcuts/Quick actions**: Jump to frequent destinations (long-press on icon, spotlight search)
-
-### Rule
-> Every piece of content should be reachable via at least 2 different paths.
-
----
-
-## Common IA Anti-Patterns
-
-| Anti-Pattern | Problem | Fix |
-|-------------|---------|-----|
-| Org-chart nav | Sections mirror internal teams, not user tasks | Redesign around user goals |
-| Junk drawer | "More" or "Other" tab catches everything | Re-sort or flatten |
-| Deep nesting | 4+ levels to reach content | Flatten with search/filters |
-| Ambiguous labels | "Resources" vs "Tools" vs "Library" | Test labels with users |
-| Duplicated paths | Same content in 3 places, different names | Canonical location + cross-links |
-| Feature-first nav | Organized by features, not user goals | Reframe: what is user trying to do? |
+When changing a shipped IA:
+- map every old route to its new home in a Redirects-from column of the UX doc's §3 route table, and redirect old routes permanently;
+- keep links in notifications, emails and bookmarks working;
+- announce moved destinations in place for one release ("Billing moved to Settings");
+- re-run the tree test on the top tasks and compare with the old structure's results.

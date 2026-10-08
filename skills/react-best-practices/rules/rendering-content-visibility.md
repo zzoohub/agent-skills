@@ -1,38 +1,25 @@
 ---
-title: CSS content-visibility for Long Lists
-impact: HIGH
-impactDescription: faster initial render
-tags: rendering, css, content-visibility, long-lists
+title: Scale Long Lists with content-visibility, Then Virtualization
+tags: rendering, css, content-visibility, long-lists, virtualization
 ---
 
-## CSS content-visibility for Long Lists
+`content-visibility: auto` lets the browser skip style, layout and paint for off-screen items. It doesn't reduce React's render work or the number of DOM nodes. `contain-intrinsic-size: auto 80px` reserves an estimated height, then remembers each item's real one, so the scrollbar doesn't jump.
 
-Apply `content-visibility: auto` to defer off-screen rendering.
+| List | Do |
+|---|---|
+| Up to ~200 simple rows | Nothing |
+| Hundreds of heavy rows | `content-visibility: auto` |
+| Thousands of rows, or unbounded | Paginate or virtualize |
 
-**CSS:**
+Treat these as starting points and confirm in the Performance panel under CPU throttling.
 
 ```css
 .message-item {
   content-visibility: auto;
-  contain-intrinsic-size: 0 80px;
+  contain-intrinsic-size: auto 80px;
 }
 ```
 
-**Example:**
+*Break:* items skipped by `content-visibility` stay in the DOM and the accessibility tree, so find-in-page, anchors and crawlers still reach them; virtualized rows don't. Prefer it until the row count forces virtualization.
 
-```tsx
-function MessageList({ messages }: { messages: Message[] }) {
-  return (
-    <div className="overflow-y-auto h-screen">
-      {messages.map(msg => (
-        <div key={msg.id} className="message-item">
-          <Avatar user={msg.author} />
-          <div>{msg.content}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-```
-
-For 1000 messages, browser skips layout/paint for ~990 off-screen items (10× faster initial render).
+Source: https://web.dev/articles/content-visibility

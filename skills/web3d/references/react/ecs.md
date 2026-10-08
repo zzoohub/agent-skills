@@ -1,162 +1,44 @@
-# Koota React Integration (`koota/react`)
+# Koota in React Three Fiber
 
-> For core Koota API (traits, queries, systems): `../ecs.md`
+Traits, queries, relations and system order: `../ecs.md`.
 
-## Table of Contents
+## Hooks: which ones re-render
 
-1. [WorldProvider](#worldprovider)
-2. [Hooks](#hooks)
-3. [R3F Integration Patterns](#r3f-integration-patterns)
+- Wrap the app, outside `<Canvas>`, in `<WorldProvider world={world}>` (R3F bridges context into the canvas); `useWorld()` throws without it.
+- `useQuery(...traits)` re-renders when entities join or leave the query, not when their values change: use it to mount and unmount views.
+- `useTrait(entity, Trait)` re-renders on every change: only for low-frequency traits shown in UI (health in a HUD), never for per-frame traits like `Position`.
+- `useTraitEffect(entity, Trait, fn)` runs `fn` on add, remove or change without re-rendering, for imperative updates.
 
+## View injection
 
-## WorldProvider
-
-```tsx
-import { WorldProvider } from 'koota/react'
-import { createWorld } from 'koota'
-
-const world = createWorld()
-
-function App() {
-  return (
-    <WorldProvider world={world}>
-      <Canvas>
-        <GameSystems />
-        <Entities />
-      </Canvas>
-    </WorldProvider>
-  )
-}
-```
-
-## Hooks
-
-**`useWorld()`** -- access the world directly.
-
-**`useQuery(...traits)`** -- reactive entity query. Re-renders when matching entities are added/removed.
+A view mounts the mesh and hands the reference to its entity. Call `add` before `set`: the entity joins the `MeshRef` archetype only through `add`, and `set` alone updates a trait it already has. Remove it on unmount so no stale reference survives.
 
 ```tsx
-function Enemies() {
-  const enemies = useQuery(IsEnemy, Position)
-  return (
-    <group>
-      {enemies.map(entity => (
-        <EnemyView key={entity.id()} entity={entity} />
-      ))}
-    </group>
-  )
-}
-```
-
-**`useQueryFirst(...traits)`** -- first matching entity or `undefined`.
-
-```tsx
-const player = useQueryFirst(IsPlayer, Health)
-```
-
-**`useTrait(entity, Trait)`** -- observe a trait reactively. Returns value or `undefined`.
-
-```tsx
-function HealthBar({ entity }: { entity: Entity }) {
-  const health = useTrait(entity, Health)
-  if (!health) return null
-  return <div style={{ width: `${(health.current / health.max) * 100}%` }} />
-}
-```
-
-**`useTag(entity, Trait)`** -- boolean, reactively tracks tag presence.
-
-```tsx
-const isPlayer = useTag(entity, IsPlayer)
-```
-
-**`useTraitEffect(entity, Trait, callback)`** -- subscribe to changes without re-render. For imperative Three.js updates:
-
-```tsx
-function MeshSync({ entity }: { entity: Entity }) {
-  const meshRef = useRef<THREE.Mesh>(null)
-  useTraitEffect(entity, Position, (pos) => {
-    if (meshRef.current && pos) {
-      meshRef.current.position.set(pos.x, pos.y, pos.z)
-    }
-  })
-  return <mesh ref={meshRef}><boxGeometry /><meshStandardNodeMaterial /></mesh>
-}
-```
-
-**`useActions(actions)`** -- get world-bound actions.
-
-```tsx
-function SpawnButton() {
-  const { spawnEnemy } = useActions(actions)
-  return <button onClick={() => spawnEnemy(Math.random() * 10, 0)}>Spawn</button>
-}
-```
-
-## R3F Integration Patterns
-
-### View Injection
-
-Use Koota for all game state, R3F purely as a view layer:
-
-```typescript
-// traits.ts
-export const Position = trait({ x: 0, y: 0, z: 0 })
-export const Rotation = trait({ x: 0, y: 0, z: 0 })
-export const MeshRef = trait(() => null as THREE.Mesh | null) // null until the R3F view mounts; makes consumer null-guards load-bearing
-export const IsPlayer = trait()
-export const IsEnemy = trait()
-```
-
-```tsx
-// components/EnemyView.tsx
 function EnemyView({ entity }: { entity: Entity }) {
-  const meshRef = useRef<THREE.Mesh>(null)
-
+  const world = useWorld()
+  const ref = useRef<THREE.Mesh>(null)
   useEffect(() => {
-    // add() ensures the trait exists so the entity joins the MeshRef archetype and matches
-    // world.query(Position, MeshRef); set() alone only updates an already-added trait.
-    if (meshRef.current) {
-      entity.add(MeshRef)
-      entity.set(MeshRef, meshRef.current)
-    }
-    return () => { entity.remove(MeshRef) }  // drop the stale mesh ref on unmount
-  }, [entity])
-
-  return (
-    <mesh ref={meshRef}>
-      <boxGeometry />
-      <meshStandardNodeMaterial color="red" />
-    </mesh>
-  )
+    if (!ref.current) return
+    entity.add(MeshRef)
+    entity.set(MeshRef, ref.current)
+    return () => { if (world.has(entity)) entity.remove(MeshRef) }
+  }, [world, entity])
+  return <mesh ref={ref}><boxGeometry /><meshStandardMaterial /></mesh>
 }
+
+const Enemies = () => useQuery(IsEnemy).map((e) => <EnemyView key={e.id()} entity={e} />)
 ```
 
-### Transform Sync System
+## Game loop
 
-Bridge ECS data to Three.js scene graph:
-
-```typescript
-// systems/syncTransforms.ts
-export function syncTransformsSystem(world: World) {
-  world.query(Position, MeshRef).readEach(([pos, mesh]) => {
-    if (mesh) mesh.position.set(pos.x, pos.y, pos.z)
-  })
-}
-```
-
-### Game Loop
+Run systems from one `useFrame`, in the order `../ecs.md` § Loop gives, with the clamped delta:
 
 ```tsx
 function GameSystems() {
   const world = useWorld()
-  useFrame((_, delta) => {
-    inputSystem(world)
-    movementSystem(world, delta)
-    collisionSystem(world)
-    syncTransformsSystem(world)
-    cleanupSystem(world)
-  })
+  useFrame((_, delta) => frame(world, Math.min(delta, 0.1)))
   return null
 }
 ```
+
+The sync system writes transforms through `MeshRef`; React never re-renders per frame.

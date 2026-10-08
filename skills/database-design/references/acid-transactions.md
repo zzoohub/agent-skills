@@ -1,221 +1,52 @@
-# ACID & Transaction Patterns in PostgreSQL
+# Transactions, Isolation and Locking
 
-## Table of Contents
+Mechanics for the enforcement ladder in SKILL.md Stage 2 (constraint → guarded statement → guard-row lock → SERIALIZABLE). Climb only as far as the invariant needs.
 
-1. [Isolation Levels](#isolation-levels)
-2. [Locking Patterns](#locking-patterns)
-3. [Deadlock Prevention](#deadlock-prevention)
-4. [SAVEPOINT (Partial Rollback)](#savepoint-partial-rollback)
-5. [Transaction Design Best Practices](#transaction-design-best-practices)
-6. [Common Anti-Patterns](#common-anti-patterns)
+## What each isolation level lets through
 
-## Isolation Levels
+| Level | Stops | Still lets through | You handle |
+|---|---|---|---|
+| Read Committed (default) | dirty reads | lost updates from read-in-app-then-write; write skew; a new snapshot per statement | nothing is raised: guard the write itself |
+| Repeatable Read | lost updates on the same row (the later writer fails) | write skew across rows | 40001: retry |
+| Serializable | every anomaly among serializable transactions | — | 40001, false positives included: retry |
 
-| Level | Dirty Read | Non-Repeatable Read | Phantom Read | Use Case |
-|-------|-----------|-------------------|-------------|----------|
-| Read Committed (default) | ❌ | ✅ possible | ✅ possible | General OLTP |
-| Repeatable Read | ❌ | ❌ | ❌ (snapshot) | Reports, financial reads |
-| Serializable | ❌ | ❌ | ❌ | Strict consistency required |
+Write skew is the one teams miss: two transactions check the same condition, then write different rows, so no row conflict fires below Serializable.
+
+## Rung 2: one guarded statement
 
 ```sql
--- Set isolation level per transaction
-BEGIN ISOLATION LEVEL REPEATABLE READ;
--- ... operations ...
-COMMIT;
-
--- Set default for session
-SET default_transaction_isolation = 'repeatable read';
+UPDATE stock SET qty = qty - $2 WHERE id = $1 AND qty >= $2 RETURNING qty;
 ```
+Zero rows means rejected (insufficient stock): a domain outcome, not a retry. Under Read Committed a blocked UPDATE re-checks its WHERE against the row as committed, so the guard holds without a stronger level. Optimistic concurrency is the same shape, `… WHERE id = $1 AND version = $2`, with the version on the aggregate root. Reading in the application and then writing is never a guard.
 
-### Read Committed (default)
-- Each statement sees the latest committed data
-- Different statements within the same transaction may see different snapshots
-- Best for general OLTP workloads
+## Rung 3: lock a guard row
 
-### Repeatable Read
-- Transaction sees a snapshot taken at the start of the first statement
-- Consistent reads throughout the transaction
-- Will abort with serialization error if a concurrent transaction modifies the same rows
-- Application must retry on serialization failure
-
-### Serializable
-- Strictest level: transactions behave as if executed sequentially
-- Higher chance of serialization errors → requires robust retry logic
-- Use only when correctness demands it (e.g., financial transfers, inventory)
-
-## Locking Patterns
-
-### Row-Level Locks
-
-```sql
--- Pessimistic locking: lock rows before updating
-BEGIN;
-SELECT * FROM accounts WHERE id = 1 FOR UPDATE;
--- Row is locked until COMMIT/ROLLBACK
-UPDATE accounts SET balance = balance - 100 WHERE id = 1;
-COMMIT;
-
--- FOR SHARE: shared row lock — multiple txns can hold it concurrently; it blocks UPDATE/DELETE and FOR UPDATE/FOR NO KEY UPDATE on those rows (plain MVCC SELECTs are never blocked). FOR KEY SHARE (weakest, used by FK checks) and FOR NO KEY UPDATE also exist.
-SELECT * FROM products WHERE id = 5 FOR SHARE;
-
--- NOWAIT: fail immediately if row is locked (don't wait)
-SELECT * FROM accounts WHERE id = 1 FOR UPDATE NOWAIT;
-
--- SKIP LOCKED: skip locked rows (queue processing pattern)
-SELECT id, payload FROM task_queues
-WHERE status = 'pending'
-ORDER BY created_at
-LIMIT 10
-FOR UPDATE SKIP LOCKED;
-```
-
-### Optimistic Locking (version-based)
-
-No database lock held — check version at write time instead.
-
-```sql
--- Add version column
-ALTER TABLE products ADD COLUMN version INT NOT NULL DEFAULT 1;
-
--- Read
-SELECT id, name, price, version FROM products WHERE id = 42;
--- Application stores: version = 3
-
--- Update with version check
-UPDATE products
-SET price = 29.99, version = version + 1
-WHERE id = 42 AND version = 3;
-
--- If 0 rows updated → someone else modified it → retry or error
-```
-
-**When to use which:**
-- Pessimistic (FOR UPDATE): high contention, short transactions
-- Optimistic (version): low contention, longer user-facing workflows
-
-### Advisory Locks
-
-Application-defined locks not tied to specific rows.
-
-```sql
--- Session-level advisory lock
-SELECT pg_advisory_lock(12345);    -- acquire
--- ... critical section ...
-SELECT pg_advisory_unlock(12345);  -- release
-
--- Transaction-level (auto-released at COMMIT/ROLLBACK)
-SELECT pg_advisory_xact_lock(12345);
-
--- Try lock (non-blocking, returns boolean)
-SELECT pg_try_advisory_lock(12345);  -- true if acquired (or already held by THIS session — advisory locks are re-entrant and stack, needing one matching unlock each); false ONLY if another session holds it
-```
-
-Use cases: rate limiting, singleton job execution, distributed coordination.
-
-## Deadlock Prevention
-
-Deadlocks occur when two transactions each hold a lock the other needs.
-
-```sql
--- DEADLOCK SCENARIO:
--- Transaction A: locks row 1, then tries to lock row 2
--- Transaction B: locks row 2, then tries to lock row 1
--- → Both wait forever → PostgreSQL detects and kills one
-
--- PREVENTION: always lock rows in a consistent order
-BEGIN;
-SELECT * FROM accounts WHERE id IN (1, 2) ORDER BY id FOR UPDATE;
--- Both transactions lock in the same order → no deadlock
-UPDATE accounts SET balance = balance - 100 WHERE id = 1;
-UPDATE accounts SET balance = balance + 100 WHERE id = 2;
-COMMIT;
-```
-
-**Deadlock prevention rules:**
-1. Lock rows in consistent order (e.g., ORDER BY id)
-2. Keep transactions as short as possible
-3. Avoid user interaction within a transaction
-4. Use lock timeouts as a safety net:
-   ```sql
-   SET lock_timeout = '5s';  -- fail after 5 seconds of waiting for a lock
-   ```
-
-The aborted (victim) transaction should be retried by the same exponential-backoff logic used for serialization failures (it aborts with SQLSTATE 40P01). Treat retry as a safety net — consistent lock ordering above is the primary fix; frequent deadlocks indicate an ordering bug, not a tuning problem.
-
-## SAVEPOINT (Partial Rollback)
-
+When the decision reads several rows or inserts new ones (a slot's capacity, one active subscription per org), every writer first locks the same row:
 ```sql
 BEGIN;
-INSERT INTO orders (user_id, status) VALUES (1, 'pending');
-
-SAVEPOINT before_items;
-INSERT INTO order_items (order_id, product_id, quantity) VALUES (1, 999, 1);
--- Error: product_id 999 doesn't exist
-
-ROLLBACK TO SAVEPOINT before_items;
--- Order insert is preserved, only the failed item is rolled back
-
-INSERT INTO order_items (order_id, product_id, quantity) VALUES (1, 100, 1);
+SELECT 1 FROM rooms WHERE id = $1 FOR NO KEY UPDATE;   -- every booking writer takes this first
+SELECT count(*) FROM bookings WHERE room_id = $1 AND day = $2;
+INSERT INTO bookings (room_id, day, guest_id) VALUES ($1, $2, $3);
 COMMIT;
 ```
+- **A bare lock guards only at Read Committed**, where the count takes a new snapshot after the lock wait and sees the previous writer's row. At Repeatable Read the snapshot predates the wait, so both writers insert. Make the guard a write, `UPDATE rooms SET version = version + 1 WHERE id = $1`, which holds at both levels (at Repeatable Read the later writer fails with 40001: record the level in database.md so the transaction runner retries it), or run the transaction at Read Committed.
+- `FOR NO KEY UPDATE` unless you change the row's key: `FOR UPDATE` also blocks the FK check of every child insert that references the row.
+- Several guard rows: lock them in one fixed order (`ORDER BY id`), or two writers deadlock (40P01).
+- `NOWAIT` fails fast for interactive requests. `SKIP LOCKED` belongs to competing queue consumers, never to an invariant: skipping the row skips the check.
+- No row to lock (the invariant concerns a key not yet inserted)? A scoped UNIQUE or EXCLUDE is rung 1. Otherwise take `pg_advisory_xact_lock(hashtextextended('booking:' || $1, 0))`, released at commit and, like any bare lock, a guard only at Read Committed; session-level advisory locks break under transaction pooling.
 
-## Transaction Design Best Practices
+## Rung 4: SERIALIZABLE
 
-### Keep Transactions Short
-```sql
--- BAD: external API call inside transaction (holds locks for seconds)
-BEGIN;
-UPDATE accounts SET balance = balance - 100 WHERE id = 1;
--- ... call external payment API (2-5 seconds) ...
-UPDATE accounts SET balance = balance + 100 WHERE id = 2;
-COMMIT;
+`BEGIN ISOLATION LEVEL SERIALIZABLE;` for invariants no constraint or guard row can express.
+- Every transaction that touches the invariant's rows must run SERIALIZABLE; a writer at a lower level reopens the hole.
+- Index the predicates: a sequential scan takes a relation-level predicate lock and multiplies false-positive failures.
+- Long read-only reports: `SERIALIZABLE READ ONLY DEFERRABLE` waits for a safe snapshot and is never cancelled for serialization.
 
--- GOOD: external call outside transaction
--- Step 1: call external API first
--- Step 2: only then open transaction for database updates
-BEGIN;
-UPDATE accounts SET balance = balance - 100 WHERE id = 1;
-UPDATE accounts SET balance = balance + 100 WHERE id = 2;
-COMMIT;
-```
+## Retry the whole transaction
 
-### Retry Logic for Serialization Failures
-```python
-# Pseudocode for retry pattern
-MAX_RETRIES = 3
+On 40001 (serialization failure) and 40P01 (deadlock), re-run the transaction from `BEGIN`, re-reading state; never re-send only the failed statement. Bound the attempts and back off with jitter. Deadlocks occur at any level; frequent ones are a lock-ordering bug, not a tuning problem. A retry is safe only because the transaction made no external call.
 
-for attempt in range(MAX_RETRIES):
-    try:
-        with db.transaction():
-            # ... your operations ...
-            break  # success
-    except (SerializationFailure, DeadlockDetected):  # 40001 and 40P01 are both transient & retryable
-        if attempt == MAX_RETRIES - 1:
-            raise
-        time.sleep(0.1 * (2 ** attempt))  # exponential backoff
-```
+## Keep transactions short and local
 
-> Deadlock (40P01) can occur at **any** isolation level, including the Read Committed default;
-> serialization_failure (40001) is expected only under Repeatable Read / Serializable. On either, the
-> transaction is **fully aborted and must be replayed from `BEGIN`** (re-doing its reads, not just the
-> failing statement) — which the loop above accomplishes by re-entering the transaction block.
-
-### Avoid Long-Running Transactions
-- They prevent VACUUM from cleaning dead tuples
-- They hold snapshots that block tuple removal
-- Monitor with:
-  ```sql
-  SELECT pid, now() - xact_start AS duration, state, query
-  FROM pg_stat_activity
-  WHERE state != 'idle'
-  AND xact_start IS NOT NULL
-  ORDER BY duration DESC;
-  ```
-
-## Common Anti-Patterns
-
-1. **SELECT ... FOR UPDATE on too many rows** — holds many row locks for the whole transaction, blocking every concurrent writer/locker of those rows, lengthening the transaction and delaying VACUUM. (PostgreSQL has no lock escalation — row locks live in tuple headers, so the harm is contention and long-held locks, not row-lock-table escalation.)
-2. **Long transactions with external API calls** — holds locks, prevents VACUUM
-3. **Missing retry logic with Repeatable Read / Serializable** — serialization errors are expected
-4. **Assuming multi-statement atomicity without BEGIN** — outside an explicit BEGIN/COMMIT each statement auto-commits independently, so a partial failure can leave related rows inconsistent. Wrap all-or-nothing operations in an explicit transaction.
-5. **Forgetting SKIP LOCKED in queue patterns** — causes lock contention instead of parallel processing
+- **No network call inside a transaction**: it holds row locks and pins the xmin horizon for the call's duration, and idle-in-transaction sessions stall vacuum and queue DDL. External effects commit an intent row with a lease first and publish through the outbox (`references/design-patterns.md`, reliability tables).
+- **Savepoints** (and PL/pgSQL `EXCEPTION` blocks) are subtransactions: keep them out of loops, because a transaction holding more than 64 slows visibility checks for every session, replicas included.

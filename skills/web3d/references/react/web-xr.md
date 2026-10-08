@@ -1,236 +1,54 @@
-# @react-three/xr v6 Reference
+# @react-three/xr (v6)
 
-Completely rewritten in v6. Uses `createXRStore` + `<XR>` component architecture with unified pointer events.
+Raw WebXR, the backend versions, adding XR to an existing scene, support probes and XR performance levers: `../web-xr.md`.
 
-> For raw WebXR Device API: `../web-xr.md`
+**Backend.** @react-three/xr never requests the `'webgpu'` session feature (checked 6.6.31), so on a WebGPU backend `store.enterVR()` throws inside three, in every version that has `WebGPURenderer` XR. XR apps use R3F's default `WebGLRenderer`, or `WebGPURenderer` with `forceWebGL: true` (r173+) and `multiview: true` (r176+) when they need TSL (factory in `setup.md`).
 
-## Table of Contents
-
-1. [Setup](#setup)
-2. [Hooks](#hooks)
-3. [Components](#components)
-4. [Interaction System](#interaction-system)
-5. [Spatial UI](#spatial-ui)
-6. [Haptic Feedback](#haptic-feedback)
-
-
-## Setup
+## Store
 
 ```tsx
-import { Canvas } from '@react-three/fiber'
-import { createXRStore, XR } from '@react-three/xr'
-
-// Create store OUTSIDE component (singleton)
-const store = createXRStore({
-  hand: { rayPointer: true, grabPointer: true, touchPointer: true },
-  controller: { rayPointer: true, grabPointer: true, teleportPointer: true },
+const store = createXRStore({           // module scope: one store per app
+  frameRate: false,                     // keep the browser's default rate (below)
+  offerSession: false,                  // no browser-initiated session offer when <XR> mounts
+  planeDetection: false, meshDetection: false, anchors: false, hitTest: false, domOverlay: false, // a VR viewer uses none
+  controller: { teleportPointer: true },
+  hand: { teleportPointer: true },
 })
-
-function App() {
-  return (
-    <>
-      <button onClick={() => store.enterVR()}>Enter VR</button>
-      <button onClick={() => store.enterAR()}>Enter AR</button>
-      <Canvas>
-        <XR store={store}>
-          <Scene />
-        </XR>
-      </Canvas>
-    </>
-  )
-}
+<button onClick={() => store.enterVR()}>Enter VR</button>
+<Canvas><XR store={store}><Scene /></XR></Canvas>   {/* default WebGLRenderer; see Backend */}
 ```
 
-### createXRStore Options
+- **Defaults ask for a lot** (checked @pmndrs/xr 6.6.31): optional `anchors`, `hand-tracking` (not on Vision Pro), `layers`, `mesh-detection`, `plane-detection`, `dom-overlay` and `hit-test`. Turn off each one the experience doesn't use, or Quest users meet a room-data prompt for a feature you never read. `offerSession` (default `true`) has the browser offer a session as soon as `<XR>` mounts, where it implements `navigator.xr.offerSession`; with it off, a mounted `<XR>` only configures three's XR manager until entry (on localhost it also probes, for `emulate`).
+- Controller and hand models load from cdn.jsdelivr.net unless `baseAssetPath` points at a self-hosted copy of `@webxr-input-profiles/assets`.
+- `frameRate`: the default `'high'` requests the maximum supported rate and `'mid'` the middle one (about 90 Hz on Quest 3), both possibly above the browser's default. Keep `false`, or pass a function over the supported rates that returns the one the floor headset holds.
+- `emulate` defaults to an emulated Quest 3 on localhost when WebXR is missing: a no-headset dev and test tier.
+- `customSessionInit` replaces the generated session request; you then own every feature flag.
 
-```typescript
-createXRStore({
-  hand: {
-    rayPointer: true | { color: 'blue' },
-    grabPointer: true,
-    touchPointer: true,
-    teleportPointer: true,
-    left: CustomLeftHand,
-    right: false,
-  },
-  controller: { /* same options */ },
-  transientPointer: InputConfig | false,
-  gaze: InputConfig | false,
-  screenInput: InputConfig | false,
-  offerSession: 'immersive-vr' | 'immersive-ar' | false,
-  foveation: 0,
-  frameRate: 90,
-  frameBufferScaling: 1,
-})
-```
+## Existing scene
 
-## Hooks
+- Convert units on a content `<group scale>` switched by `useXR((s) => s.session != null)`, never on `<XROrigin>`; then the dependent values (`../web-xr.md` § Adding XR to an existing scene).
+- Wrap what XR must not run in `<IfInSessionMode deny={['immersive-vr', 'immersive-ar']}>`: OrbitControls, the post-processing `EffectComposer`, DOM-based `<Html>` labels. The renderer's own tone mapping then applies in XR: set it to the operator the composer used.
+- Gate the offscreen `frameloop` switch (`setup.md` § Lifecycle) on `useXR((s) => s.session == null)`, so it never stops a session.
 
-**`useXR(selector?)`** -- Zustand-based XR state:
+## Locomotion: comfort defaults
 
-```tsx
-const session = useXR(xr => xr.session)
-const mode = useXR(xr => xr.mode)
-const isPresenting = useXR(xr => xr.session != null)
-```
+Called bare, `useXRControllerLocomotion(originRef)` moves the user smoothly (translation on) and snap-turns 45°. Unless the UX spec asks for smooth locomotion, turn translation off, `useXRControllerLocomotion(originRef, false, { type: 'snap' })`, and teleport instead: wrap the walkable floor in `<TeleportTarget onTeleport={(point) => …}>` and set the `<XROrigin>` position to that `point`, which is already corrected for the head's offset. No teleport in passthrough AR unless the spec says otherwise.
 
-**`useXRInputSourceState(type, handedness)`:**
+## Input
 
-```tsx
-const rightController = useXRInputSourceState('controller', 'right')
-const leftHand = useXRInputSourceState('hand', 'left')
+- Pointer events (`onClick`, `onPointerEnter`) work the same for mouse, touch, controllers and hands; `pointerEventsType={{ deny: 'grab' }}` filters by pointer type.
+- State: `useXRInputSourceState('controller', 'right')?.gamepad['xr-standard-thumbstick']` gives `xAxis` and `yAxis`.
+- Events: `useXRInputSourceEvent('all', 'select', (e) => { if (e.inputSource.handedness !== 'right') return; act(e) }, [act])`; the first argument is an input source, `'all'` or `undefined`, and the last is a deps array.
 
-if (rightController) {
-  const thumbstick = rightController.gamepad['xr-standard-thumbstick']
-  const trigger = rightController.gamepad['xr-standard-trigger']
-}
-```
+## AR
 
-**`useXRHitTest(callback, relativeTo)`** -- continuous AR hit testing (v6; the v5 name `useHitTest` is gone):
+AR features (`hit-test`, `anchors`, `plane-detection`, `dom-overlay`) must be requested and supported; probe first (`../web-xr.md`).
 
-```tsx
-function HitTestReticle() {
-  const ref = useRef<THREE.Mesh>(null)
-  const matrix = new THREE.Matrix4()
-  useXRHitTest((results, getWorldMatrix) => {
-    if (!results.length) return
-    getWorldMatrix(matrix, results[0])
-    matrix.decompose(ref.current!.position, ref.current!.quaternion, ref.current!.scale)
-  }, 'viewer')   // hit-test source relative to the viewer space
-  return (
-    <mesh ref={ref}>
-      <ringGeometry args={[0.08, 0.1, 32]} />
-      <meshBasicNodeMaterial color="white" />
-    </mesh>
-  )
-}
-```
-
-Related: `useXRHitTestSource`, `useXRRequestHitTest` (single-shot), and the `<XRHitTest>` component.
-
-**`useXRAnchor()`:**
-
-```tsx
-const [anchor, requestAnchor] = useXRAnchor()
-requestAnchor({ relativeTo: 'hitTestResult', hitTestResult: hit })
-
-if (anchor) {
-  return (
-    <XRSpace space={anchor.anchorSpace}>
-      <mesh><boxGeometry args={[0.1, 0.1, 0.1]} /></mesh>
-    </XRSpace>
-  )
-}
-```
-
-**`useXRPlanes(semanticLabel?)`:**
-
-```tsx
-const floors = useXRPlanes('floor')
-const walls = useXRPlanes('wall')
-// Labels (non-exhaustive; WebXR semantic-labels registry): 'floor', 'wall', 'ceiling', 'table', 'door', 'window'
-```
-
-**`useXRControllerLocomotion(originRef)`:**
-
-```tsx
-const originRef = useRef<THREE.Group>(null)
-useXRControllerLocomotion(originRef)
-return <XROrigin ref={originRef} />
-```
-
-**`useXRInputSourceEvent(event, callback, options?)`:**
-
-```tsx
-useXRInputSourceEvent('select', (event) => {
-  console.log('Selected with', event.inputSource.handedness)
-}, { handedness: 'right' })
-```
-
-## Components
-
-**`<XR store={store}>`** -- root XR context provider.
-
-**`<XROrigin>`** -- user's origin position in the scene.
-
-**`<XRSpace space={...}>`** -- position children at an XR space:
-
-```tsx
-<XRSpace space="grip-space"><mesh>...</mesh></XRSpace>
-<XRSpace space="wrist"><mesh>...</mesh></XRSpace>
-<XRSpace space={anchor.anchorSpace}><MyModel /></XRSpace>
-<XRSpace space={plane.planeSpace}><XRPlaneModel plane={plane} /></XRSpace>
-```
-
-**`<IfInSessionMode>`** -- conditional rendering:
-
-```tsx
-<IfInSessionMode deny={['immersive-ar', 'immersive-vr']}>
-  <OrbitControls />
-</IfInSessionMode>
-<IfInSessionMode allow={['immersive-ar']}>
-  <HitTestReticle />
-</IfInSessionMode>
-```
-
-**`<TeleportTarget>`:**
-
-```tsx
-const [pos, setPos] = useState<[number, number, number]>([0, 0, 0])
-
-// both render inside your scene tree
-<>
-  <XROrigin position={pos} />
-  <TeleportTarget onTeleport={setPos}>
-    <mesh rotation={[-Math.PI / 2, 0, 0]}>
-      <planeGeometry args={[10, 10]} />
-      <meshStandardNodeMaterial color="green" />
-    </mesh>
-  </TeleportTarget>
-</>
-```
-
-**`<XRDomOverlay>`** -- HTML overlay for handheld AR:
-
-```tsx
-<XR store={store}>
-  <XRDomOverlay>
-    <div style={{ padding: 20 }}><h1>AR Instructions</h1></div>
-  </XRDomOverlay>
-</XR>
-```
-
-AR features (`dom-overlay`, hit-test, anchors, plane detection) are session features that must be requested (configure via `createXRStore` / the session request) and are supported on Android Chrome and the Quest browser — **not** on visionOS. See `../web-xr.md` for the raw feature opt-in.
-
-## Interaction System
-
-v6 uses **unified pointer events** -- same R3F events work across mouse, touch, controllers, hands, gaze.
-
-```tsx
-<mesh
-  onClick={() => setColor('red')}
-  onPointerEnter={() => setHovered(true)}
-  onPointerLeave={() => setHovered(false)}
-  pointerEventsType={{ deny: 'grab' }}  // filter pointer types
->
-```
+- Reticle: `useXRHitTest((results, getWorldMatrix) => …, 'viewer')` (the v6 name; v5's `useHitTest` is gone). On a result, `getWorldMatrix(m, results[0])` into a module-scope `Matrix4`, then `m.decompose` into the reticle's ref.
+- Anchors: `const [anchor, requestAnchor] = useXRAnchor()`, then `requestAnchor({ relativeTo: 'hit-test-result', hitTestResult })`; render content inside `<XRSpace space={anchor.anchorSpace}>`.
+- Planes: `useXRPlanes('floor')`.
+- Desktop-only controls go inside `<IfInSessionMode deny={['immersive-vr', 'immersive-ar']}>`.
 
 ## Spatial UI
 
-Use `@react-three/uikit` for 3D UI panels:
-
-```tsx
-import { Root, Text, Container } from '@react-three/uikit'
-
-<Root position={[0, 1.5, -1]} width={400} height={300}
-  backgroundColor="rgba(0,0,0,0.8)" borderRadius={16} padding={24}>
-  <Text fontSize={24} color="white">Settings</Text>
-</Root>
-```
-
-## Haptic Feedback
-
-```tsx
-const controller = useXRInputSourceState('controller', 'right')
-controller?.inputSource.gamepad?.hapticActuators?.[0]?.pulse(0.5, 100)
-```
+A headset shows no DOM: `<Html>` and `XRDomOverlay` (handheld AR only) don't render in immersive sessions, so in-headset UI lives in the canvas, built with the same design tokens as the page. `@react-three/uikit` 1.x uses `<Container>` as the root (`Root` is deprecated) and patches shaders through `onBeforeCompile`, so it needs `WebGLRenderer`; it breaks under `WebGPURenderer` even with `forceWebGL`.

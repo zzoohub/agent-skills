@@ -1,251 +1,99 @@
-# Token Definitions
+# Tokens
 
-DTCG-inspired format. Single source of truth for all platforms.
+The example system. Hex values are placeholders (Tailwind v3 steps): swap in the brand's, then recompute every ratio.
 
-## Table of Contents
+## Format and Files
 
-1. [File Structure](#file-structure)
-2. [Primitive Tokens](#primitive-tokens)
-3. [Semantic Tokens](#semantic-tokens)
-4. [Dark Theme](#dark-theme)
-5. [Component Tokens (Tier 3 — Use Sparingly)](#component-tokens-tier-3--use-sparingly)
+Token files are DTCG-style JSON (`$type`, `$value`, `{group.token}` references, CSS-string values, arrays for `cubicBezier` and `fontFamily`). DTCG 2025.10 is a W3C Community Group report, not a W3C standard; convert to its strict object forms only for a tool that enforces them. Write alpha as `rgba(r, g, b, a)` (`pipeline.md`).
 
-> **Note on DTCG conformance:** This file uses CSS-string shorthands for some `$value`s rather than the strict DTCG object forms. The `shadow` tokens use a raw CSS string (not the object form `{color, offsetX, offsetY, blur, spread}`), and `dimension` tokens (spacing, radius) use strings like `"4px"` rather than the DTCG object `{ "value": 4, "unit": "px" }`. If you need strict DTCG conformance for Style Dictionary v4 / Terrazzo / Tokens Studio, expand both the shadow and dimension tokens to the structured object format per the DTCG 2025.10 spec. Otherwise, these CSS-string variants ship fine through custom Style Dictionary transforms.
-
-## File Structure
+Files live in the repo's UI folder (default `src/shared/ui/tokens/`, or a shared package once two or more apps consume them; caller may redirect):
 
 ```
-src/shared/ui/tokens/
-├── primitive.tokens.json    # Raw values — never use directly
-├── semantic.tokens.json     # Intent-based — use in components
-├── themes/
-│   ├── light.tokens.json    # Default (can be implicit)
-│   └── dark.tokens.json     # Remaps semantic only
-└── component.tokens.json    # Optional overrides (rare)
+tokens/
+├── primitive.tokens.json   # raw scales; referenced, never emitted
+├── semantic.tokens.json    # theme-independent: space, size, radius, opacity, type, motion, z-index
+└── themes/
+    ├── light.tokens.json   # every themed key: bg, fg, border, elevation
+    └── dark.tokens.json    # the same keys, remapped
 ```
 
-## Primitive Tokens
-
-Bounded palette of raw values. These exist so semantic tokens have something to reference. Components never import these.
+`themes/light.tokens.json` (excerpt; dark maps the same keys):
 
 ```json
 {
-  "color": {
-    "gray": {
-      "50":  { "$value": "#f9fafb", "$type": "color" },
-      "100": { "$value": "#f3f4f6", "$type": "color" },
-      "200": { "$value": "#e5e7eb", "$type": "color" },
-      "300": { "$value": "#d1d5db", "$type": "color" },
-      "400": { "$value": "#9ca3af", "$type": "color" },
-      "500": { "$value": "#6b7280", "$type": "color" },
-      "600": { "$value": "#4b5563", "$type": "color" },
-      "700": { "$value": "#374151", "$type": "color" },
-      "800": { "$value": "#1f2937", "$type": "color" },
-      "900": { "$value": "#111827", "$type": "color" },
-      "950": { "$value": "#030712", "$type": "color" }
-    },
-    "blue": {
-      "50":  { "$value": "#eff6ff", "$type": "color" },
-      "300": { "$value": "#93c5fd", "$type": "color" },
-      "400": { "$value": "#60a5fa", "$type": "color" },
-      "500": { "$value": "#3b82f6", "$type": "color" },
-      "600": { "$value": "#2563eb", "$type": "color" },
-      "700": { "$value": "#1d4ed8", "$type": "color" },
-      "800": { "$value": "#1e40af", "$type": "color" }
-    },
-    "red": {
-      "50":  { "$value": "#fef2f2", "$type": "color" },
-      "500": { "$value": "#ef4444", "$type": "color" },
-      "600": { "$value": "#dc2626", "$type": "color" }
-    },
-    "amber": {
-      "50":  { "$value": "#fffbeb", "$type": "color" },
-      "500": { "$value": "#f59e0b", "$type": "color" },
-      "600": { "$value": "#d97706", "$type": "color" }
-    },
-    "green": {
-      "50":  { "$value": "#f0fdf4", "$type": "color" },
-      "500": { "$value": "#22c55e", "$type": "color" },
-      "600": { "$value": "#16a34a", "$type": "color" }
-    }
-  },
-  "spacing": {
-    "0":  { "$value": "0px",  "$type": "dimension" },
-    "1":  { "$value": "4px",  "$type": "dimension" },
-    "2":  { "$value": "8px",  "$type": "dimension" },
-    "3":  { "$value": "12px", "$type": "dimension" },
-    "4":  { "$value": "16px", "$type": "dimension" },
-    "5":  { "$value": "20px", "$type": "dimension" },
-    "6":  { "$value": "24px", "$type": "dimension" },
-    "8":  { "$value": "32px", "$type": "dimension" },
-    "10": { "$value": "40px", "$type": "dimension" },
-    "12": { "$value": "48px", "$type": "dimension" },
-    "16": { "$value": "64px", "$type": "dimension" },
-    "20": { "$value": "80px", "$type": "dimension" }
-  },
-  "radius": {
-    "none": { "$value": "0px",    "$type": "dimension" },
-    "sm":   { "$value": "4px",    "$type": "dimension" },
-    "md":   { "$value": "8px",    "$type": "dimension" },
-    "lg":   { "$value": "12px",   "$type": "dimension" },
-    "xl":   { "$value": "16px",   "$type": "dimension" },
-    "2xl":  { "$value": "24px",   "$type": "dimension" },
-    "full": { "$value": "9999px", "$type": "dimension" }
-  },
-  "shadow": {
-    "sm":  { "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.05)", "$type": "shadow" },
-    "md":  { "$value": "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1)", "$type": "shadow" },
-    "lg":  { "$value": "0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1)", "$type": "shadow" },
-    "xl":  { "$value": "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)", "$type": "shadow" }
-  },
-  "opacity": {
-    "disabled": { "$value": "0.5",  "$type": "number" },
-    "overlay":  { "$value": "0.5",  "$type": "number" },
-    "hover":    { "$value": "0.8",  "$type": "number" }
-  },
-  "zIndex": {
-    "base":     { "$value": "0",   "$type": "number" },
-    "dropdown": { "$value": "100", "$type": "number" },
-    "sticky":   { "$value": "200", "$type": "number" },
-    "overlay":  { "$value": "300", "$type": "number" },
-    "modal":    { "$value": "400", "$type": "number" },
-    "popover":  { "$value": "450", "$type": "number" },
-    "toast":    { "$value": "500", "$type": "number" }
-  }
+  "bg": { "accent": { "$type": "color", "$value": "{color.blue.600}" } },
+  "fg": { "onAccent": { "$type": "color", "$value": "{color.white}" } }
 }
 ```
 
-## Semantic Tokens
+## Palette
 
-Every value a component uses comes from here. The naming tells you what it's for, not what it looks like.
+| Hue | Steps |
+|---|---|
+| gray | 50 `#f9fafb`, 100 `#f3f4f6`, 200 `#e5e7eb`, 400 `#9ca3af`, 500 `#6b7280`, 700 `#374151`, 800 `#1f2937`, 900 `#111827`, 950 `#030712` |
+| blue | 400 `#60a5fa`, 500 `#3b82f6`, 600 `#2563eb`, 700 `#1d4ed8` |
+| red | 50 `#fef2f2`, 400 `#f87171`, 500 `#ef4444`, 600 `#dc2626`, 700 `#b91c1c` |
+| amber | 50 `#fffbeb`, 400 `#fbbf24`, 500 `#f59e0b`, 700 `#b45309` |
+| green | 50 `#f0fdf4`, 400 `#4ade80`, 500 `#22c55e`, 700 `#15803d` |
 
-```json
-{
-  "color": {
-    "bg": {
-      "primary":   { "$value": "{color.gray.50}",  "$type": "color" },
-      "secondary": { "$value": "{color.gray.100}", "$type": "color" },
-      "tertiary":  { "$value": "{color.gray.200}", "$type": "color" },
-      "inverse":   { "$value": "{color.gray.900}", "$type": "color" },
-      "overlay":   { "$value": "rgba(0, 0, 0, 0.5)", "$type": "color" }
-    },
-    "text": {
-      "primary":   { "$value": "{color.gray.900}", "$type": "color" },
-      "secondary": { "$value": "{color.gray.600}", "$type": "color" },
-      "tertiary":  { "$value": "{color.gray.500}", "$type": "color" },
-      "inverse":   { "$value": "{color.gray.50}",  "$type": "color" },
-      "link":      { "$value": "{color.blue.600}", "$type": "color" },
-      "linkHover": { "$value": "{color.blue.700}", "$type": "color" }
-    },
-    "interactive": {
-      "primary":       { "$value": "{color.blue.600}", "$type": "color" },
-      "primaryHover":  { "$value": "{color.blue.700}", "$type": "color" },
-      "primaryActive": { "$value": "{color.blue.800}", "$type": "color" }
-    },
-    "border": {
-      "default": { "$value": "{color.gray.200}", "$type": "color" },
-      "strong":  { "$value": "{color.gray.300}", "$type": "color" },
-      "focus":   { "$value": "{color.blue.500}", "$type": "color" }
-    },
-    "status": {
-      "error":      { "$value": "{color.red.600}",   "$type": "color" },
-      "errorBg":    { "$value": "{color.red.50}",    "$type": "color" },
-      "warning":    { "$value": "{color.amber.600}", "$type": "color" },
-      "warningBg":  { "$value": "{color.amber.50}",  "$type": "color" },
-      "success":    { "$value": "{color.green.600}", "$type": "color" },
-      "successBg":  { "$value": "{color.green.50}",  "$type": "color" }
-    }
-  },
-  "shadow": {
-    "card":     { "$value": "{shadow.sm}",  "$type": "shadow" },
-    "dropdown": { "$value": "{shadow.md}",  "$type": "shadow" },
-    "modal":    { "$value": "{shadow.lg}",  "$type": "shadow" },
-    "toast":    { "$value": "{shadow.xl}",  "$type": "shadow" }
-  },
-  "spacing": {
-    "component": {
-      "xs": { "$value": "{spacing.1}",  "$type": "dimension" },
-      "sm": { "$value": "{spacing.2}",  "$type": "dimension" },
-      "md": { "$value": "{spacing.3}",  "$type": "dimension" },
-      "lg": { "$value": "{spacing.4}",  "$type": "dimension" },
-      "xl": { "$value": "{spacing.6}",  "$type": "dimension" }
-    },
-    "layout": {
-      "xs": { "$value": "{spacing.4}",  "$type": "dimension" },
-      "sm": { "$value": "{spacing.6}",  "$type": "dimension" },
-      "md": { "$value": "{spacing.8}",  "$type": "dimension" },
-      "lg": { "$value": "{spacing.12}", "$type": "dimension" },
-      "xl": { "$value": "{spacing.16}", "$type": "dimension" }
+Plus `white` `#ffffff`.
+
+**From a supplied brand color** (a requirement: SKILL.md § Theming):
+1. The exact hex becomes, unchanged, the step nearest its OKLCH lightness. Build the other steps in OKLCH with one lightness target per step across hues, so a step's pairs nearly hold in every hue; lower chroma where a step leaves sRGB, and re-space only the brand's neighbors if they crowd it.
+2. Test the exact value per role and mode first. As a fill: against pure white and pure black (one always passes 4.5:1; a near-black on-token such as `gray.950` can miss, at worst 4.49:1) and, in dark mode, against `bg.base` and `bg.raised` (≥3:1). As text, a ring or an icon: against every surface it sits on.
+3. A failing role takes the smallest OKLCH lightness shift that passes, hue held, chroma lowered only to stay in gamut. Search for it; never take the next step. Measured on Tailwind v3's 500 fills against white: those at 3.6–4.5:1 pass after a ΔL of 0.003–0.055, while the next step sits 0.06–0.08 away; those at 2.1–2.8:1 need 0.12–0.2, a different color, so the exact fill with a dark on-color is the smaller change. A dark-mode fill searches against `bg.raised` with `min` 3, then re-picks its on-color.
+
+A design-time helper, run where culori is installed or can be a dev dependency; code that derives themes at runtime (on a server or device) ports the conversions it uses (OKLCH ↔ sRGB, chroma clamp, WCAG luminance) rather than add a dependency.
+
+```js
+import { clampChroma, converter, formatHex, wcagContrast } from 'culori';
+const toOklch = converter('oklch');
+
+// The color nearest `hex` in OKLCH lightness, hue held, that reaches `min` against `against`.
+export function smallestPassingShift(hex, against, min = 4.5) {
+  const base = toOklch(hex);
+  for (let d = 0; d <= 1; d += 0.0025) {
+    for (const l of [base.l - d, base.l + d]) {
+      if (l < 0 || l > 1) continue;
+      const candidate = formatHex(clampChroma({ ...base, l }, 'oklch'));
+      if (wcagContrast(candidate, against) >= min) return { hex: candidate, deltaL: l - base.l };
     }
   }
+  return null; // nothing reaches `min` against this surface
 }
 ```
 
-## Dark Theme
+Report each shift as role, mode, old → new hex, ΔL and ratio, beside its neutral fallback, which never alters a supplied value: links in `fg.default`, underlined; a neutral focus ring; a ≥3:1 edge around the exact fill. The owner decides (SKILL.md § Theming).
 
-Remaps semantic tokens only. Components and primitives stay unchanged.
+## Allowed Pairs
 
-```json
-{
-  "color": {
-    "bg": {
-      "primary":   { "$value": "{color.gray.900}", "$type": "color" },
-      "secondary": { "$value": "{color.gray.800}", "$type": "color" },
-      "tertiary":  { "$value": "{color.gray.700}", "$type": "color" },
-      "inverse":   { "$value": "{color.gray.50}",  "$type": "color" },
-      "overlay":   { "$value": "rgba(0, 0, 0, 0.7)", "$type": "color" }
-    },
-    "text": {
-      "primary":   { "$value": "{color.gray.50}",  "$type": "color" },
-      "secondary": { "$value": "{color.gray.300}", "$type": "color" },
-      "tertiary":  { "$value": "{color.gray.400}", "$type": "color" },
-      "inverse":   { "$value": "{color.gray.900}", "$type": "color" },
-      "link":      { "$value": "{color.blue.400}", "$type": "color" },
-      "linkHover": { "$value": "{color.blue.300}", "$type": "color" }
-    },
-    "interactive": {
-      "primary":       { "$value": "{color.blue.500}", "$type": "color" },
-      "primaryHover":  { "$value": "{color.blue.400}", "$type": "color" },
-      "primaryActive": { "$value": "{color.blue.600}", "$type": "color" }
-    },
-    "border": {
-      "default": { "$value": "{color.gray.700}", "$type": "color" },
-      "strong":  { "$value": "{color.gray.600}", "$type": "color" },
-      "focus":   { "$value": "{color.blue.400}", "$type": "color" }
-    },
-    "status": {
-      "error":     { "$value": "{color.red.500}",            "$type": "color" },
-      "errorBg":   { "$value": "rgba(239, 68, 68, 0.15)",    "$type": "color" },
-      "warning":   { "$value": "{color.amber.500}",          "$type": "color" },
-      "warningBg": { "$value": "rgba(245, 158, 11, 0.15)",   "$type": "color" },
-      "success":   { "$value": "{color.green.500}",          "$type": "color" },
-      "successBg": { "$value": "rgba(34, 197, 94, 0.15)",    "$type": "color" }
-    }
-  },
-  "shadow": {
-    "card":     { "$value": "0 1px 2px 0 rgba(0, 0, 0, 0.2)", "$type": "shadow" },
-    "dropdown": { "$value": "0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2)", "$type": "shadow" },
-    "modal":    { "$value": "0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3)", "$type": "shadow" },
-    "toast":    { "$value": "0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3)", "$type": "shadow" }
-  }
-}
-```
+The complete semantic color map; a pair not listed is not allowed. Ratios are WCAG 2 contrast on the worst listed surface.
 
-Dark mode shadows use higher opacity values because on dark surfaces, subtle shadows are invisible. The shadow color stays pure black in both themes — only the opacity (alpha) increases, not the color. Status tokens also remap in dark mode: foregrounds shift to lighter shades (`*.500`) and the `*Bg` fills become low-opacity tints, so alerts and toasts don't render as near-white blocks on a dark surface.
+| Pair (fg / bg) | Light | Dark | Worst, light / dark |
+|---|---|---|---|
+| `fg.default` / `bg.base`, `bg.raised`, `bg.subtle`, any `bg.{status}Subtle` | gray.900 on gray.50, white, gray.100 | gray.50 on gray.900, gray.800, gray.700 | 16.1 / 9.86 |
+| `fg.muted` / `bg.base`, `bg.raised` (never `bg.subtle`: 4.39 / 4.06) | gray.500 | gray.400 | 4.63 / 5.78 |
+| `fg.accent` (links) / `bg.base`, `bg.raised` | blue.600 | blue.400 | 4.95 / 5.77 |
+| `fg.onAccent` / `bg.accent`, `bg.accentHover` | white on blue.600, blue.700 | gray.950 on blue.500, blue.400 | 5.17 / 5.47 |
+| `fg.onDanger` / `bg.danger`, `bg.dangerHover` | white on red.600, red.700 | gray.950 on red.500, red.400 | 4.83 / 5.35 |
+| `fg.onWarning` / `bg.warning` | gray.950 on amber.500 | the same | 9.37 / 9.37 |
+| `fg.{status}Strong` / its `bg.{status}Subtle`, `bg.base`, `bg.raised` | `.700`; subtle fill `.50` | `.400`; subtle fill `.500` at 15% alpha | red 5.91 / 4.63, amber 4.81 / 6.69, green 4.79 / 6.48 |
+| `border.input` / `bg.base`, `bg.raised` | gray.500 | gray.500 | 4.63 / 3.04 |
+| `border.focus` / `bg.base`, `bg.raised` | blue.500 | blue.400 | 3.52 / 5.77 |
 
-## Component Tokens (Tier 3 — Use Sparingly)
+Not pairs: `bg.overlay` (scrim) `rgba(0, 0, 0, 0.5)` / `rgba(0, 0, 0, 0.7)`; `border.default` gray.200 / gray.700, for decorative dividers only, never an input's only boundary (1.18:1).
 
-Only when a specific component needs values that don't map to any semantic token. Most components should never need this.
+Traps the table already avoids:
+- **Alpha fills change with what sits under them.** Gate them on every surface they can sit on (the dark status tints were), or ship the composited opaque value.
+- **Dark fills get lighter, so dark on-tokens get darker.** The dark accent fill, blue.500, is 3.99:1 on `bg.raised`; a navy brand kept exact there (blue.900) is 1.42:1 and reads as an outline. White on blue.500 is 3.68:1; `gray.950` is 5.47:1.
+- **Hover and pressed fills are pairs too.** An opacity hover such as `bg-accent/90` lightens the fill under white text to 4.32:1; use the hover token.
 
-```json
-{
-  "button": {
-    "borderRadius": { "$value": "{radius.md}", "$type": "dimension" },
-    "paddingX": {
-      "sm": { "$value": "{spacing.component.md}", "$type": "dimension" },
-      "md": { "$value": "{spacing.component.lg}", "$type": "dimension" },
-      "lg": { "$value": "{spacing.component.xl}", "$type": "dimension" }
-    }
-  }
-}
-```
+## Other Scales
+
+- **Space** (semantic, 4px grid): `space.component` xs 4, sm 8, md 12, lg 16, xl 24; `space.layout` xs 16, sm 24, md 32, lg 48, xl 64.
+- **Touch target:** `size.touchTarget` 48, which meets Android's 48dp and iOS's 44pt.
+- **Radius:** none 0, sm 4, md 8, lg 12, xl 16, 2xl 24, full 9999.
+- **Elevation** (semantic shadows): `elevation.card`, `.dropdown`, `.modal`, `.toast` are the Tailwind v3 shadow steps sm, md, lg, xl; dark raises their alpha to 0.2–0.4, but `bg.raised` carries the dark elevation cue.
+- **Opacity:** `opacity.disabled` 0.5; disabled controls are contrast-exempt, so nothing else may fade text.
+- **z-index** (in-flow and portal layers only; the top layer ignores it): base 0, dropdown 100 (in-flow, never portaled), sticky 200, overlay 300, modal 400, popover 450, toast 500.
+- **Component tokens** (tier 3), only for a deliberate deviation or a white-label styling API: `button.radius` → `{radius.md}`, `button.paddingX.md` → `{space.component.lg}`. Version them like props.

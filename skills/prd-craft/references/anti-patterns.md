@@ -1,126 +1,38 @@
 # PRD Anti-Patterns
 
-Check every PRD against these failure modes before finalizing. Each anti-pattern
-includes what it looks like, why it's dangerous, and how to fix it.
+Failures that sink a PRD in any format. Each entry: looks like · test · fix. feature-spec cites entries by name; keep the names.
 
-## Table of Contents
+1. **The Solution Masquerading as a Problem.** "We need a notification system." · Does the problem name a feature or product? · State the pain and its cost.
 
-1. [The Solution Masquerading as a Problem](#1-the-solution-masquerading-as-a-problem)
-2. [The Vacuous PRD](#2-the-vacuous-prd)
-3. [The Novel](#3-the-novel)
-4. [The Design Document in Disguise](#4-the-design-document-in-disguise)
-5. [The Technical Spec in Disguise](#5-the-technical-spec-in-disguise)
-6. [The Metrics-Free Zone](#6-the-metrics-free-zone)
-7. [The Everything Bagel](#7-the-everything-bagel)
-8. [The One-Sided Coin](#8-the-one-sided-coin)
-9. [The Outdated Artifact](#9-the-outdated-artifact)
-10. [Missing Alternatives](#10-missing-alternatives)
-11. [Requirement Without Evidence](#11-requirement-without-evidence)
-12. [The Copy-Paste PRD](#12-the-copy-paste-prd)
-13. [The Output-Metric Trap](#13-the-output-metric-trap)
+2. **The Design Document in Disguise.** Layouts, pixel values, component specs, final copy. · Would the first usability test make the line obsolete? · State what the user can do; at most, link a rough flow of the bet's one interaction.
 
----
+3. **The Technical Spec in Disguise.** "Built with React", features named after modules (`file-parser`). · Is it architecture's choice, or a part no user would name? · Describe the capability; imposed technology is a §8 constraint with its reason.
 
-## 1. The Solution Masquerading as a Problem
+4. **The Everything Bagel.** Every wish in scope, everything a Must, estimates shaved until it fits, non-goals nobody wanted. · Is there a cut line in the first release users get, do its Musts fit about 60% of the appetite on whole-job estimates, and would someone argue for each non-goal? · Move Musts below the line, or call the plan tight while the high end still fits the appetite; non-goals are the tempting features.
 
-**What it looks like:** "We need to build a notification system" stated as the problem.
+5. **The One-Sided Coin.** No risks, or only technical ones. · Is one about value (will they buy or choose it) or viability (cost, sales, legal, support)? · A pre-mortem at the v0.1 checkpoint: each risk's earliest signal and what retires it.
 
-**Why it's dangerous:** Skips problem validation. The team builds what was asked for, not what's needed. Maybe the real problem is "users miss 23% of time-sensitive updates" — and the best solution might not be notifications at all.
+6. **The Fabricated PRD.** Precise baselines, statistics, quotes or personas nobody measured or met. · Name each one's source. · Tag each number by where it came from; delete invented quotes and personas.
 
-**Fix:** Rewrite the problem to describe pain, not the absence of a feature.
+7. **The Output-Metric Trap.** "Launch X", "10 endpoints built", "95% of deploys auto-verified". · Does it say what changed for users or the business, and what must not get worse? · Measure the behavior change, not the activity, and pair it with a counter-metric.
 
-## 2. The Vacuous PRD
+8. **The Lab Pilot.** A v0.1 its real audience can't run: no way in, nobody to fix a wrong record, no way out, data duties left for "later". · Walk one pilot user from invite to deletion and the operator through a week: does each step have a feature, a named manual owner or a reason it won't come up? · Add the step to §5, the build bar or §7.
 
-**What it looks like:** Every section filled in, but content is meaningless. "Ensure alignment with legal standards." "Provide a seamless user experience."
+9. **Law as a Footnote.** "Must comply with [law]" in §8 or §9, and no requirement anywhere; outputs never classified. · Point to the requirement and acceptance criterion that meets each duty, in the release that incurs it. · Turn each duty into requirements; check whether the product's output, not only its data, is regulated.
 
-**Why it's dangerous:** Looks complete at a glance. Passes review because nobody can extract meaning. The team builds something, but nobody knows if it's right.
+10. **The Paper Cutover.** "Migrate from the old tool", undated: dirty records, in-flight work and the old tool's end unplanned, so users run both and drift back. · Does the first release users get name the go/no-go check and a cutover date per segment, with no integration below the cut line whose absence the evidence says sends users back? · Add the Transition line; move those integrations above the line.
 
-**Fix:** Apply the "could anyone disagree?" test. If no reasonable person would take the opposite position, the statement adds no information. Replace with specifics.
+11. **The Silent Departure.** The PRD drops or overturns what the approved brief asked, and only the report, or nothing, says so. · Compare the PRD with the brief's problem, segment, metric and asks. · Decide each departure in §3 with its evidence and approver; recommend revising the brief.
 
-## 3. The Novel
+## Severity
 
-**What it looks like:** A PRD so long nobody reads it — pushing past the 400-line cap, or simply not readable in one sitting.
+| Severity | Typical findings |
+|---|---|
+| 🔴 Critical (blocks) | no problem or no segment; success unmeasurable; v0.1 can't test the core bet, or its real audience can't run it (no way in, a duty it incurs with no requirement); an item both in scope and a non-goal; an unsourced number driving scope |
+| 🟠 High | a metric missing a §4 column, or gameable with no counter-metric; a stated outcome dropped silently; a departure from the brief left undecided; a replaced tool with no dated transition, or an integration below the cut line whose absence the evidence says sends users back; Musts over ~60% of the appetite and neither justified nor called tight, or over the whole appetite at the high end; estimates trimmed to fit; a decision rule v0.1's sample can't settle; no cut line; a costly `[later]` unflagged; a v0.1-blocking question with no default; module-named features; a broken §5/§6/spec join; technology without a mandate |
+| 🟡 Medium | stale Last Updated, or §6 out of step with what shipped; a generic segment; no build bar; only technical risks; shorthand a cold reader can't follow; over the word ceiling |
+| 🟢 Low | wording |
 
-**Why it's dangerous:** Long PRDs get skimmed. Critical details get buried. People build from memory of a conversation, not the document.
+## Trouble map
 
-**Fix:** Keep the PRD concise. If it pushes past the 400-line cap, split into PRD + linked feature specs. Each document should be readable in one sitting.
-
-## 4. The Design Document in Disguise
-
-**What it looks like:** PRD contains wireframes, UI mockups, layout specs, pixel values, or detailed screen descriptions.
-
-**Why it's dangerous:** Constrains design before the problem is validated. The PRD becomes outdated the moment the first usability test produces insights.
-
-**Fix:** Remove all visual specs. Replace with functional descriptions. "User can see a summary of recent activity" — not "top section shows a card grid with 3 columns at 280px width."
-
-## 5. The Technical Spec in Disguise
-
-**What it looks like:** PRD names specific libraries, frameworks, or tools. "Built with React." "Uses PostgreSQL with B-tree indexes." "GraphQL subscriptions."
-
-**Why it's dangerous:** Technology choices are HOW, not WHAT. Embedding them means engineering can't choose the best tool. It also makes the PRD brittle — tech choices change faster than requirements.
-
-**Fix:** Describe capabilities, not implementation. "Runs in the browser" not "built with React." "Sub-second data sync" not "WebSocket connections."
-
-## 6. The Metrics-Free Zone
-
-**What it looks like:** No numbers anywhere. "Improve user experience." "Reduce errors." "Make it faster."
-
-**Why it's dangerous:** Without numbers, you can't tell if you succeeded. Every post-launch discussion becomes opinion vs opinion.
-
-**Fix:** Quantify everything. Current state (baseline), target state, and timeframe. If exact numbers aren't available, use estimates with stated assumptions.
-
-## 7. The Everything Bagel
-
-**What it looks like:** No clear scope boundaries. Every wish is in there somewhere.
-
-**Why it's dangerous:** Without explicit non-goals, scope creep is inevitable. The product ships late or ships everything half-built.
-
-**Fix:** Write an explicit "Out of Scope" section. For each excluded item, explain why. Name the tempting features you're deliberately not building.
-
-## 8. The One-Sided Coin
-
-**What it looks like:** All upside, no tradeoffs. No discussion of risks, costs, or what might go wrong.
-
-**Why it's dangerous:** Decision-makers can't make informed choices without understanding tradeoffs. When something goes wrong, there's no mitigation plan.
-
-**Fix:** Add a Risks section with severity and mitigation. Acknowledge tradeoffs explicitly.
-
-## 9. The Outdated Artifact
-
-**What it looks like:** PRD written once, never updated. The project has pivoted twice since.
-
-**Why it's dangerous:** New contributors read the PRD and build the wrong thing. The document becomes a historical curiosity.
-
-**Fix:** Keep a "Last Updated" date. Review the PRD at each major milestone. If it's no longer accurate, update it or mark it as superseded.
-
-## 10. Missing Alternatives
-
-**What it looks like:** No mention of how the problem is currently handled — existing tools, scripts, manual processes, or competing products.
-
-**Why it's dangerous:** If you don't understand existing approaches, you'll build something undifferentiated or solve a problem that's already well-solved.
-
-**Fix:** Include alternative context in the Problem section. Show how the problem is handled today — whether by other tools, manual workarounds, or existing scripts — and where the gap is that justifies building something new.
-
-## 11. Requirement Without Evidence
-
-**What it looks like:** A requirement exists because someone asked for it or it "sounds useful," with no evidence anyone actually needs it.
-
-**Why it's dangerous:** Requirements without evidence optimize for imagination, not reality. The product becomes a collection of "wouldn't it be cool if" ideas rather than solutions to real problems.
-
-**Fix:** For each requirement, ask: "What evidence do we have that this is needed?" Evidence can be personal experience ("I hit this problem 3x this week"), observed behavior, user feedback, or data. If the answer is only "it seems like a good idea," either validate it first or drop it.
-
-## 12. The Copy-Paste PRD
-
-**What it looks like:** A PRD from another product with names find-and-replaced. Sections feel generic.
-
-**Why it's dangerous:** Every product has unique context. A recycled PRD gives the illusion of thoroughness while missing the specific insights that make a PRD useful.
-
-**Fix:** Start every PRD from the problem, not from a previous PRD. Use templates for structure, but fill every section with original thinking specific to this product.
-
-## 13. The Output-Metric Trap
-
-**What it looks like:** Success is measured by shipping features or activity counts — "launch X", "10 endpoints built", "1,000 events fired" — rather than user or business outcomes.
-
-**Why it's dangerous:** Distinct from #6 (Metrics-Free Zone): here numbers exist, but they measure the wrong thing. You can hit every output target and still solve nothing for the user. Output metrics feel like progress while masking whether the problem actually moved.
-
-**Fix:** Every metric should answer "what changed for the user / the business?" not "did we ship it?" Pair each goal with the §4 counter-metric so you can't win the headline number by gaming it. "Time-to-detection dropped from 4h to 2min" beats "monitoring feature shipped."
+Trouble reported while a PRD is in use points to a section: architects asking about scale or tenancy → §8; arguing whether v0.1 worked → the decision rule; v0.1 over- or under-built → the build bar; pilot users stuck getting in, fixing a record or leaving → the lifecycle features and build bar; users back on the old tool → the Transition line and integrations below the cut line; launch blocked by legal → §8 Duties with no requirements; settled asks reopened → §3 departures; scope creep → the cut line or non-goals; a target with no data → §4's source; screens for cut features → specs too deep, too early.

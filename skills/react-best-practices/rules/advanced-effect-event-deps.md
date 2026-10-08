@@ -1,56 +1,37 @@
 ---
-title: Do Not Put Effect Events in Dependency Arrays
-impact: LOW
-impactDescription: avoids unnecessary effect re-runs and lint errors
-tags: advanced, hooks, useEffectEvent, dependencies, effects
+title: Read Latest Values in Effects with useEffectEvent
+tags: effects, useEffectEvent, refs, dependencies
 ---
 
-## Do Not Put Effect Events in Dependency Arrays
+When an Effect calls a callback or reads a value it shouldn't re-run for, listing it as a dependency re-subscribes on every change, and leaving it out reads a stale value. `useEffectEvent` (React 19.2+; 19.3+ inside `memo` and `forwardRef` components) returns a function that always sees the latest props and state.
 
-`useEffectEvent` requires React 19.2+ (its first stable release); on older React use the ref pattern in [Store Event Handlers in Refs](./advanced-event-handler-refs.md). Effect Event functions do not have a stable identity. Their identity intentionally changes on every render. Do not include the function returned by `useEffectEvent` in a `useEffect` dependency array. Keep the actual reactive values as dependencies and call the Effect Event from inside the effect body or subscriptions created by that effect.
+Its identity changes on every render by design: never put it in a dependency array, pass it to another component or hook, or call it during render. Call it only from Effects and the subscriptions they create.
 
-**Incorrect (Effect Event added as a dependency):**
+**Incorrect:** subscribing with `c.on('connected', onConnected)` and listing `[roomId, onConnected]` as deps; a parent passing an inline callback reconnects on every render.
 
-```tsx
-import { useEffect, useEffectEvent } from 'react'
-
-function ChatRoom({ roomId, onConnected }: {
-  roomId: string
-  onConnected: () => void
-}) {
-  const handleConnected = useEffectEvent(onConnected)
-
-  useEffect(() => {
-    const connection = createConnection(roomId)
-    connection.on('connected', handleConnected)
-    connection.connect()
-
-    return () => connection.disconnect()
-  }, [roomId, handleConnected])
-}
-```
-
-Including the Effect Event in dependencies makes the effect re-run every render and triggers the React Hooks lint rule.
-
-**Correct (depend on reactive values, not the Effect Event):**
+**Correct (19.2+):**
 
 ```tsx
-import { useEffect, useEffectEvent } from 'react'
-
-function ChatRoom({ roomId, onConnected }: {
-  roomId: string
-  onConnected: () => void
-}) {
-  const handleConnected = useEffectEvent(onConnected)
-
-  useEffect(() => {
-    const connection = createConnection(roomId)
-    connection.on('connected', handleConnected)
-    connection.connect()
-
-    return () => connection.disconnect()
-  }, [roomId])
-}
+const onConnectedEvent = useEffectEvent(onConnected)
+useEffect(() => {
+  const c = createConnection(roomId)
+  c.on('connected', onConnectedEvent)
+  c.connect()
+  return () => c.disconnect()
+}, [roomId])
 ```
 
-Reference: [React useEffectEvent: Effect Event in deps](https://react.dev/reference/react/useEffectEvent#effect-event-in-deps)
+**Below 19.2 (a ref updated after each render):**
+
+```tsx
+const latest = useRef(onConnected)
+useEffect(() => { latest.current = onConnected })
+useEffect(() => {
+  const c = createConnection(roomId)
+  c.on('connected', () => latest.current())
+  c.connect()
+  return () => c.disconnect()
+}, [roomId])
+```
+
+Sources: https://react.dev/reference/react/useEffectEvent · https://react.dev/blog/2026/09/09/react-19-3

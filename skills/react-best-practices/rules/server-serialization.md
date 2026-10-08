@@ -1,38 +1,35 @@
 ---
-title: Minimize Serialization at RSC Boundaries
-impact: HIGH
-impactDescription: reduces data transfer size
-tags: server, rsc, serialization, props
+title: Send the Client a Minimal DTO, Once
+tags: server, rsc, serialization, server-functions, security
 ---
 
-## Minimize Serialization at RSC Boundaries
+Everything that crosses to the client (the Server boundary in SKILL.md lists it) is serialized into the page or the payload, and the user can read all of it. React dedupes by reference, not by value: a derived copy (`.toSorted()`, `.filter()`, `{...obj}`) is a new container whose primitives are sent again, while objects already sent go as references. Duplicated string or number arrays cost the most.
 
-The React Server/Client boundary serializes all object properties into strings and embeds them in the HTML response and subsequent RSC requests. This serialized data directly impacts page weight and load time, so **size matters a lot**. Only pass fields that the client actually uses.
+Build a minimal DTO on the server and send each value once. Derive on the client only when the derivation is cheap and its source already crosses.
 
-**Incorrect (serializes all 50 fields):**
+**Incorrect (every column crosses, internal fields included, and the names twice):**
 
 ```tsx
-async function Page() {
-  const user = await fetchUser()  // 50 fields
-  return <Profile user={user} />
-}
+// app/team/page.tsx (Server Component)
+const user = await getUser(id)
+return <Team user={user} names={names} sortedNames={names.toSorted()} />
+```
 
+**Correct:**
+
+```tsx
+// app/team/page.tsx (Server Component)
+const user = await getUser(id)
+return <Team user={{ name: user.name, avatarUrl: user.avatarUrl }} names={names} />
+```
+
+```tsx
+// app/team/team.tsx
 'use client'
-function Profile({ user }: { user: User }) {
-  return <div>{user.name}</div>  // uses 1 field
+export function Team({ user, names }: { user: { name: string; avatarUrl: string }; names: string[] }) {
+  const sorted = names.toSorted()   // cheap, and its source already crosses
+  // ...
 }
 ```
 
-**Correct (serializes only 1 field):**
-
-```tsx
-async function Page() {
-  const user = await fetchUser()
-  return <Profile name={user.name} />
-}
-
-'use client'
-function Profile({ name }: { name: string }) {
-  return <div>{name}</div>
-}
-```
+*Break:* send the derived value instead when deriving it is expensive or the client never needs the source.

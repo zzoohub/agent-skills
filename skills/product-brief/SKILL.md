@@ -1,180 +1,135 @@
 ---
 name: product-brief
 description: |
-  Creates lean product briefs — one-pagers that define the problem, direction, and
-  success signal for a NEW product or direction. Sits upstream of the PRD; focuses
-  on "what" and "why", not features.
-  Use when: the user asks to "write a product brief", "create a product one-pager",
-  "product pitch", "product concept", or wants to validate/explore whether to build
-  a NEW product idea before requirements exist. Also trigger on "I have an idea for
-  a new product", "I want to build a new product/app X", or a described concept
-  without a named doc type. Also use when reviewing or improving an existing
-  product brief.
-  Do NOT use for: a single feature on an existing product (use feature-spec); a full
-  PRD, detailed success metrics with timeframes, scope boundaries, feature specs,
-  user journeys, timelines, or reviewing/auditing a PRD (use prd-craft); UI/UX
-  design (use ux-design); technical architecture (use software-architecture);
-  investor decks, business plans, market sizing (TAM-SAM-SOM), or GTM docs.
+  One-page product brief that decides whether a NEW product or direction is
+  worth building: the problem, who has it, the evidence so far, and the
+  riskiest assumption with the cheapest test that could kill it. Upstream of
+  the PRD (the why and whether). Use when: "product one-pager", "I have an
+  idea for an app", "I want to build a new product", "is this worth
+  building", "which idea should I build", "validate my idea"; also to review
+  a brief or record a test result. Do NOT use for: a feature on an existing
+  product (feature-spec); a PRD or PRD review (prd-craft); challenging an
+  existing brief's or PRD's premise or scope (plan-review); post-launch PMF
+  (product-analytics).
 ---
 
-# Product Brief — Strategic One-Pager
+# Product Brief
 
-A product brief answers one question: **"Should I build this, and why?"**
+One page answering **"Should we build this, and what would prove us wrong?"** It ends in a Decision, never a pitch: argue against the idea as plainly as for it.
 
-It sits upstream of the PRD. The brief defines the problem and direction; the PRD
-specifies requirements, user journeys, scope, risks, and metrics in detail.
-Keep the brief lean — anything the PRD covers in depth does not belong here.
+## Route first
 
-## When to skip the brief
+Defaults (caller may redirect): brief `docs/prd/product-brief.md`, PRD `docs/prd/prd.md`; read whichever exist. Sibling skills are used if available.
 
-A brief is a discovery tool for *new product directions*, not for incremental
-feature work on an existing product. For one feature on a product that already has
-a PRD (default `docs/prd/prd.md`; caller may redirect the `docs/<area>/` root),
-hand off to a feature-spec capability if available — once per feature, never a
-PRD rewrite; when a brief already exists and the user wants the full PRD, hand
-off to a PRD-authoring capability (e.g. prd-craft) if available.
+- **No product, brief or PRD:** brief first, even for a PRD request, which then goes to PRD authoring (e.g. `prd-craft`) whatever the Decision.
+- **Live product or PRD:** a new direction (changed problem, target user or success metric) gets a brief, today's product as context.
+- **Several ideas:** one line each (who struggles, best evidence, likeliest killer) in your report, ranked by evidence, then reach you already have; brief the top one.
+- **Review or test result:** Self-Review or Output.
+- **Not here:** a PRD (PRD authoring); a feature, however big (`feature-spec`); a pitch, deck, business or GTM plan (offer the brief as input).
 
-When **neither a brief nor a PRD** exists, start here — even if the user asked
-for a PRD outright: write the brief first, then hand off to PRD authoring, which
-reads it. If it's unclear which applies, ask the caller.
+## 1. Frame the decision
 
-## What a Product Brief Is (and Is Not)
+First read the caller's notes and data; if you can search, find today's alternatives, prices, complaints and paid workarounds (templates sold, job posts for the manual role). Then ask at most three questions, in one batch, only where all that is silent, each with its default:
 
-- **Product Brief**: Problem, direction, success signal. One page. A discovery tool, not a commitment to build.
-- **PRD**: Requirements, user journeys, detailed metrics, scope, non-goals, risks. Created *after* the brief crystallizes the direction.
+1. Who hits this, when, and what do they do about it today? *Default:* the segment as stated; the workaround [Assumed].
+2. What have you seen: someone struggling, paying or hacking around it? *Default:* nothing beyond what you found.
+3. What is it for (your own tool, a team's, a startup, a company's new line), and what bar must it clear? *Default:* self-funded (the first segment alone pays a founder's salary); otherwise, state the bar you assume.
 
-Readable in under 3 minutes. If it takes longer, it's too long.
+No answers? Apply the defaults, then write one complete draft.
 
-### What Does NOT Belong in the Brief
+**Evidence.** Tag each load-bearing claim with its grade and source:
 
-These belong in the PRD or feature specs:
+- **[Committed: …]** money, a signed pilot on their data, or an LOI naming price and terms, signed by the budget owner.
+- **[Observed: …]** behavior seen or recorded: a workaround, time or money spent, a log, a cited dataset.
+- **[Said: …]** their own account of a specific past instance.
+- **[Assumed]** everything else: future intent ("I'd pay for that"), compliments, answers to a pitch, sign-ups from your own circle, synthetic users, forecasts, unsourced market knowledge, applied defaults.
 
-- Detailed success metrics with counter-metrics and timeframes
-- Non-goals and scope boundaries
-- Feature lists, acceptance criteria, user stories
-- Timeline, milestones, dev order
-- UI/UX design, wireframes
-- Technical implementation, architecture, tech stack
+A founder's own pain is [Observed] for one person. Count people, not quotes. Never invent a source or present an estimate as fact.
 
-## Core Principles
+## 2. Find what kills it
 
-1. **Problem-first.** The brief exists to articulate a problem worth solving.
-2. **Brief means brief.** One page. Detail belongs downstream (see above).
-3. **No jargon.** Write it so anyone can understand — direct, confident, active
-   voice, short sentences; match the user's formality, lean conversational.
-4. **Living document.** Evolves through discovery. Never "done."
+Run a pre-mortem: "A year from now this failed. Why?" Negate each reason into an assumption, covering the problem, reach (adoption, if internal), value over the status quo, who pays, unit cost, feasibility and permission (regulation, platform policy). Keep the three most lethal × least evidenced. Feasibility leads only when a technical unknown would kill it outright; then test real cases at the user's quality bar, not a demo.
 
-## Process
+Where the risk usually sits:
 
-### Step 1: Gather Context
+- Consumer: repeat use and cheap reach; test the second use, not the first.
+- User isn't the buyer: budget and urgency; ask who signed for the last tool bought for this job.
+- "AI can now…": that the job already costs someone time or money, and that your edge survives the next model release.
+- Two-sided: hard-side liquidity in one niche (hand-match the first deals).
+- A company's new line: today's channel sells to this buyer without cannibalizing.
 
-Ask clarifying questions only for what is genuinely missing. Three questions max, then draft.
+Test row 1 the cheapest way that could prove you wrong. Ask about the last time it happened, never "would you use it". Payment needs a pre-sale, priced LOI or paid pilot; value, the outcome delivered by hand to 3–5 users; reach, the first 10 recruited from the named channel; a smoke test, a costly action from the named channel (say what exists; refund any charge). Set every Next test field before it runs; if 10–20 people can't separate pass from kill, ask for a costlier action, not more people. A middle result reruns once, changing one thing (segment, offer or channel); a threshold moved afterwards makes a new test. *Break:* if a working version (even AI-built) costs less than the test, build it; usage from the named channel, after a costly action, is the test.
 
-- **Rich context** (paragraph+): Draft the full brief in one pass; ask at most one
-  question, and only if a load-bearing fact (target user, core problem) is genuinely
-  ambiguous — otherwise flag gaps with "[Assumption — verify]".
-- **Thin prompt** (e.g., "product brief for a todo app"): Ask 2-3 targeted questions — problem, audience, success — then draft.
-- **Unstructured dump** (meeting notes, braindumps): Synthesize into the brief structure.
-- **Always present a complete draft**, not section-by-section.
+## 3. Decide and draft
 
-### Step 2: Draft the Brief
+**Decision**, one, with one reason:
 
-Use this template. All four sections — Problem, Direction, Success Signal, Open
-Questions — are always present.
+- **Test first:** whenever no rule below is met; the test is the deliverable.
+- **Pursue → PRD:** every row at least [Observed], and the problem [Observed] in ≥5 independent target users (or the whole segment, if smaller) or [Committed] by one with money or a signed pilot. Funded by others? The Decision line adds the ask (people × weeks, and what it displaces); from a team-quarter up, payment must be [Committed]. *Break:* your own tool (not for sale) or a mandate (compliance, contract) is its own evidence; scope a mandate to its minimum.
+- **Park:** a real problem shown to lack a why-now, reach, or a prize that clears the bar, or a second middle result. Name what reopens it.
+- **Kill:** the test hit its kill threshold and no segment in or near the results did better, or a law or platform policy forbids the core mechanism. Keep the file so it isn't re-argued.
+
+The Decision advises; the user decides.
 
 ```markdown
-# [Product Name] — Product Brief
+<!-- ≤500 words below the header, ≤250 for your own or one team's tool: count them. All rows [Assumed]? Keep all but the test short. Drop fields that don't apply; keep every H2. -->
+# [Product] — Product Brief
 
-**Date:** [today's actual date, e.g. 2026-05-30] | **Status:** [Discovery / In Progress / Approved]
-**Tagline:** One sentence that captures what this does.
-
----
+**Date:** [today, YYYY-MM-DD] | **Decision:** [Test first / Pursue → PRD / Park / Kill]: [one reason]
+**In one line:** For [who, at what moment], who today [workaround], [direction] so they [outcome].
 
 ## Problem
 
-**What:** [2-4 sentences. Ground in observed pain — your own, your team's, or your users'. Include how it's handled today and why that's inadequate.]
+**What:** [The pain and its cost, tagged. Name no product: "users want a dashboard" is a solution.]
 
-**Target user:** [Who specifically has this problem, and in what situation? Name a concrete segment, not "everyone".]
+**Target user:** [A concrete segment and when it bites; the buyer, if different; where to reach the first 10 (unknown? Reach is row 1).]
 
-**Why now:** [What changed? New capability, pain threshold crossed, opportunity window.]
+**Why now:** [What changed, and why the incumbent or last attempt failed (a candidate row 1).]
 
-**Size of prize:** [One line: how many are affected, how often, or what solving it is worth — enough to judge if it deserves a team's time.]
-
----
+**Size of prize:** [Bottom-up: reachable who × how often × price or hours saved, tagged, against the bar; never a market-report share.]
 
 ## Direction
 
-[1-2 paragraphs. The direction, not the detailed solution. "What experience we want to create" not "what features we will build".]
+[One paragraph: the experience, not features; the wedge (first segment and job where we're clearly better); who we ignore first.]
 
-**Core bet:** [What insight makes this worth building?]
+**Core bet:** We believe [segment] will [behavior] because [insight or access others lack] [grade]; we're wrong if [observation].
 
-**Alternatives:** [What exists today — tools, competitors, workarounds — and why building beats adopting them?]
-
----
+**Status quo to beat:** [Today's way (nothing, an adoptable tool, a general AI assistant) and the step change that makes them switch; "no competitors" means no market or no search.]
 
 ## Success Signal
 
-[2-3 sentences. The observable change that tells you it's working — WITHOUT a numeric target, counter-metric, or timeframe (those are the PRD's job). E.g. "engineers stop skipping post-deploy checks", not "cut check time 50% by Q3".]
+[2–3 sentences: the observable change that says it works; no target, counter-metric or timeframe. "Engineers check deploy health unprompted", not "cut check time 50% by Q3".]
 
----
+## Riskiest Assumptions
+
+| # | If false, the idea dies | Evidence now |
+|---|---|---|
+| 1–3 | [assumption, worst first] | [grade: source] |
+
+**Next test (row 1):** [method; who and how many, from which channel] · Kill: [number, set first, that stops you even if you like the idea] · Pass: [number that justifies the next, costlier step, per the prize math] · [timebox], [cost]
 
 ## Open Questions
 
-- [ ] [e.g., Which input format to support first?]
-- [ ] [e.g., Build or buy for X component?]
+- [ ] [Decision-level, e.g. "Does the ops lead or the CFO own this budget?"]
 ```
-
-### Step 3: Quality Check
-
-Before presenting, verify:
-
-- [ ] Problem is grounded in evidence, not assumption; target user is specific
-- [ ] Direction describes the experience, not a feature list; Core bet names the insight
-- [ ] Success signal is an observable change, not a metric with a target/timeframe
-- [ ] The whole brief fits on one page (≲60 markdown lines)
-- [ ] Open questions are honest — gaps flagged, not papered over
-
-## Calibration: Weak vs. Strong
-
-**Problem — Weak:**
-> We need a dashboard for our analytics data. Users want better visibility into their metrics.
-
-A solution masquerading as a problem. "Better visibility" is vague.
-
-**Problem — Strong:**
-> Engineers spend 10-15 minutes after every deploy manually checking three separate dashboards to confirm nothing broke. Most skip it when rushed, and problems get caught hours later by users.
-
-Grounded in evidence, names a specific situation, quantifies the pain.
-
-**Direction — Weak:** "Build a dashboard with charts, alerts, and a settings page." (a feature list)
-**Direction — Strong:** "Make 'is the deploy healthy?' answerable in one glance, so no one skips the check." (an experience/outcome)
-
-**Success Signal — Weak:** "D1 retention hits 40% by Q3." (a metric with a timeframe — belongs in the PRD)
-**Success Signal — Strong:** "Engineers check deploy health unprompted, and users stop reporting breakages first."
-
-## Graduating to the PRD
-
-Hand off to PRD authoring when the problem and target user have evidence and
-the core bet has survived the open questions — the validation method itself
-(interviews, smoke tests) is outside this skill. Once the PRD exists it owns
-scope, metrics, and feature detail; the brief remains the one-page context
-downstream readers (e.g. marketing) consume — on a vision pivot, refresh the
-brief's Problem and Direction too, or it quietly poisons those readers.
-
-## When Reviewing an Existing Brief
-
-1. Is there a clear, evidence-based problem with a specific target user — or did they jump to features?
-2. Does Direction describe an experience and a Core bet, not a feature list?
-3. Is the success signal an observable change (not a PRD metric)?
-4. Is it concise? If it reads like a PRD, suggest moving detail downstream.
 
 ## Output
 
-Save to the brief (default `docs/prd/product-brief.md`; caller may redirect),
-updating that file in place — if no file-write capability is present, return the
-brief inline. When the user explicitly explores a second, distinct direction, use
-`docs/prd/product-brief-{slug}.md` so a new direction does not overwrite a prior one.
+Write the brief to its path, updating in place; without file writes, return it inline.
 
-<!-- Author housekeeping: keep this skill under ~175 lines and keep description
-≤1024 chars. If it grows past that, consolidate — tighten wording, merge redundant
-content, remove resolved questions. -->
+- **Canonical file:** the chosen direction; alternatives are siblings `product-brief-{slug}.md` beside it. A winner swaps in; each loser gets Park or Kill and one line why.
+- **Updates:** confirm before changing the canonical Problem or Target user (no answer → a sibling). A test result updates tags and Decision, adds `Tested [date]: [test] → [result]` under Next test, and re-ranks the rows.
+- **Vision pivot** in the PRD: refresh the header, Problem and Direction too.
+- **Report back** the path, Decision, row 1 with its test, and the user's questions, not the brief.
+
+## Self-Review
+
+Before presenting, and as the review rubric:
+
+- The Decision follows its rules from the tags.
+- No invented source, estimate presented as fact, or future intent above [Assumed].
+- The Problem names no product; Size of prize is bottom-up; Success Signal has no target, counter-metric or timeframe.
+- Row 1 is the most lethal × least evidenced; its Next test fills every field, with a numeric kill and a pass the prize math justifies.
+- **Footprint:** within the template's word limit, counted; no feature list, KPI target, timeline, UI, tech, method names or tag legends. Over, shorten Direction and Open Questions first, never the test.
+
+A review (≤300 words, verdict on the Decision first) ranks findings Critical (could flip the Decision), High (weakens row 1 or its test), Medium (a reader could misread or misuse it), Low (wording), quoting each line with its replacement; edits only on request.

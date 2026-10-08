@@ -1,201 +1,54 @@
-# Business Logic Security
+# Business Logic (Attacker View)
 
-> OWASP: A06 (Insecure Design), A01 (Broken Access Control)
+> OWASP: A06 Insecure Design, A01 Broken Access Control. Method, severity, the output contract and the both-views rule live in SKILL.md.
 
----
-
-## Table of Contents
-
-1. [Race Conditions](#race-conditions)
-2. [Numeric Manipulation](#numeric-manipulation)
-3. [State Machine Violations](#state-machine-violations)
-4. [Discount & Coupon Abuse](#discount--coupon-abuse)
-5. [Time-Based Attacks](#time-based-attacks)
-6. [Account & Limit Abuse](#account--limit-abuse)
-7. [Privilege Boundaries](#privilege-boundaries)
-8. [Refund & Chargeback Abuse](#refund--chargeback-abuse)
-9. [Export & Data Access Abuse](#export--data-access-abuse)
-
+The **attacker view**: the mechanics of `references/correctness.md` (the accident view), driven on purpose.
 
 ## Race Conditions
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Financial operations use transactions + row-level locks | Double-spend, overdraft | CWE-362 |
-| Inventory changes are atomic (SELECT FOR UPDATE) | Overselling | CWE-362 |
-| Idempotency keys for all sensitive operations | Duplicate submissions | CWE-837 |
-| Optimistic locking with version column where appropriate | Lost updates | CWE-362 |
-| Distributed locks for multi-instance deployments | Cross-instance races | CWE-362 |
-| Critical section identified and protected | TOCTOU vulnerabilities | CWE-367 |
+A race is a finding only where an invariant breaks to the attacker's benefit: balance, stock, a single-use grant, a limit. Name the two requests that collide.
 
-**Patterns to catch:**
-- Check-then-act without atomic operation: read balance → check sufficient → update
-- Stock decrement computed in the app: read `qty`, check `> 0`, then `UPDATE stock SET qty = :newQty` (races; two buyers both pass the check). A single conditional `UPDATE stock SET qty = qty - 1 WHERE id = ? AND qty > 0` is atomic on its own (the row lock is implicit) — check the affected-row count, 0 = sold out
-- Payment endpoint without idempotency key handling
-- Concurrent request vulnerability in any state change (test: send 10 identical requests simultaneously)
-- Redis `GET` then `SET` without `WATCH` or Lua script (non-atomic)
-- File-based operations without file locking
+**Finding when:**
+- Check-then-act on a shared value with no atomic guard: read balance → check sufficient → decrement, in separate statements (CWE-367). An attacker fires concurrent requests to pass the check twice (probe: *send 10 identical requests simultaneously*).
+- Stock or quota decremented in app code: read `qty`, check `> 0`, then `UPDATE … SET qty = :new`. Two buyers both pass.
+- A non-atomic cross-key sequence: Redis `GET` then `SET` without `WATCH` or a Lua script; a file operation with no lock.
 
-> **Sibling lens:** the *accident*-driven versions of these flaws (client retries, crash mid-operation, replica lag — no attacker required) are owned by the correctness pass (`references/correctness.md`). Same mechanics, different threat model — when money or inventory moves, apply both.
-
----
+**Not a finding:** a conditional `UPDATE … WHERE <predicate>` that branches on the affected-row count, or a unique constraint carrying the invariant. Fix a real race with the guard its shape needs (`correctness.md`, Concurrency & Races), never an in-process lock.
 
 ## Numeric Manipulation
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Negative values rejected where inappropriate | Credit instead of debit | CWE-839 |
-| Integer overflow considered (especially in typed languages) | Wrap-around to small/negative | CWE-190 |
-| Decimal/integer for money, never floating point | Precision loss ($0.1 + $0.2 ≠ $0.3) | CWE-681 |
-| Quantity limits enforced (min and max bounds) | Extreme values | CWE-839 |
-| Division by zero handled | Crash or unexpected behavior | CWE-369 |
-| Currency conversion uses fixed-point arithmetic | Rounding exploitation | CWE-681 |
+**Finding when:**
+- A signed amount or quantity accepted where only positive makes sense: `{ quantity: -5 }` credits instead of debits (CWE-839).
+- No upper bound on a quantity or amount that drives cost or payout (CWE-1284); a percentage not clamped to 0–100 (`discount: 150`).
+- Integer overflow in a typed language on a value an attacker sets (CWE-190).
+- A price, total or discount computed from client-supplied values rather than recomputed server-side (CWE-602).
 
-**Patterns to catch:**
-- Quantity or amount accepted without sign check: `{ quantity: -5 }` → credit
-- Price or total calculated with `float` / `double` / JavaScript `number`
-- No upper bound on numeric inputs (quantity: 999999999)
-- Multiplication without overflow check in Rust/Go/C
-- Fractional quantity where only whole numbers make sense
-- Percentage values not bounded to 0-100 (discount: 150%)
-- Price of $0.00 or $0.01 accepted without validation
-
----
+**Not a finding:** client-side bounds the server enforces again. Money as float is an accident-view precision defect: `correctness.md` (CWE-1339).
 
 ## State Machine Violations
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Valid transitions enforced server-side (state machine pattern) | Skipping required steps | CWE-841 |
-| Cannot skip required steps in multi-step flows | Payment bypass | CWE-841 |
-| Cannot revisit completed states inappropriately | Double-claiming benefits | CWE-841 |
-| State changes logged with before/after values | Audit trail | CWE-778 |
-| Parallel state changes handled (e.g., simultaneous approval/rejection) | Inconsistent state | CWE-362 |
+**Finding when:** a status or step can be set out of order because transitions aren't enforced server-side (CWE-841): `PATCH /order { status: "completed" }` with no payment-confirmed precondition; a multi-step flow that accepts a direct POST to the final step; a completed benefit re-claimed after a state regression; a cancel or refund endpoint that doesn't check "already cancelled" (double refund); an approval (a manager sign-off, an accepted quote, a confirmed payout) not bound to the exact amount, recipient and content it approved, so they change between approval and execution.
 
-**Patterns to catch:**
-- Direct status update endpoint without transition validation: `PATCH /order { status: "completed" }`
-- Order marked completed without payment confirmation state
-- Coupon/benefit re-applied after state regression
-- No state transition history (only current state stored)
-- Multi-step wizard that allows direct POST to final step
-- Subscription downgrade that doesn't adjust current billing cycle
-- Cancellation endpoint that doesn't check if already cancelled (double refund)
-
----
+**Not a finding:** a transition already gated server-side (an allowed-transitions check, or a conditional `UPDATE … WHERE status = <expected>`).
 
 ## Discount & Coupon Abuse
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Single-use coupons tracked and enforced | Reuse attack | CWE-837 |
-| Stacking rules enforced server-side | Over-discount (cart goes negative) | CWE-840 |
-| Referral loops prevented (graph check, not just direct) | Self-referral abuse | CWE-840 |
-| Discount calculated server-side only | Client-controlled discount | CWE-602 |
-| Minimum order value checked after discount applied | Free item via discount | CWE-840 |
-| Discount code generation uses cryptographic randomness | Code prediction | CWE-330 |
+**Finding when:** a single-use coupon or one-time benefit isn't claimed atomically before the effect, so it reuses under concurrency (CWE-837); stacking has no server-side limit (the cart goes negative); a discount percentage or code comes from client input; the minimum-order check runs before the discount, letting a free item through; codes are sequential or predictable (CWE-340).
 
-**Patterns to catch:**
-- No check for coupon already used by this user/account
-- Multiple discount codes applicable without stacking limit
-- Same user as referrer and referee (same email, phone, device)
-- Discount percentage from client input: `{ discount: 100 }`
-- Coupon applied after price calculation (negative total possible)
-- Referral bonus paid before referee completes qualifying action
-- Bulk coupon generation with sequential/predictable codes
-
----
-
-## Time-Based Attacks
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Server time for all time-sensitive logic | Client clock manipulation | CWE-367 |
-| Timezone handling consistent (UTC internally) | Off-by-hours errors | CWE-187 |
-| Expiration checked server-side against server clock | Token/coupon validity bypass | CWE-613 |
-| Time-limited offers use server-side countdown | Client-side timer manipulation | CWE-602 |
-| Grace periods bounded and audited | Exploiting grace period extension | CWE-840 |
-
-**Patterns to catch:**
-- Timestamp from client request body used for business logic validation
-- Expiration check comparing against client-provided `Date` header
-- Time-limited sale price validated client-side only
-- Trial period start date settable by client
-- Timezone mismatch between server and database causing off-by-one-day errors
-- Cron job race: action happens between midnight check and execution
-
----
-
-## Account & Limit Abuse
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Multi-account detection (device fingerprint, phone, payment method) | Bonus farming | CWE-799 |
-| Resource limits per user enforced at creation, not just usage | Free tier abuse | CWE-770 |
-| Velocity checks on sensitive operations | Automated abuse | CWE-799 |
-| Email verification before account activation | Throwaway account farming | CWE-799 |
-| Phone/identity verification for high-value operations | Sybil attacks | CWE-799 |
-
-**Patterns to catch:**
-- Signup bonus awarded without identity verification
-- No rate limit on account creation endpoint
-- Free tier limits checked only at action time, not resource creation
-- No detection for same device/IP/payment method creating multiple accounts
-- Referral program without minimum account age or activity requirement
-- Trial reset by creating new account with alias email (`user+1@example.com`)
-
----
-
-## Privilege Boundaries
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Feature flags verified server-side on every request | Client flag manipulation | CWE-602 |
-| Trial/premium boundaries enforced in backend | Feature theft | CWE-285 |
-| Admin actions logged with full context and alerted | Abuse detection | CWE-778 |
-| Impersonation properly restricted, scoped, and logged | Privilege abuse | CWE-269 |
-| API rate limits differ by plan tier (enforced server-side) | Plan limit bypass | CWE-285 |
-
-**Patterns to catch:**
-- Feature availability sent in JWT without server-side verification per request
-- Premium features with client-only check: `if (user.plan === 'pro')` in frontend only
-- Admin impersonation without audit log or scope limits
-- Support agent actions without per-action authorization
-- Plan upgrade without payment verification (just API call)
-- Feature flag value stored in localStorage or cookie
-
----
+**Not a finding:** a benefit claimed by a unique constraint or conditional update before it is granted.
 
 ## Refund & Chargeback Abuse
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Refund requires original order validation | Phantom refund | CWE-840 |
-| Partial refund total cannot exceed original payment | Over-refund | CWE-840 |
-| Digital goods access revoked upon refund | Consume-then-refund | CWE-840 |
-| Refund velocity monitored per account | Serial refund abuse | CWE-799 |
-| Refund-then-repurchase-at-discount prevented | Price arbitrage | CWE-840 |
+**Finding when:** a refund doesn't verify the order belongs to the requester (CWE-639); partial refunds sum past the original payment because each is validated alone, with no running total (CWE-1284); digital access isn't revoked on refund; a refund adjusts money but not inventory, or the reverse, creating a ghost.
 
-**Patterns to catch:**
-- Refund endpoint doesn't verify order belongs to requesting user
-- Multiple partial refunds can exceed total order value
-- Downloaded digital content remains accessible after refund
-- No cooling-off period or limit on refund frequency
-- Refund processed but inventory not re-added (or vice versa, creating ghost inventory)
+**Not a finding:** refunds bounded against the net already refunded, with ownership checked.
 
----
+## Account & Limit Abuse
 
-## Export & Data Access Abuse
+**Finding when:** a per-user or per-tenant resource limit is enforced only at *use* time, not at *creation*, so it is bypassable; a one-time grant (signup bonus, referral payout) is claimable more than once by the same account (CWE-837).
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Export endpoints rate-limited and size-bounded | Data exfiltration via legitimate features | CWE-770 |
-| Search results limited, no full-table dump via search | Scraping | CWE-770 |
-| Bulk operations require additional authorization | Mass data access | CWE-285 |
-| Export audit logged with row count and requester | Insider threat detection | CWE-778 |
+**Not a finding:** fraud economics. Multi-accounting, referral rings and refund-velocity thresholds are product decisions: raise **one** Unconfirmed item only when the diff adds a cash-value incentive one person can farm with new accounts, and name the fact that would settle it. Don't demand device fingerprinting or identity verification.
 
-**Patterns to catch:**
-- CSV/PDF export of entire user database without pagination
-- Search endpoint with wildcard that returns all records: `GET /api/users?search=*`
-- No additional auth step for "export all data" functionality
-- API allows `limit=999999` or `per_page=-1`
-- GraphQL query returning all records via unbounded list queries
+## Server-authoritative time & privilege
+
+**Finding when:** time-sensitive logic trusts a client-supplied timestamp or expiry (trial start, offer window, token validity) instead of the server clock; a feature flag or plan tier is trusted from a client-held value (JWT claim, localStorage, request body) with no per-request server check; impersonation or support actions are unscoped, or unlogged where an audit facility exists (`error-logging.md`). Time-zone and calendar *correctness* (DST, month arithmetic) is an accident-view concern: `correctness.md`.

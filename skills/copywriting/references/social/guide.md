@@ -1,198 +1,93 @@
-# Social Content & Strategy
+# Organic Social and Launch Copy
 
-Social media content creation, strategy, and multi-platform publishing (posts, threads, content calendars and pillars, repurposing, launch posts for Product Hunt / Hacker News / Reddit, build in public) -- built on research from 50+ sources including academic papers on virality, platform algorithm documentation, and methods from top practitioners (Justin Welsh, Alex Hormozi, Naval Ravikant, Sahil Bloom).
+A post earns its place when it puts the poster in front of the people who buy (the ICP) and moves them one step: a follow, a click, a reply. The hook buys the read; the asset, something only we have, earns the share. Judge results by who engaged, not how many.
 
-**Scope:** email content goes to `references/email/guide.md`; ad creative to the ad-creative skill; SEO/blog optimization to the search-visibility skill; UX copy to the copywriting core (`SKILL.md`).
+**Elsewhere:** newsletters → `references/email/guide.md`; paid social → the ad-creative capability; blog articles and SEO → the search-visibility capability; site and in-product copy → the core (`SKILL.md`).
 
-**Read product context first.** If `docs/prd/product-brief.md` exists, read it for product and audience info. If `biz/marketing/strategy.md` exists, read it for brand voice and channel priorities. If neither exists, ask the user or infer from the request. Treat both as read-only context — never author the product brief from here.
+**Read first** (defaults; caller may redirect; read-only): the product brief (`docs/prd/product-brief.md`), the Brand Voice section of `biz/marketing/strategy.md`, the account's recent posts with metrics if the caller has them, and for launch copy that states a price, `biz/marketing/pricing.md` (never invent one).
 
-**Output:** when asked to save deliverables (posts, calendars, pillar docs) and a file-write capability is present, write to the social content dir (default `biz/marketing/content/social/`; caller may redirect the `biz/<area>/` root) — otherwise return inline. If the file already exists, update it in place rather than creating a duplicate.
+**Output.** Posts and programs go to `biz/marketing/content/social/`, launch-day copy to `biz/marketing/launch/` (defaults; caller may redirect); update existing files in place; with no file-write capability, return inline. Drafts only: never post, schedule, submit or message anyone without the caller's explicit approval.
 
-**Drafts only.** Never post, publish, or schedule anything to a live account without the caller's explicit approval — produce the drafts and hand them back.
+## Paths
 
----
+| Request | Do | Skip |
+|---|---|---|
+| One post, thread, carousel or script | Frame 1-3 and 5 → Write → post spec | Decide, unless the channel is open |
+| Reply or community comment | Answer in the first line; add what the thread lacks | Frame 4, alternates |
+| Program: channels, pillars, calendar | Frame → Decide → `references/social/topic-clusters.md` → program spec | Drafting every post, unless asked |
+| Launch (a caller's launch plan wins) | Frame → `references/social/platforms.md` § Launch-day copy → launch spec; the lead-up: `references/social/topic-clusters.md` § Launch calendar | Pillars |
+| "Why isn't this working?" | Diagnosis → `references/social/metrics-benchmarks.md` | New drafts until the cause is named |
 
-## Core Principles
+## 1. Frame
 
-These patterns hold across every platform and every successful practitioner:
+These five answer the core's framing questions for social. Ask only what the inputs don't hold, in one batch, each question with the default you will otherwise use; a subagent that can't ask uses the defaults, lists them under Assumptions and its questions under Questions for you.
 
-1. **Shares > Likes.** Across Instagram (DM shares = top signal), TikTok (+45% share growth), X (in the 2023 open-source ranker, replies far outweighed likes and reposts) -- sharing and conversation are the dominant algorithmic signals. Create content people want to SEND to someone specific.
-2. **Early engagement drives everything.** X's ~2-hour window, HN's time-decay ranking (a story's score falls continuously with age), TikTok's reported follower-first testing (creator-observed, not officially documented) -- every algorithm rewards fast initial engagement. Build a core community that engages quickly.
-3. **Hook in 3 seconds.** First line of text, first second of video. This determines everything. Invest 80% of creative effort here.
-4. **Platform-native wins.** Same insight, different execution per platform. Adapted repurposing beats copy-paste cross-posting.
-5. **Long-form creates short-form.** Start with one substantial piece, fragment into platform-specific content. This is how Welsh, Hormozi, and every efficient creator operates.
-6. **Consistency is the baseline.** No strategy works without showing up regularly. Algorithms reward predictability.
-7. **Authenticity is non-negotiable.** Personal stories and genuine insights outperform polished corporate messaging on every platform.
-8. **Community > Audience.** 1,000 real fans who interact > 10,000 silent followers. Brands with active communities see materially higher retention -- reported lifts run ~40% (Higher Logic; widely cited ~2021, verify currency before quoting).
+1. **Who posts?** Default: the founder's own account for a B2B or developer product with fewer than ~50 people; the company page carries changelog, customer proof and hiring. Break: a consumer brand with a designed persona; a regulated firm whose staff can't make product claims.
+2. **For whom, and one goal.** The ICP as a role in a situation ("finance leads closing the month in spreadsheets"; default from the brief). One goal: reach new ICP (default), convert followers, learn through replies, or hire.
+3. **The asset only we have**: a sourced number, a screenshot or clip, a customer quote used with permission, a decision and its reasoning, a failure and its cause. None → draft around the asset the post needs, marked `[SOURCE NEEDED: asset, …]`, and say it shouldn't go out without one. Break: replies and community threads.
+4. **Evidence**: the account's last 10-20 posts, the top and bottom three by the goal metric, and who engaged. New account: 20 recent posts from each of 5 accounts the ICP follows, classified by asset, angle, format and who commented.
+5. **Limits**: what can't be shared (customer names, revenue, roadmap), required disclosures, and the hours a week the poster will really spend.
 
----
+## 2. Decide
 
-## Platform Selection
+- **Channel.** List 10 real ICP people or companies and where each posted or read in the last 30 days. Take the channel with the most hits that the poster can write natively for, plus at most one secondary, at a cadence they can sustain for 12 weeks inside the stated hours, replies included. Never assume the US platform mix; check where this market's ICP reads. Break: launch week; an audience already split across two channels.
+- **Cold start.** Under ~1,000 followers, or with few ICP followers, spend most of the time on substantive replies where the ICP already posts: add the number, counterexample or experience the post lacked, never "Great post". Borrow audiences the ICP already follows: a guest post, podcast or co-hosted session (a paid placement is an ad and says so). Original posts give the profile something to find. Break: a novel artifact people can try; post it.
+- **Build in public.** Share the scoreboard (MRR, user counts) only when the buyers are builders: founders, indie developers, devtool users. Otherwise teach in public: the customer's problem, your decisions and their reasons, failures and their causes. Publish a metric only if you will keep publishing it when it falls. Break: a fundraising or hiring push.
+- **Other voices.** Employees, investors and friends who post about the product disclose the connection in the post itself; a profile line isn't enough (FTC endorsement guidance). Never line up likes, comments or reposts, or buy followers or views, on any platform; US law bans buying fake indicators of social-media influence (16 CFR 465.8).
 
-Not every platform matters. Pick 2-3 based on your audience and goal.
+## 3. Write
 
-| Goal | Primary | Secondary | Launch |
-|------|---------|-----------|--------|
-| B2B leads / thought leadership | LinkedIn | Twitter/X | - |
-| Developer audience | Twitter/X | YouTube | Hacker News |
-| Brand awareness (B2C) | TikTok | Instagram | - |
-| Product launch | Twitter/X | LinkedIn | Product Hunt, HN, Reddit |
-| Community building | Twitter/X | Reddit | Discord |
-| E-commerce / visual | Instagram | TikTok | - |
-| Indie maker / solo creator | Twitter/X | LinkedIn | PH, HN, Reddit |
+Order: asset → angle → body → hook last.
 
-### Lean Content Stack
+- **Angle**: the one claim this post makes about the asset, for this ICP. Swap test: if a competitor could post it unchanged, change the angle.
+- **Body**: the asset early, then the reasoning. Every number has a source you can show, else `[SOURCE NEEDED: …]`; a claim from memory gets `[VERIFY: …]`.
+- **Hook**: one concrete thing unique to this post, promising only what the body pays off. Break: in replies, answer in the first line.
+- **Close on the goal**: a question only the ICP can answer, a link, or nothing. Never "Thoughts?" or "Agree?".
+- **Voice**: draft from 5-10 of the poster's own posts or raw notes (messages, talks, PR descriptions); match sentence length, openings, banned words, punctuation, emoji habits and how they disagree. No samples → write plainly and flag the draft for their review. Break: a brand account with a style guide.
+- **Register**: the ICP's own jargon signals the poster belongs; internal jargon signals marketing.
+- **Emotion**: negativity lifts clicks and out-group attacks lift shares (Robertson et al., 2023; Rathje et al., 2021), but that reach comes from the wrong people. Aim anger at a status quo, never at people, customers or named competitors.
+- **Per platform**: re-angle, never re-upload: the same asset gets the claim and format that platform's readers expect (skeletons in `references/social/post-templates.md`, feed mechanics in `references/social/platforms.md`).
+- **Reject on sight**, beyond the core's list: "excited/thrilled to announce", "Let that sink in", a reflexive "It's not X. It's Y.", "Unpopular opinion:" before a popular one, emoji bullets, more than six one-line paragraphs in a row, "🧵👇", "repost if this helped", more than three hashtags. Break: the poster's own samples use one naturally.
 
-**Primary Hub** (choose one): Newsletter, YouTube, or Blog
-**Distribution** (choose 2-3): Twitter/X, LinkedIn, Instagram
-**Launch platforms** (use strategically): Product Hunt, Hacker News, Reddit —
-launch *strategy* and one-off assets (PH tagline, HN title, channel sequencing)
-come from the caller's launch plan (if absent, ask the caller); this skill owns
-the ongoing launch threads and comment engagement
+*Example.* Asked for "a LinkedIn post announcing CSV import", the naive draft opens "Excited to announce CSV import!". Instead: the founder posts, to reach finance leads; the asset is a 20-second clip of a month of bank rows importing; the angle is the Monday re-typing it ends. Hook, written last: "Our customers re-typed [SOURCE NEEDED: rows per week] bank rows every Monday. From today they drop in the file." The changelog line goes on the company page.
 
-**Weekly workflow:**
-1. Create one long-form piece (hub content)
-2. Fragment into 5-10 platform-specific posts
-3. Engage 15-20 min/day on each active platform
-4. Review analytics weekly; adjust monthly
-5. Build email list from day one
+## 4. Engage and measure
 
-For detailed platform strategies, algorithms, and formatting -- read `references/social/platforms.md`.
+- Answer substantive comments with substance; the best replies become next week's posts.
+- A pile-on: answer once, calmly, with facts; correct a real error in public; then stop feeding it. Security, legal or safety claims go to their owner before any reply.
+- Read the first 20 engagers. If fewer than about 1 in 3 is plausibly ICP, change the topic, not the hook: a better hook brings more of the wrong people. Break: hiring and launch posts.
+- Repurpose only posts at 2× or more of the account's median on the goal metric, re-angled. Break: the launch announcement.
+- After 8-12 weeks at the planned cadence with flat ICP engagement and attribution, change the pillar or channel, not the frequency. Break: if the cadence slipped, fix that first.
 
----
+How to count: `references/social/metrics-benchmarks.md`.
 
-## Content Strategy Framework
+## 5. Output spec
 
-### 1. Define Content Pillars (3-5 themes)
-Content pillars are the core topics you consistently create around. Algorithms reward topic consistency -- LinkedIn explicitly tracks it, YouTube evaluates channels holistically, TikTok builds micro-community clusters. Going deep on a niche beats being broad.
+Sections are a menu: omit what doesn't apply, heading included. Never name this guide's steps or rules in the deliverable.
 
-Each pillar should:
-- Align with your product's value proposition
-- Address your audience's pain points and interests
-- Be broad enough for many pieces, specific enough to be ownable
+- **Post** (notes ≤120 words; the post within its skeleton's budget in `references/social/post-templates.md`): Assumptions, one line (poster, ICP, goal) → the post → 2 alternate angles, one line each (a different claim, not a reworded hook) → asset spec (what to capture or attach; label realistic AI-generated or altered media where the platform or law requires it) and the first comment, if any → one metric to watch against the account median → Questions for you (each tag as a direct question).
+- **Program** (≤700 words): goal and metric → the ICP and where they are, with evidence → primary and at most one secondary channel, with reasons → 2-3 pillars, each with an ICP trigger and an asset source → hours a week and cadence → profile fixes (headline, the one featured link) → the first 4 weeks (table, ≤12 rows) → engagement routine and pivot rule.
+- **Launch** (notes ≤150 words per platform; copy within the skeleton budgets): per platform, the title or tagline, the body or description, the first comment, the thread owner and their hours, the asks prohibited there, and the day in the sequence.
 
-### 2. Map Pillars to Platforms
-Match content themes to platform strengths. Not every pillar works everywhere.
+## 6. Self-Review
 
-### 3. Build Repurposing Workflow (Waterfall System)
-One piece of content, many platforms and formats:
+Fix before delivering; don't report the checks.
 
-```
-Long-form (blog/video/podcast)
-  -> Twitter thread + LinkedIn post
-  -> Instagram carousel + TikTok clip
-  -> Email newsletter excerpt
-  -> Quote graphics + audiograms
-```
+1. Each post names its asset, or tags the one it needs.
+2. Angle and hook pass the swap test; the hook promises only what the body delivers.
+3. Every number traces to a source or carries a tag; no invented stat, customer, quote or story.
+4. Zero hits from the reject lists (the core's and § Write).
+5. No pre-arranged engagement; insiders disclose in the post; every launch ask fits that platform's rules.
+6. Nothing cross-posted verbatim.
+7. Footprint: within each spec's word budget; one goal per post; the program fits the stated hours.
 
-### 4. Create Editorial Calendar
-Plan weekly, batch creation, schedule distribution. See `references/social/topic-clusters.md` for calendar templates and batching system.
+## 7. Diagnosis
 
-### 5. Measure and Optimize
-Track engagement per pillar and platform. Double down on what works. See `references/social/metrics-benchmarks.md` for benchmarks and what to track.
-
----
-
-## Content Creation Process
-
-1. **Check context** -- Read product brief for product/audience info
-2. **Choose platform and format** -- Match content to platform strength (see `references/social/platforms.md`)
-3. **Write the hook first** -- Use frameworks from `references/social/post-templates.md`
-   - Hook-Story-Offer (HSO): hook, relatable narrative, present solution
-   - Hook-Retain-Reward (Hormozi): stop scroll, maintain attention, deliver value
-   - PAS: Problem, Agitation, Solution
-4. **Apply viral psychology** -- Content spreads via high-arousal emotions: awe (positive), anger and anxiety (negative) all boost sharing; low-arousal sadness suppresses it (Berger & Milkman, 2012). Optimize for shares, not just likes. See `references/social/reverse-engineering.md` for the science.
-5. **Follow 80/20 rule** -- 80% pure value, 20% product mention (stricter on Reddit: 90/10)
-6. **Plan repurposing** -- How does this fragment for other platforms?
-7. **Engage after posting** -- Respond to comments within 30-60 min. Comments-as-content — replies with standalone-quality insight, later mined as new posts — is one of the most underused growth tactics.
-
----
-
-## Hook System (Quick Reference)
-
-### Curiosity Hooks
-- "Most people don't know this about [topic]..."
-- "I spent [time] studying [topic]. Here's what I found:"
-- "The real reason [outcome] happens isn't what you think."
-
-### Story Hooks
-- "3 years ago, I [struggle]. Today, [outcome]."
-- "I almost [gave up/failed] when [pivotal moment]..."
-- "Here's a story I've never shared:"
-
-### Value Hooks
-- "[Number] [things] I wish I knew about [topic]:"
-- "Stop doing [common mistake]. Do this instead:"
-- "How to [desirable outcome] (without [common pain]):"
-
-### Contrarian Hooks
-- "[Common belief] is wrong. Here's why:"
-- "I stopped [common practice] and [positive result]."
-- "Everyone talks about [X]. Nobody mentions [Y]."
-
-### Data Hooks
-- "We analyzed [N] [things]. Here's what the data shows:"
-- "[Surprising statistic]. Here's why that matters:"
-
-For the full hook library, content frameworks (HSO, AIDA, PAS, STEPPS), and platform-specific templates -- read `references/social/post-templates.md`.
-
----
-
-## Build-in-Public Framework
-
-Building in public creates authentic content and compounds audience before launch.
-
-**What to share:**
-- Revenue numbers and user milestones (transparent, real)
-- Technical challenges and how you solved them
-- Failed experiments and learnings
-- Feature decisions and the reasoning behind them
-- Customer feedback stories
-
-**Where to share:**
-- Twitter/X (#buildinpublic), Indie Hackers, Reddit (r/SideProject, r/startups)
-- LinkedIn for professional narrative, personal blog for long-form
-
-**Why it works:** People root for transparent builders. Behind-the-scenes content triggers relatability and trust. Launching to an already-invested build-in-public audience typically converts far better than a cold Product Hunt push alone.
-
----
-
-## Community Building
-
-Community > broadcast. The shift from audience to community is real.
-
-**Implementation:**
-- **Reply to every comment** thoughtfully (not just "Thanks!"). 73% of consumers will switch to a competitor if a brand doesn't respond on social (Sprout Social; widely cited ~2021, verify currency before quoting).
-- **Ask follow-up questions** to deepen conversations
-- **Turn great comments** into new post ideas
-- **Create exclusive spaces** (broadcast channels, Discord, groups) for superfans
-- **Feature community members** in your content
-- **Facilitate member-to-member connections** -- not just you-to-them
-- **Have a plan for negative virality.** If a post draws a pile-on, respond calmly once, don't feed the outrage, and know when to mute or disengage -- high-arousal anger spreads fastest
-
-**Micro-communities** (Twitter Communities, LinkedIn Groups, Instagram Broadcast Channels) often outperform large passive followings.
-
----
-
-## Practitioner Methods (Quick Summary)
-
-| Creator | Platform | Method | Key Insight |
-|---------|----------|--------|-------------|
-| **Justin Welsh** | LinkedIn | Daily post, niche down, 45-min engagement window | Profile = storefront. Content > newsletter > digital products. ~$4M+/yr solo, zero paid ads. |
-| **Alex Hormozi** | Multi | Long-form first, repurpose everything, Hook-Retain-Reward | "Give 10x more value than expected." Volume + clarity. $4M content budget. |
-| **Naval Ravikant** | Twitter/X | Extreme brevity, timeless principles, low frequency | 5-10 posts/month. Each ignites platform-wide discussion. Quality compounds. |
-| **Sahil Bloom** | Twitter + Newsletter | Zone of Genius, frameworks as pillars, newsletter as hub | Intersection of skills, passion, and market need. |
-
----
-
-## When to Read Which Reference
-
-| Scenario | Reference |
-|----------|-----------|
-| Platform-specific strategies, algorithms, formatting | `references/social/platforms.md` |
-| Hook formulas, content frameworks, post templates | `references/social/post-templates.md` |
-| Viral psychology, reverse-engineering creators, why content spreads | `references/social/reverse-engineering.md` |
-| Content pillars, topic clusters, editorial calendars, repurposing system | `references/social/topic-clusters.md` |
-| Engagement benchmarks, metrics to track, analytics framework | `references/social/metrics-benchmarks.md` |
-
----
+| Symptom | Likely cause | First move |
+|---|---|---|
+| Reach fine, few profile visits or clicks | Hook oversold; asset thin | Strengthen the asset; make the hook promise less |
+| Engagement up, commenters aren't ICP | The topic attracts peers, often founders | Move the pillar to the ICP's problems |
+| Reach drops on posts with links | The platform under-distributes off-site links | Test link in post vs first comment vs profile, on this account |
+| Steady posting, flat ICP follows | Broadcasting where the ICP isn't | Shift time to replies in the ICP's threads and communities |
+| Show HN sinks in the first hour | Unclear title, or nothing to try without signup | Never delete and repost; fix title and try-it path; repost later only if it got no attention |
+| The poster stops posting | Drafts don't sound like them, or cadence exceeds their hours | Redo the voice from their samples; cut cadence to fit |

@@ -1,82 +1,37 @@
 ---
-title: Prevent Hydration Mismatch Without Flickering
-impact: MEDIUM
-impactDescription: avoids visual flicker and hydration errors
-tags: rendering, ssr, hydration, localStorage, flicker
+title: Make the First Client Render Match the Server Render
+tags: rendering, ssr, hydration, theme, storage, timezone
 ---
 
-## Prevent Hydration Mismatch Without Flickering
+Hydration assumes the first client render matches the server HTML. React doesn't promise to patch mismatches, so one can leave wrong UI on screen. For each value that can differ, ask who can know it:
 
-When rendering content that depends on client-side storage (localStorage, cookies), avoid both SSR breakage and post-hydration flickering by injecting a synchronous script that updates the DOM before React hydrates.
+- **The server** (theme, locale, auth, flags): keep it in a cookie or the session and render it on the server. Auth state never comes from storage. *Break:* a statically generated page can't read cookies.
+- **The browser, at first paint** (a stored theme): the installed theme library, or a blocking inline script in the root layout's `<head>` that sets a class on `<html>`, with `suppressHydrationWarning` on `<html>` only. Only server-rendered HTML runs the script; an inline `<script>` React renders on the client never runs.
+- **The browser, in a subtree:** on React 19.3+, `use(browser())` (from `react-dom`) in a Client Component inside `<Suspense>`: the server sends the fallback and the client renders the value. Earlier: `useSyncExternalStore` with a `getServerSnapshot`, or a client-only boundary.
+- **Ids:** `useId`, never random values. **Dates and numbers:** an explicit `timeZone` and locale. Suppress a text mismatch (`suppressHydrationWarning` on that element) only when showing the server's value until the next render is acceptable.
+- **Storage:** versioned keys, minimal non-sensitive fields, try/catch around every access (`SecurityError` when storage is blocked, a quota error on write).
 
-**Incorrect (breaks SSR):**
-
-```tsx
-function ThemeWrapper({ children }: { children: ReactNode }) {
-  // localStorage is not available on server - throws error
-  const theme = localStorage.getItem('theme') || 'light'
-  
-  return (
-    <div className={theme}>
-      {children}
-    </div>
-  )
-}
-```
-
-Server-side rendering will fail because `localStorage` is undefined.
-
-**Incorrect (visual flickering):**
+**Incorrect (throws during SSR; moved into an Effect, it flashes the default):**
 
 ```tsx
 function ThemeWrapper({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState('light')
-  
-  useEffect(() => {
-    // Runs after hydration - causes visible flash
-    const stored = localStorage.getItem('theme')
-    if (stored) {
-      setTheme(stored)
-    }
-  }, [])
-  
-  return (
-    <div className={theme}>
-      {children}
-    </div>
-  )
+  const theme = localStorage.getItem('theme') ?? 'light'
+  return <div className={theme}>{children}</div>
 }
 ```
 
-Component first renders with default value (`light`), then updates after hydration, causing a visible flash of incorrect content.
-
-**Correct (no flicker, no hydration mismatch):**
+**Correct (React 19.3+, a subtree that needs storage):**
 
 ```tsx
-function ThemeWrapper({ children }: { children: ReactNode }) {
-  return (
-    <>
-      <div id="theme-wrapper">
-        {children}
-      </div>
-      <script
-        dangerouslySetInnerHTML={{
-          __html: `
-            (function() {
-              try {
-                var theme = localStorage.getItem('theme') || 'light';
-                var el = document.getElementById('theme-wrapper');
-                if (el) el.className = theme;
-              } catch (e) {}
-            })();
-          `,
-        }}
-      />
-    </>
-  )
+'use client'
+function SavedDraft() {
+  use(browser())                                         // server: stop here and send the fallback
+  const [draft, setDraft] = useState(() => readDraft())   // readDraft: try/catch around localStorage
+  return <textarea value={draft} onChange={e => setDraft(e.target.value)} />
 }
+// <Suspense fallback={<DraftSkeleton />}><SavedDraft /></Suspense>
 ```
 
-The inline script executes synchronously before showing the element, ensuring the DOM already has the correct value. No flickering, no hydration mismatch.
+Mismatch checklist: a browser-only read during render (`window`, storage, `Date.now()`, `Math.random()`), invalid HTML nesting (`<div>` inside `<p>`), time-zone or locale formatting and sorting (pass both explicitly), browser extensions that edit the DOM.
 
-This pattern is especially useful for theme toggles, user preferences, authentication states, and any client-only data that should render immediately without flashing default values.
+Sources: https://react.dev/reference/react-dom/client/hydrateRoot · https://react.dev/reference/react-dom/browser

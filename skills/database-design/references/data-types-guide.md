@@ -1,331 +1,74 @@
-# PostgreSQL Data Types Guide
-
-## Table of Contents
-
-1. [Type Selection Principles](#type-selection-principles)
-2. [Numeric Types](#numeric-types)
-3. [String Types](#string-types)
-4. [Date/Time Types](#datetime-types)
-5. [ENUM Type](#enum-type)
-6. [JSONB Hybrid (relational + flexible)](#jsonb-hybrid-relational--flexible)
-7. [Boolean](#boolean)
-8. [Arrays](#arrays)
-9. [Domain Types](#domain-types)
-10. [Generated Columns (PostgreSQL 12+; VIRTUAL added in 18)](#generated-columns-postgresql-12-virtual-added-in-18)
-
-## Type Selection Principles
-
-The right data type affects storage, performance, and data integrity.
-The difference is negligible at thousands of rows but decisive at hundreds of millions.
-
-> Examples in this guide use the skill's PK default (`UUID NOT NULL PRIMARY KEY DEFAULT uuidv7()`, PG18+). For pre-PG18 or BIGINT IDENTITY trade-offs, see SKILL.md → "Primary Key Type Decision".
-
-## Numeric Types
-
-| Type | Size | Range | When to Use |
-|------|------|-------|-------------|
-| SMALLINT | 2 bytes | -32,768 to 32,767 | Status codes, small counters, lookup-table PKs |
-| INTEGER | 4 bytes | -2.1B to 2.1B | General-purpose integers |
-| BIGINT | 8 bytes | ±9.2 × 10^18 | Large counters; PKs only for high-volume internal tables (events, audit logs) — see SKILL.md PK decision |
-| NUMERIC(p,s) | variable | arbitrary precision | **Monetary values, financial data** |
-| REAL | 4 bytes | 6-digit precision | Scientific calcs (precision not critical) |
-| DOUBLE PRECISION | 8 bytes | 15-digit precision | Coordinates, statistics (precision not critical) |
-
-### Monetary Values — Never Use FLOAT
-
-```sql
--- WRONG: floating-point rounding errors
-CREATE TABLE payments_bad (
-    amount REAL  -- 0.1 + 0.2 != 0.3
-);
-
--- CORRECT: fixed-point for exact values
-CREATE TABLE payments (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    amount NUMERIC(15, 2) NOT NULL CHECK (amount >= 0),
-    currency CHAR(3) NOT NULL DEFAULT 'USD'
-);
--- Multi-currency note: scale must match the currency minor-unit exponent (JPY/KRW = 0, most = 2, BHD/KWD = 3). A fixed NUMERIC(_,2) is wrong for those — store integer minor units (BIGINT) with the currency code and resolve the exponent from the currency, or constrain the table to a single currency.
-
--- Alternative: store as smallest unit (cents, won)
-CREATE TABLE payments_int (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    amount_cents BIGINT NOT NULL CHECK (amount_cents >= 0),
-    currency CHAR(3) NOT NULL DEFAULT 'USD'
-);
-```
-
-### PK Type Selection
-
-The full decision table (UUID v7 default, BIGINT IDENTITY for high-volume internal tables) lives in SKILL.md → "Primary Key Type Decision". Generation patterns:
-
-```sql
--- Default: UUID v7 (PG18+ — native uuidv7() function)
-CREATE TABLE examples (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7()
-);
-
--- Pre-PG18: generate UUID v7 at the application layer and pass into INSERT
-CREATE TABLE examples_pre18 (
-    id UUID NOT NULL PRIMARY KEY  -- no DEFAULT; app generates v7
-);
-
--- High-volume internal table where 8-byte savings measurably matter
--- (event logs, metrics, billion-row append-only tables)
-CREATE TABLE examples_internal (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY
-);
-```
-
-⚠️ **Avoid `gen_random_uuid()` for PKs on hot tables** — it generates UUID v4 (random), which fragments B-tree indexes and hurts write performance. See SKILL.md "Critical Rules".
-
-## String Types
-
-| Type | Description | When to Use |
-|------|------------|-------------|
-| TEXT | Variable length, no limit | **Default choice in PostgreSQL** |
-| VARCHAR(n) | Variable length, max n | Only when external system requires length constraint |
-| CHAR(n) | Fixed length, padded to n | Fixed-length codes only (KR, USD, ISO codes) |
-
-```sql
--- In PostgreSQL, TEXT vs VARCHAR has zero performance difference
--- Enforce length limits via CHECK constraints instead
-
-CREATE TABLE user_accounts (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    email TEXT NOT NULL,
-    username TEXT NOT NULL,
-    bio TEXT,
-    CONSTRAINT chk_email_length CHECK (char_length(email) <= 255),
-    CONSTRAINT chk_username_length CHECK (char_length(username) BETWEEN 3 AND 50)
-);
-```
-
-> **CHAR(n) caveat:** CHAR blank-pads a too-short value to width rather than rejecting it (`'US'` is
-> stored as `'US '`) and strips trailing blanks on read, so `CHAR(3)` does NOT guarantee three
-> meaningful characters. For currency/ISO codes prefer `CHAR(3)`/`TEXT` with a real check, e.g.
-> `CHECK (currency ~ '^[A-Z]{3}$')`.
-
-> **Case-insensitive identity (email, username):** a plain `UNIQUE` on `TEXT` is case-sensitive, so
-> `Alice@x.com` and `alice@x.com` both insert — a classic auth footgun. Enforce a **partial unique
-> index on `lower(email)`** (see `references/indexing-strategy.md`), or use the `citext` extension or a
-> nondeterministic ICU collation
-> (`CREATE COLLATION ... (provider = icu, locale = 'und-u-ks-level2', deterministic = false)`, PG12+).
-
-## Date/Time Types
-
-| Type | Description | When to Use |
-|------|------------|-------------|
-| TIMESTAMPTZ | Timezone-aware | **Always use this** |
-| TIMESTAMP | No timezone | Do not use |
-| DATE | Date only | Birth dates, event dates |
-| TIME | Time only | Rarely needed |
-| INTERVAL | Duration | Subscription periods, expiry durations |
-
-```sql
--- Always TIMESTAMPTZ
-CREATE TABLE events (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    name TEXT NOT NULL,
-    started_at TIMESTAMPTZ NOT NULL,
-    ended_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- DATE when only the date matters
-CREATE TABLE employees (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    name TEXT NOT NULL,
-    birth_date DATE,
-    hired_date DATE NOT NULL DEFAULT CURRENT_DATE
-);
-```
-
-## ENUM Type
-
-Use only when values change very rarely and there are roughly 3-10 options.
-
-```sql
--- ENUM when appropriate
-CREATE TYPE order_status AS ENUM ('pending', 'confirmed', 'shipped', 'delivered', 'cancelled');
-
-CREATE TABLE orders (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    status order_status NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Adding values is easy; a label can be renamed (ALTER TYPE ... RENAME VALUE, PG10+); removing a value or reordering is not supported
-ALTER TYPE order_status ADD VALUE 'refunded' AFTER 'cancelled';
-```
-
-Since PG12, `ADD VALUE` can run inside a transaction, but the new value cannot be referenced (INSERT/compare) until that transaction commits — a migration that adds AND uses a value in one transaction will fail; split it into two migrations/transactions, or run `ADD VALUE` in its own transaction first.
-
-**ENUM alternative**: Use a lookup table when values change frequently
-
-```sql
--- Lookup table — SMALLINT IDENTITY is fine here (small, internal, never exposed)
-CREATE TABLE order_statuses (
-    id SMALLINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    name TEXT NOT NULL UNIQUE,
-    description TEXT
-);
-
-INSERT INTO order_statuses (name) VALUES
-    ('pending'), ('confirmed'), ('shipped'), ('delivered'), ('cancelled');
-
-CREATE TABLE orders (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    status_id SMALLINT NOT NULL REFERENCES order_statuses(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-**Reference-data lifecycle** — choosing a lookup table over an `ENUM` trades a schema-evolution problem (`ALTER TYPE`) for a *data-management* one. The lookup **rows are part of the schema contract** (code and FKs depend on specific ids/names existing), so manage them like schema, not like user data:
-
-- Ship seed rows as **idempotent** migrations — `INSERT … ON CONFLICT (name) DO NOTHING` (use `DO UPDATE` to propagate a renamed label/description to existing rows) — so re-running is safe and environments don't drift.
-- Version them: add a value via a *new* migration, never by editing an applied one (the same anti-drift rule as DDL).
-- Keep ids **stable and deterministic across environments** so FKs line up — prefer the natural key (`name`) for FKs, or assign ids explicitly, rather than relying on `GENERATED … IDENTITY`, whose values can diverge between dev/staging/prod. This is distinct from the `backfill_` migration verb, which is for production *data*, not reference rows.
-
-## JSONB Hybrid (relational + flexible)
-
-Best for data with a flexible or frequently changing structure.
-
-```sql
-CREATE TABLE products (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    name TEXT NOT NULL,
-    price NUMERIC(12, 2) NOT NULL,
-    -- Category-specific attributes as JSONB
-    attributes JSONB NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- GIN index for JSONB search optimization
-CREATE INDEX idx_products_attributes ON products USING GIN (attributes);
-
--- Expression Index for frequently queried keys
-CREATE INDEX idx_products_attr_color ON products ((attributes->>'color'));
-
--- Query examples
-SELECT * FROM products WHERE attributes @> '{"color": "red"}';
-SELECT * FROM products WHERE attributes->>'brand' = 'Apple';
-```
-
-**JSONB rules**:
-- Core data that can be modeled relationally → use proper columns
-- JSONB is for supplementary data, metadata, flexible attributes only
-- Never store an ID inside JSONB as the *live system of record* for a relationship — PostgreSQL cannot enforce a FOREIGN KEY into a JSONB value, so there is no referential integrity. (Snapshotted IDs in immutable audit/event payloads are the deliberate exception.)
-
-## Boolean
-
-```sql
-CREATE TABLE feature_flags (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    name TEXT NOT NULL UNIQUE,
-    is_enabled BOOLEAN NOT NULL DEFAULT false
-);
-
--- Partial Index combines well with Boolean
-CREATE INDEX idx_feature_flags_enabled ON feature_flags (name) WHERE is_enabled = true;
-```
-
-## Arrays
-
-```sql
-CREATE TABLE articles (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    title TEXT NOT NULL,
-    tags TEXT[] NOT NULL DEFAULT '{}',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_articles_tags ON articles USING GIN (tags);
-
--- Queries
-SELECT * FROM articles WHERE 'postgresql' = ANY(tags);
-SELECT * FROM articles WHERE tags @> ARRAY['postgresql', 'design'];
-```
-
-**ARRAY rules**:
-- Simple value lists only (tags, categories)
-- If you need joins or FK on array elements, split into a separate table
-
-## Domain Types
-
-Reusable constrained types for consistency across tables. Define once, enforce everywhere.
-
-```sql
--- Email domain: enforced via CHECK on every column that uses it
-CREATE DOMAIN email AS TEXT
-    CHECK (VALUE ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
-
--- Positive money amount
-CREATE DOMAIN positive_amount AS NUMERIC(15, 2)
-    CHECK (VALUE > 0);
-
--- URL
-CREATE DOMAIN url AS TEXT
-    CHECK (VALUE ~ '^https?://');
-
--- Use in tables
-CREATE TABLE user_accounts (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    email email NOT NULL,
-    website url,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE invoices (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    amount positive_amount NOT NULL,
-    recipient_email email NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-**When to use domains**: When the same constrained type appears in 3+ columns across different tables. It avoids duplicating CHECK constraints and ensures consistent validation.
-
-**When NOT to use**: For one-off constraints on a single column — just use inline CHECK.
-
-**Caveats** (PostgreSQL does not make domains airtight):
-- A domain's CHECK/NOT NULL is **not** applied to the elements of an array of that domain — a column typed `email[]` does not validate each element. Validate array contents at the application or trigger layer.
-- Domain `NOT NULL` can be bypassed by NULLs introduced without a direct insert (e.g. a `LEFT JOIN` or a scalar subquery yielding NULL). Still put an explicit `NOT NULL` on the column where null is invalid — don't rely on the domain alone.
-
-## Generated Columns (PostgreSQL 12+; VIRTUAL added in 18)
-
-Computed columns stored on disk, automatically maintained by PostgreSQL.
-
-```sql
-CREATE TABLE products (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    name TEXT NOT NULL,
-    price NUMERIC(12, 2) NOT NULL,
-    tax_rate NUMERIC(5, 4) NOT NULL DEFAULT 0.10,
-    -- Automatically computed and stored
-    price_with_tax NUMERIC(12, 2) GENERATED ALWAYS AS (price * (1 + tax_rate)) STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Full-text search vector (avoids recomputing on every query)
-CREATE TABLE articles (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    title TEXT NOT NULL,
-    body TEXT NOT NULL,
-    search_vector TSVECTOR GENERATED ALWAYS AS (
-        to_tsvector('english', coalesce(title,'') || ' ' || coalesce(body,''))
-    ) STORED,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_articles_search ON articles USING GIN (search_vector);
-
--- Query using the stored vector (no runtime computation)
-SELECT * FROM articles WHERE search_vector @@ to_tsquery('english', 'postgresql & design');
-```
-
-**When to use**: Computed values queried frequently (full-text vectors, derived amounts, normalized strings). Trades write-time computation for read-time performance.
-
-⚠️ Concatenating a NULL operand yields NULL, collapsing the whole `tsvector` to NULL and silently excluding the row from full-text results — `coalesce` each nullable operand. The regconfig must be a constant literal (`'english'`): `to_tsvector(constant_config, text)` is IMMUTABLE and legal in a generated column, but a column-driven config is only STABLE and the `CREATE TABLE` is rejected.
-
-**Storage modes**: `STORED` (computed on write, persisted, **indexable**) and `VIRTUAL` (computed on read, no storage; PostgreSQL 18+). On PG18, `VIRTUAL` is the **default** when the keyword is omitted — so always write `STORED` explicitly whenever you intend to index the column (e.g. the `search_vector` GIN index above) or amortize compute. On PG12–17 only `STORED` exists and the keyword is mandatory. In both modes the expression cannot reference other tables, other generated columns, or subqueries; `STORED` additionally requires the expression to be `IMMUTABLE`.
+# Column Types and DDL Defaults
+
+Each default carries the condition that breaks it. An existing schema keeps its conventions unless they cause a defect named here. Adding a column of an identity, STORED generated or (before PG19) constrained-domain type to a live table rewrites it (`references/migration-patterns.md`).
+
+## Keys
+
+- **UUIDv7** (SKILL.md Stage 1): before PG18, no default; the application passes an RFC 9562 v7 value. UUIDv4 (`gen_random_uuid()`) only on low-volume tables.
+- **`bigint GENERATED ALWAYS AS IDENTITY`** for internal, high-volume, never-exposed tables (events, audit, metrics); `BY DEFAULT` only where ids are loaded from elsewhere. Identity needs no sequence grant, `serial` does: no new `serial` columns. No new `integer` keys; an existing one past half its range is a migration to schedule now (`references/migration-patterns.md`, worked example).
+- **Possession tokens** (share links, invites, reset tokens, API keys): ≥128 random bits, never a UUID (RFC 9562 forbids UUIDs as security capabilities), stored as a SHA-256 hash and looked up by hash.
+- **Natural keys** for stable external codes (ISO 4217 currency, ISO 3166 country) and lookup tables; never emails, names or anything a person can change.
+
+## Time
+
+| Value | Type | Why |
+|---|---|---|
+| An instant: created, paid, expires | `timestamptz` | Stores the instant and renders it in the session `TimeZone`; it keeps no zone. |
+| A calendar date: birthday, business date, due date | `date` | As an instant it shows the previous day west of UTC. |
+| A future wall-clock event: appointment, opening hours, "9:00 daily", local deadline | `timestamp` (or `date` + `time`) plus an IANA zone column (`'Asia/Seoul'`) | An instant computed today freezes today's zone rules, so a rule or DST change moves the event. Resolve it when it fires. |
+| A period | `tstzrange` / `daterange` + EXCLUDE | `references/design-patterns.md` (temporal data) |
+
+Never `timestamp` for an instant: its meaning depends on each writer's session zone.
+
+## Money
+
+- Multi-currency: `bigint` minor units plus a currency column, the exponent taken from the currency (ISO 4217: 0 for JPY and KRW, 2 for most, 3 for BHD and KWD), so a fixed `numeric(_, 2)` is wrong. `numeric(p, s)` fits a single-currency table or sub-minor precision (unit prices, FX rates).
+- Never `real`/`double precision`, nor the `money` type: its precision and format follow `lc_monetary`, and it records no currency.
+- No default currency, unit, tax rate or FX rate: a missing value must fail the insert, not become dollars.
+- Store the rate and amount actually applied on the line (a snapshot) and round once, at a named step.
+
+## Text and identity strings
+
+- `varchar(n)` only where an external contract fixes the length; never `char(n)`, which displays blank-padded while comparisons drop the padding. Fixed codes are `text` + `CHECK (currency ~ '^[A-Z]{3}$')`.
+- **Email**: `text` with `CHECK (strpos(email COLLATE "C", '@') > 1 AND char_length(email) <= 254)`. No regex: common ones reject `o'connor@`, `josé@` and internationalized domains. Prove ownership by sending a link.
+- **Case-insensitive uniqueness**, in its scope: `CREATE UNIQUE INDEX uq_users_email ON users (tenant_id, lower(email)) WHERE deleted_at IS NULL;` with queries on `lower(email)`; or a nondeterministic collation, which the citext documentation recommends over citext: `CREATE COLLATION ci (provider = icu, locale = 'und-u-ks-level2', deterministic = false);`, then `email text COLLATE ci`. On such a column, `LIKE` and substring functions (`position`, `strpos`) fail before PG18, CHECKs included, and regular expressions fail on PG18 too: apply them to `email COLLATE "C"`.
+
+## Closed sets
+
+| Situation | Use |
+|---|---|
+| Values fixed by code, may grow | `text` + `CHECK (status IN (…))`; to add a value, drop and re-add the CHECK `NOT VALID` in one statement, then `VALIDATE` |
+| Values carry attributes (label, order, flags) or users manage them | A lookup table whose primary key is the natural code |
+| A frozen set whose order SQL compares | ENUM: values can be added, never removed or reordered, and a new value is unusable until the adding transaction commits |
+
+- A boolean that will grow a third state, or two booleans that must never both be true, is a status column.
+- Lookup rows are schema: ship them as idempotent migrations (`INSERT … ON CONFLICT (code) DO NOTHING`; `DO UPDATE` to rename a label) and key FKs by the code, because identity values can differ between environments.
+
+## JSONB, arrays and files
+
+- JSONB holds attributes no hot query constrains, joins or filters, and user-defined fields when they are the product. A key becomes a column at its first constraint, FK or hot `WHERE`/`ORDER BY`.
+- Index one key with an expression B-tree (`((attributes->>'brand'))`); GIN (`jsonb_path_ops` when only `@>` is needed) serves ad-hoc containment over the whole document.
+- No FK reaches into JSONB: an id inside a document is a snapshot, never a live reference.
+- Updating one key rewrites the whole value: large documents updated often belong in rows.
+- Arrays: short value lists with no FK and no per-element attributes. GIN serves `@>` and `&&`, not `= ANY`. Anything more is a child table.
+- Files live in object storage; the row keeps the key, size, media type, checksum and lifecycle state. `bytea` only for small values read with their row; never large objects, which a row `DELETE` orphans and logical replication skips.
+
+## Foreign keys
+
+- State `ON DELETE` on every FK: CASCADE only inside one aggregate whose root may be deleted (cart → items, draft order → lines), never from a referenced entity (customer, product, account) into financial or audit records; RESTRICT or NO ACTION for references; SET NULL for optional links. A NO ACTION check can be deferred to commit (`DEFERRABLE INITIALLY DEFERRED`, for circular references or reordering inside a transaction); RESTRICT cannot.
+- A composite FK needs a matching UNIQUE on the parent, so pooled tenancy gives every parent `UNIQUE (tenant_id, id)` for `FOREIGN KEY (tenant_id, customer_id) REFERENCES customers (tenant_id, id)`. Child-column indexes: SKILL.md Stage 3.
+
+## Domains and generated columns
+
+- A domain pays off when one rule covers three or more columns; its CHECK applies to array elements too. Outer joins can still produce NULLs of a NOT NULL domain, so repeat `NOT NULL` on the column.
+- Write `STORED` or `VIRTUAL` explicitly: PG18 defaults to VIRTUAL, earlier versions accept only STORED. Both take immutable expressions over the current row. STORED is indexable; VIRTUAL (PG18+) is free to add, cannot be indexed and may use only built-in functions and types.
+- Full-text vectors use the two-argument form, with a constant or a `regconfig`-typed column, and coalesce each nullable part, since one NULL empties the vector: `to_tsvector('english', coalesce(title, '') || ' ' || coalesce(body, ''))`.
+
+## Secrets and personal data
+
+- Passwords: hashed in the application or by the identity provider, stored as `text`; never hashed in SQL, where the plaintext lands in statement logs and `pg_stat_activity`.
+- Reversible personal data: application-level envelope encryption; encrypted columns lose indexing, so add a keyed-hash column for lookup by value.
+
+## Vectors (pgvector)
+
+HNSW and IVFFlat index up to 2,000 dimensions for `vector` and 4,000 for `halfvec` (check the current pgvector README), so larger embeddings are stored as `halfvec`. Size by measurement: recall and p99 at the target row count with the production filters, using iterative index scans (0.8+) for filtered queries.

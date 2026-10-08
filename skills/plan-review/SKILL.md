@@ -1,133 +1,134 @@
 ---
 name: plan-review
 description: |
-  Pre-implementation plan review, two modes. Scope mode (CEO/founder lens),
-  while scope is still negotiable — typically after a PRD exists but before a
-  design/architecture doc is locked: challenge premises, find the 10-star
-  product, then SCOPE EXPANSION (dream big), HOLD SCOPE (maximum rigor) or
-  SCOPE REDUCTION (strip to essentials). Execution mode (eng-manager lens),
-  once a design/architecture doc (e.g. docs/arch/system.md) locks scope:
-  architecture, data flow, diagrams, edge cases, failure modes, tests,
-  performance — no premise re-litigation.
-  Use when: "review my plan", "is this the right approach", "are we building
-  the right thing", "should we scope this up/down", "find the 10x version",
-  "poke holes in this before I commit" (scope mode); "review my design doc",
-  "gut-check this before I build", "find the edge cases / failure modes",
-  "is this ready to implement" (execution mode).
-  Do NOT use for: code review of written code (use the reviewer agent or
-  /code-review — those run AFTER code exists).
+  Pre-build plan review: a verdict and the decisions due before work starts.
+  Scope mode (CEO/founder lens), while scope is negotiable: premise, evidence,
+  riskiest assumption; cut, hold or expand a brief, PRD or spec. Execution
+  mode (eng-manager lens), once a design doc locks scope: build order,
+  one-way doors, rollout, failure handling, tests.
+  Use when: "review my plan", "poke holes in this plan", "are we building
+  the right thing", "should we scope this up or down", "find the 10x
+  version", "is this ready to implement".
+  Do NOT use for: a document's own quality (product-brief, prd-craft,
+  feature-spec), architecture critique (software-architecture) or code
+  (review-checklists, reviewer agent).
 ---
 
 # Plan Review (scope mode · execution mode)
 
-Review the plan before any code is written. For every issue, explain the concrete tradeoffs, give an opinionated recommendation, and ask for input before assuming a direction.
+**Scope mode** (CEO/founder lens) asks whether this is the right thing, at the right size, now; **execution mode** (eng-manager lens), whether a locked plan will survive the build and work can start.
 
-**Do NOT make any code changes. Do NOT start implementation.** Your only job is to review the plan. **Bash is read-only here** — use it only for inspection (`git log`, `git diff`, `grep`, `find`); never `stash`, `checkout`, `commit`, or write files. Nothing in the runtime enforces this for you; this rule is the only guard.
+**Read-only**, enforced by this rule, not the host: don't edit files, rewrite the plan or start implementing; use the shell only to read, never to stash, check out, commit or write.
 
-## Choose the mode
-Pick one mode, say which and why, then load **only** that mode's references (scope mode's file points on to `references/review-sections.md` and `references/mode-reference.md`; both modes use `references/required-outputs.md`).
+**Return; don't ask.** In one pass, return to the caller a verdict, the few changes that must come first, and the decisions only the owner can make; the caller relays them. Follow-ups are proposed, never recorded or tracked.
 
-| Situation | Mode | Load |
+**Not this skill** (route there if available): a document's own quality → its authoring skill (product-brief, prd-craft, feature-spec); architecture quality or docs↔code drift → software-architecture's Review mode; code → review-checklists or the reviewer agent; pricing or go-to-market plans → the marketing skills (e.g. pricing).
+
+## 1. Locate and classify
+
+**Mode follows the question, not the repo.** Read only that mode's file.
+
+| The request | Mode | Read |
 |---|---|---|
-| Scope is still negotiable (a PRD or rough plan, no locked design doc) and the user wants to change WHAT gets built: rethink premises, scope up/down, find the 10x version | **Scope mode** — SCOPE EXPANSION / HOLD SCOPE / SCOPE REDUCTION | `references/scope-mode.md` |
-| A design/architecture doc (default `docs/arch/system.md`; caller may redirect) has locked scope and the user wants execution rigor on that fixed plan | **Execution mode** — TRIM / BIG CHANGE / SMALL CHANGE | `references/execution-mode.md` |
+| Whether, what, how much: premise, scope up or down, commit or cut | scope | `references/scope-mode.md` |
+| How, ready, what breaks, on scope already decided; a hotfix or incident follow-up | execution | `references/execution-mode.md` |
+| Neutral ("review my plan") | execution if a design doc or implementation plan was written for this change, else scope | that mode's file |
 
-* **Execution mode never re-litigates premises:** no premise challenge, dream-state mapping or temporal interrogation. Scope concerns are raised once, in its Step 0; afterward it optimizes within the chosen scope.
-* **TRIM ≠ SCOPE REDUCTION.** Execution-mode TRIM removes only clearly redundant work from a fixed plan and never re-opens scope; scope-mode SCOPE REDUCTION genuinely cuts scope.
-* **HOLD SCOPE vs execution mode:** choose scope mode's HOLD SCOPE for maximum rigor on the accepted scope AND a premise/dream-state challenge alongside it (the full 10-section review, with security, observability, deployment and trajectory as their own gates). If scope is fully locked and only execution rigor is wanted, use execution mode.
-* If the user asks for a genuine scope rethink or a 10x-ambition pass mid-review in execution mode, switch to scope mode explicitly — never drift into it.
-* Unclear which applies: ask once (question protocol below). Non-interactive: a locked design doc exists → execution mode, otherwise scope mode; record `UNRESOLVED-AUTO (mode defaulted)` in Unresolved Decisions and continue.
+Unsure → pick one.
 
-## Step -1: Locate the plan
-Find the plan under review before anything else (default doc roots are `docs/<area>/`, e.g. `docs/prd/`, `docs/arch/`; the caller may redirect them):
-* If the user pasted it or named a path, use that.
-* Otherwise look in the PRD root (default `docs/prd/`) for scope mode, or the architecture root (default `docs/arch/`), then `docs/prd/`, for execution mode — or a rough plan doc, the current branch diff, or the current chat — and confirm with the user which artifact is "the plan."
-* If no plan exists, there is nothing to review — ask the caller for one rather than halting. If an authoring capability is available, suggest routing there first: a brief/PRD (e.g. `product-brief` or `prd-craft`) for scope mode; the design doc via `software-architecture` (or the PRD via `prd-craft` if even that is missing) for execution mode. Do not invent a plan.
+**The plan.** The one the caller names or pastes; else the plan in the conversation or the host's plan file; else, by mode, the PRD (default `docs/prd/prd.md`, with `features/*.md` and `product-brief.md` beside it) or the design doc (default `docs/arch/system.md`). The caller may redirect any path. Two candidates → the one closest to the request, named. No plan → ask the caller for one, naming who writes it (product-brief or prd-craft for scope, software-architecture for execution, if available); never invent one.
 
-## Pre-review audit (before Step 0)
-This is not the review — it is the context you need to review intelligently. You will be asked to cite `file:line`, name realistic production failure modes, and flag DRY violations — all of which require having actually read the code. Run (read-only):
-```
-git log --oneline -30                          # Recent history
-git diff main --stat                           # What's already changed
-git stash list                                 # Any stashed work
-grep -r "TODO\|FIXME\|HACK\|XXX" --include="*.ts" --include="*.tsx" --include="*.rs" --include="*.py" -l
-```
-(Adjust the `--include` globs to the project's languages, and `main` to its default branch.)
-Then read the project-conventions file if present (default `CLAUDE.md`; caller may redirect the docs/conventions root), the plan itself, and existing architecture docs; `grep` the files the plan touches for existing patterns and `TODO`/`FIXME`. If the caller supplied known deferred or in-flight work, note what this plan touches/blocks/unlocks and map known pain points to this plan's scope.
+**First questions.** Answer from the docs and code, never by pausing to ask; where nothing readable answers, apply the default and list it under Assumed. A default that could flip a Blocker is also an unresolved decision.
 
-Map: current system state · what's already in flight (open PRs, branches, stashes) · existing pain points relevant to this plan · FIXME/TODO in files this plan touches.
-
-**Retrospective check:** Check this branch's git log for prior review cycles (review-driven refactors, reverts). Note what changed and be MORE aggressive reviewing previously-problematic areas — recurring problem areas are architectural smells.
-
-Scope mode adds a taste-calibration step here (EXPANSION only — see `references/scope-mode.md`). Report findings before Step 0.
-
-## Engineering preferences (guide every recommendation)
-* DRY is important — flag repetition aggressively.
-* Well-tested code is non-negotiable; rather too many tests than too few.
-* "Engineered enough" — not under-engineered (fragile, hacky) nor over-engineered (premature abstraction, unnecessary complexity).
-* Err on handling more edge cases, not fewer; thoughtfulness > speed.
-* Bias toward explicit over clever.
-* **Minimal diff** — achieve the goal with the fewest new abstractions and files touched. *In scope mode's EXPANSION this applies to HOW each chosen capability is built (no gratuitous abstraction), not to WHETHER to add scope — EXPANSION deliberately adds scope.*
-* Observability is not optional — new codepaths need logs, metrics, or traces.
-* Security is not optional — new codepaths need threat modeling.
-* Deployments are not atomic — plan for partial states, rollbacks, feature flags.
-
-## Documentation and diagrams
-* Value ASCII diagrams highly — data flow, state machines, dependency graphs, processing pipelines, decision trees. Use them liberally in the plan and design docs.
-* For complex designs, embed ASCII diagrams in code comments: domain models (data relationships, state transitions), route handlers (request flow), middleware (shared behavior), services (processing pipelines), and tests (non-obvious setup).
-* **Diagram maintenance is part of the change.** When touching code near an ASCII diagram, update it in the same commit. Stale diagrams are worse than none — they actively mislead. Flag any stale diagrams you find, even outside the immediate scope.
-
-## Section gate (applies after every step and section)
-After each section: produce a structured list of its issues, each with a recommended resolution, using the question protocol below — then **pause and wait for the user before the next section** when an interactive user is present. Resolve all raised issues before proceeding.
-* **Per-section issue budget:** surface at most the top 5-8 issues per section; capture the long tail as a single proposed follow-up. Don't open a blocking question for every low-severity nit.
-* **Whole-review budget:** a healthy full pass lands 15-30 decisions total. Past ~40 you are litigating nits — batch the tail into proposed follow-ups and keep moving.
-* **Non-interactive runs** (headless/CI/no interactive user to answer): do NOT block and do NOT fabricate an answer. Emit each issue as plain text with its recommended option pre-selected, mark it `UNRESOLVED-AUTO` in Unresolved Decisions, and continue. Mode and sub-mode selection follow the same rule: apply the context default and record `UNRESOLVED-AUTO (mode defaulted)`.
-
-## How to ask questions
-The primary output is a structured list of issues/decisions, each carrying a recommended resolution: a `question` body plus a list of `options`, each with a short `label` and a one-line `description`. How it is rendered depends on the runtime:
-* **The runtime has an interactive question tool** (e.g. Claude Code's AskUserQuestion): render each decision with it. Such tools render the option cards and typically auto-append an "Other"/free-text choice — do NOT hand-write "A) B) C)" into the cards; the tool does not letter them for you. Respect the tool's field limits (AskUserQuestion: `header` at most 12 characters, 2-4 options per question).
-* **No question tool, but a user is present:** present the same content as numbered questions in plain text — issue number, the body, then lettered options with the recommended one first — and stop for the user's answers before continuing.
-* **No user at all:** follow the section gate's non-interactive rule.
-
-For every issue:
-* **One issue = one question/decision.** Never combine multiple issues into one question.
-* Describe the problem concretely with `file:line` references.
-* Put your **recommendation in the `question` body**, ending with "Recommended: the first option — <one-line reason mapped to an engineering preference>."
-* Make the **recommended option the FIRST** entry in `options`, with its `label` suffixed "(Recommended)". Each option's `description` carries its one-line tradeoff (effort, risk, maintenance burden). Add a "do nothing" option only when it's a real choice; rely on the free-text/"Other" answer for open-ended responses rather than adding a redundant "something else".
-* Be opinionated — state it as a directive ("Do the first option. Here's why:"), not a menu. Map the reasoning to a specific engineering preference.
-* No yes/no questions. Open-ended (free-text) questions only when you have genuine ambiguity about developer intent, architecture direction, 12-month goals, or what the end user wants — and say exactly what is ambiguous.
-* If a stable issue tag helps, put it in the `header` (e.g. "Issue 3" — keep it short); keep option labels short and human-readable.
-* **Escape hatch:** if a section has no issues, say so and move on. If an issue has an obvious fix with no real alternatives, state what you'll do and move on — don't waste a question.
-
-## Proposed follow-ups (returned to the caller)
-This skill does **not** record or track work — it only proposes. Approved follow-ups go into a plain list returned to the caller (the main session), which decides what to do with them.
-
-Present each potential follow-up as its own decision via the question protocol (never batch — one per follow-up; never silently skip this step). For each, describe:
-* **What:** one-line description of the work.
-* **Why:** the concrete problem solved or value unlocked.
-* **Pros / Cons:** what you gain; cost, complexity, risk.
-* **Context:** enough that someone picking this up in 3 months understands the motivation, current state, and where to start.
-* **Type:** `feature | bugfix | refactor | chore | spike | hotfix`
-* **Effort:** S / M / L / XL
-* **Priority:** `high | medium | low`. high = blocking/critical-this-cycle; medium = important not urgent; low = nice-to-have.
-* **Depends on:** prerequisites or ordering constraints, or "None".
-
-Then present options (recommended first): **Keep** — add it to the returned follow-up list · **Skip** — not valuable enough · **Promote** into the current scope and review it now (still no code). (No A/B/C letters on interactive option cards — lettering is report-text only.) Do NOT propose vague bullets — a follow-up without context is worse than none.
-
-## Required outputs
-Produce all applicable outputs per **`references/required-outputs.md`** — each is mandatory regardless of whether issues were found (the escape hatch governs questions, not deliverables). It marks which outputs are scope-mode-only and gives each mode's completion summary. Return to the caller: the resolved issue list, the proposed follow-ups, and the Unresolved Decisions list.
-
-## Formatting rules
-* NUMBER issues (1, 2, 3...) and LETTER options (A, B, C...) **in the written report** (e.g. "3A") — not in interactive option cards.
-* Recommended option always listed first; one sentence max per option — the user should pick in under 5 seconds.
-* After each section, pause and wait for feedback (interactive runs — headless runs follow the section-gate fallback instead).
-* Use **CRITICAL GAP** / **WARNING** / **OK** for scannability.
-
-## References
-| Need | File |
+| Question | Default |
 |---|---|
-| Scope mode: philosophy, prime directives, Step 0 + mode selection, priority hierarchy | `references/scope-mode.md` |
-| Scope mode: full Step 0 prompts + the 10 review sections (with mode-specific additions) | `references/review-sections.md` |
-| Scope mode: behavior matrix (EXPANSION / HOLD / REDUCTION) | `references/mode-reference.md` |
-| Execution mode: Step 0, TRIM / BIG / SMALL, the 4 review sections, priority hierarchy | `references/execution-mode.md` |
-| Output templates, registries, completion summaries (both modes) | `references/required-outputs.md` |
+| What is the requester deciding, by when, and what worries them? | Go or no-go on the whole plan |
+| The goal, how we'd know it worked, and the non-goals? | No goal → the first finding, and maybe the only one worth making. No measure its altitude calls for (below) → a finding |
+| What is already settled? | ADRs, mandates, an earlier review's owner decisions and, for a spec, its PRD; in execution mode, also the scope and premise the design locks |
+| Capacity: people × weeks, and any hard date? | The plan's own estimate; none → say so once |
+| Load and data volume, where a migration, hot path or cost depends on it? | An `est.` figure with its inputs |
+
+**Altitude.** Judge the plan at its own level of detail.
+
+| Altitude | Can be held to |
+|---|---|
+| Brief | problem, evidence, riskiest assumptions, a Success Signal (no target or date), the Decision and its next test (pass and kill numbers); never features, a cut line or a timeline |
+| PRD or feature spec | outcomes, each with a number and a date (mandated or parity work: its acceptance gate; a personal tool: one observable behavior); users; scope and its cut line; the one-way doors the scope implies |
+| Design doc | components, data, contracts, rollout, failure handling |
+| Implementation plan | the same, plus files and steps, checked against the code |
+
+Never demand detail below the plan's altitude: a PRD has no error types or `file:line`. A missing level is one finding naming who produces it, not invented precision. A broken premise one level up is raised once, labeled *new information*; then stop reviewing the detail it invalidates.
+
+**Depth comes from what can't be undone, not from size.** A trigger fires when the plan changes it, not when it reads or displays it: persisted data (a new table, a changed meaning, a destructive migration; not an added nullable column); money; who can do what; personal data collected, kept longer or shared outward; a public or partner contract; an irreversible user-visible action; a new external dependency, an LLM or agent included; config, prompts or data pushed to everyone at once; another legal duty (accessibility, a regulated domain). None → light; one → standard; two or more, or a one-way door (§ 4) on [Said] or [Assumed] evidence → deep. A 20-file rename is light; a one-line change to refund math is standard. Size and the caller's question add checks, never depth: the check that answers the question always runs; the mode file says what size adds. *Break:* a quick look or a near deadline → the light budget, but every fired trigger still gets a line.
+
+## 2. Gather evidence
+
+Read in this order; stop when the next source can't change the verdict.
+
+1. Upstream intent: the outcome the plan serves (the brief behind a PRD, the PRD behind a design doc).
+2. The project conventions file (e.g. `AGENTS.md` or `CLAUDE.md`; follow its imports). It may redirect doc roots.
+3. With a repo: the code the plan changes, its consumers, and the existing pattern new work should copy.
+4. The touched paths' history: reverts and churn, which earn more scrutiny; work in flight on them in any branch, open PR or the working tree (`git log --oneline --all --not <default branch> -- <paths>`, as of the last fetch; `git status --short`); TODO and FIXME debt where the plan lands; how long the last comparable change took, for capacity.
+
+Cite `path:line` for every claim about code. With no repo, say so and review the documents alone.
+
+## 3. Review
+
+Run the mode file's checks at step 1's depth, under these rules:
+
+- **A finding is a failure scenario**: what breaks, for whom, when, traced to a plan line or its absence. Without one it is at most Minor; a preference is not a finding. Zero Blockers is a valid result.
+- **Proportion**: rigor goes where being wrong is silent, irreversible, or costs money or trust; a visible, reversible risk ships with a signal that would show it. *Break:* regulated or safety-critical domains, where the duty sets the bar.
+- **Leave to the owner** (as an unresolved decision) only what changes scope, a one-way door or a commitment, when nothing readable answers it; decide the rest yourself, in one line with the reason.
+- **Settled stays settled**: don't re-argue what's settled on the same information. Raise a reversal once, labeled *new information*, with the evidence the decision lacked. A re-review covers only what changed and what it touches; a new finding on unchanged text must be Major or worse, labeled *missed earlier*.
+- **Grade evidence** as the product brief does, with a source: [Committed] money, an LOI or a pilot; [Observed] behavior seen or recorded; [Said] an account of a specific past instance; [Assumed] the rest, including future intent and applied defaults. Tag numbers as the PRD does: measured, est., target or unknown.
+- **Diagram only** an async flow with three or more parties, or four or more states (show the illegal transitions).
+
+## 4. Severity
+
+- **Blocker** (Critical in sibling reviews; change the plan before work starts):
+  - data loss or corruption, a security or privacy exposure, or a money error;
+  - a failure nobody would notice (the user sees nothing, no signal fires) on a critical path: money, data, auth or a must-not-lose write;
+  - a retried or replayed side effect without idempotency;
+  - an LLM or agent holding untrusted input, private data or systems, and the power to act or send outward in one session, with no person approving;
+  - a one-way door that closes before anything in the plan tests the [Said] or [Assumed] assumption it rests on;
+  - a plan that can't reach its stated goal, or states none;
+  - in scope mode, what drives a Stop, Test first or Re-scope verdict.
+- **Major** (High): likely a week or more of rework, or an incident, unless settled before or early in the build.
+- **Minor** (Medium): fix during the build.
+
+**One-way door**: once users or systems depend on it, undoing it needs others' cooperation, loses data or trust, or costs more than building it did. One-way: identity and cardinality in the data model, deletions, sent messages, data shared outward, and anything published (price, API, event or file format, SLA). Two-way: flagged, expand/contract and additive internal changes.
+
+## 5. Output
+
+**Budget, registry and diagrams excluded: ≤400 words light, ≤800 standard, ≤1,400 deep.** Each Blocker ≤60 words, each Major ≤40; ≤5 decisions (more → keep those that block the earliest work, the rest become defaults under Assumed); ≤7 Minors, one line each. Sections are a menu: omit any that would be empty, heading included.
+
+```
+**Verdict: <the mode's verdict>.** <One sentence why, answering any named worry even when the bigger risk lies elsewhere.>
+Reviewed: <plan path> (<brief | PRD | spec | design doc | implementation plan>), <mode> mode (<why, if a judgment call>), <depth> depth (<triggers fired>). Goal as read: <one line>. Assumed: <defaults applied, or none>.
+Since the last review: <each earlier Blocker and decision: resolved (where) or open>
+
+**Blockers**
+- <plan location>: <what breaks, for whom, when> → <required change, or the decision it needs>
+**Majors**
+- <same shape>
+**Unresolved decisions** (for the owner)
+- <question> Options (2–4), recommended first: <option>, because <reason> / <option>: <one-line trade-off> … Blocks: <what>.
+**Fix during build**
+- <one line each>
+**Failure registry** (design doc or implementation plan; gap rows, plus an incident's own failure)
+BOUNDARY | FAILURE | POLICY | USER SEES | SIGNAL → OWNER | TEST
+**Proposed follow-ups**
+- <what> · <why> · due when <trigger> · <S/M/L>
+**What's sound** (≤3 lines, plus one per fired trigger with no finding)
+- <what is right and must stay, so nobody "fixes" it>
+```
+
+Over budget, cut in order: What's sound to its trigger lines, follow-ups to what · trigger, Minors, Majors to one line each; never the verdict, Blockers, decisions, or a follow-up holding deferred scope. Unanswered decisions: the recommended option stands provisionally and stays listed.
+
+## Self-Review
+
+- [ ] The verdict leads with its reason, answers any named worry, and is the first rung of the mode's ladder that applies; whatever drives it is a Blocker (none → Ready or Commit).
+- [ ] Every Blocker and Major has a plan location, a failure scenario and a change; one without a scenario drops to Minor or goes. Every fired trigger has a finding or a What's sound line.
+- [ ] Nothing sits below the plan's altitude, and no finding would fit any plan: tie each to a plan line or cut it.
+- [ ] No unresolved decision is answerable from the docs or the code (answer it yourself), and nothing settled is re-argued without new information.
+- [ ] **Footprint**: count the words against the depth's budget; ≤5 decisions; ≤7 fix lines; no method narration (steps run, checks walked, counts).

@@ -1,99 +1,61 @@
 ---
-title: Strategic Suspense Boundaries
-impact: HIGH
-impactDescription: faster initial paint
-tags: async, suspense, streaming, layout-shift
+title: Stream Slow Regions Behind Suspense Boundaries
+tags: async, suspense, streaming, rsc
 ---
 
-## Strategic Suspense Boundaries
+An await before returning blocks everything up to the nearest `<Suspense>` boundary. Move it into the component that uses the data and wrap that component: the shell renders now and the slow region streams in.
 
-Instead of awaiting data in async components before returning JSX, use Suspense boundaries to show the wrapper UI faster while data loads.
-
-**Incorrect (wrapper blocked by data fetching):**
+**Incorrect (the whole page waits for one query):**
 
 ```tsx
 async function Page() {
-  const data = await fetchData() // Blocks entire page
-  
-  return (
-    <div>
-      <div>Sidebar</div>
-      <div>Header</div>
-      <div>
-        <DataDisplay data={data} />
-      </div>
-      <div>Footer</div>
-    </div>
-  )
+  const data = await fetchData()
+  return <Layout><Header /><DataDisplay data={data} /><Footer /></Layout>
 }
 ```
 
-The entire layout waits for data even though only the middle section needs it.
-
-**Correct (wrapper shows immediately, data streams in):**
+**Correct (only the data region waits):**
 
 ```tsx
 function Page() {
   return (
-    <div>
-      <div>Sidebar</div>
-      <div>Header</div>
-      <div>
-        <Suspense fallback={<Skeleton />}>
-          <DataDisplay />
-        </Suspense>
-      </div>
-      <div>Footer</div>
-    </div>
+    <Layout>
+      <Header />
+      <Suspense fallback={<DataSkeleton />}><DataDisplay /></Suspense>
+      <Footer />
+    </Layout>
   )
 }
 
 async function DataDisplay() {
-  const data = await fetchData() // Only blocks this component
+  const data = await fetchData()
   return <div>{data.content}</div>
 }
 ```
 
-Sidebar, Header, and Footer render immediately. Only DataDisplay waits for data.
-
-**Alternative (share promise across components):**
+**Alternative (one request, several consumers):** start the fetch without awaiting and pass the promise down; Client Components unwrap it with `use()`, Server Components with `await`. In TanStack Start, return the unawaited promise from the loader and unwrap it the same way.
 
 ```tsx
 function Page() {
-  // Start fetch immediately, but don't await
   const dataPromise = fetchData()
-  
   return (
-    <div>
-      <div>Sidebar</div>
-      <div>Header</div>
-      <Suspense fallback={<Skeleton />}>
-        <DataDisplay dataPromise={dataPromise} />
-        <DataSummary dataPromise={dataPromise} />
-      </Suspense>
-      <div>Footer</div>
-    </div>
+    <Suspense fallback={<DataSkeleton />}>
+      <DataDisplay dataPromise={dataPromise} />
+      <DataSummary dataPromise={dataPromise} />
+    </Suspense>
   )
 }
 
-function DataDisplay({ dataPromise }: { dataPromise: Promise<Data> }) {
-  const data = use(dataPromise) // Unwraps the promise
-  return <div>{data.content}</div>
-}
-
 function DataSummary({ dataPromise }: { dataPromise: Promise<Data> }) {
-  const data = use(dataPromise) // Reuses the same promise
+  const data = use(dataPromise)
   return <div>{data.summary}</div>
 }
 ```
 
-Both components share the same promise, so only one fetch occurs. Layout renders immediately while both components wait together.
+Streaming moves the wait; it doesn't remove it. If the region's query returns the same result for every user or every member of a tenant, also cache it at that scope ([server-cache-cross-request](./server-cache-cross-request.md)).
 
-**When NOT to use this pattern:**
+Await whatever decides the status code or a redirect (`notFound()`, auth) before the first boundary streams; once streaming starts, the status is 200. Use one boundary per independently slow region, with a fallback sized to the final layout so nothing shifts, inside an error boundary with a retry; siblings that should appear together share one boundary.
 
-- Critical data needed for layout decisions (affects positioning)
-- SEO-critical content above the fold
-- Small, fast queries where suspense overhead isn't worth it
-- When you want to avoid layout shift (loading → content jump)
+*Break:* await data that reliably arrives in under ~150 ms; a fallback that flashes is worse than the wait.
 
-**Trade-off:** Faster initial paint vs potential layout shift. Choose based on your UX priorities.
+Source: https://nextjs.org/docs/app/api-reference/file-conventions/loading

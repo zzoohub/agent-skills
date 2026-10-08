@@ -1,382 +1,193 @@
 ---
 name: ad-creative
 description: |
-  Ad creative development, copy generation, and batch creative production across platforms.
-  Use when: creating ad copy, designing ad campaigns, generating ad variations, writing
-  headlines/descriptions for ads, creating display/social/search ads, writing video ad scripts,
-  or when user mentions "ad copy", "ad creative", "Facebook ads", "Google ads", "ad campaign",
-  "ad variations", "ad headline", "display ad", "social ad", "PPC", "paid media creative",
-  "TikTok ads", "LinkedIn ads", "UGC ads", "video ads", "hook", "scroll-stopping",
-  "ad angles", "creative testing", "ad fatigue", "creative refresh".
-  Do NOT use for: organic social content (use copywriting skill — social section), landing page copy
-  (use copywriting skill), ad targeting/budget strategy (the caller's media plan, not creative),
-  ad performance analysis (use product-analytics skill), or selecting/ethics-judging
-  psychological principles themselves (use copywriting skill — persuasion psychology).
+  Paid ad creative: concepts, hooks, ad copy, video and UGC scripts, creative
+  and creator briefs, and platform asset sets for Meta (Facebook, Instagram),
+  TikTok, Google, YouTube, LinkedIn, display and retail media, plus creative
+  test plans and fatigue diagnosis.
+  Use when writing, iterating or adapting ads, filling RSA or PMax slots, planning
+  creative tests or fixing tired ads: "ad copy", "ad creative", "ad variations",
+  "Meta ads", "creative testing", "ad fatigue".
+  Do NOT use for: organic social or landing-page copy (copywriting); targeting, bids,
+  budgets or attribution (the caller's media plan); creative-test significance
+  readouts (product-analytics).
 ---
 
 # Ad Creative
 
-Develop high-performing ad creative grounded in direct-response copywriting principles,
-behavioral psychology, and platform-native production. This skill treats ad creation as
-a science — every element has a reason, every variation has a hypothesis, and every
-decision is testable.
+## Premise
 
----
+Under automated delivery the creative is the targeting: each ad finds the people it speaks to, and near-identical ads reach the same people and teach one lesson. The job: a small portfolio of genuinely different concepts, each for one person in one moment, judged on the outcome the business is paid for by rules set before launch, with known odds of a wrong call. Reject reworded clones, calendar refreshes, benchmark-chasing, unproven claims (the advertiser's own included) and "wins" that only show where the optimizer put the money.
 
-## Deliverable Format
+**Scope.** Elsewhere, each via that capability if available: campaign structure, targeting, bids, budgets, optimization events, attribution, incrementality, MMM (the caller's media plan); significance readouts, tracking (product-analytics); landing-page conversion (cro); offer, price (pricing); organic social, landing-page copy, choosing or ethics-judging persuasion principles (copywriting).
 
-For each ad brief, produce:
+**Lane: ad drafts only.** Never launch, publish or schedule an ad, or change live budgets, targeting or settings, without the caller's explicit approval; never edit anything outside the ads unasked (site code, tracking, the offer, the live feed: catalog titles are drafted here), even with access: an outside need becomes a Handoff. **Output**: `biz/marketing/assets/{campaign-slug}.md` (default; caller may redirect the `biz/<area>/` root), updated in place; inline without file-write.
 
-1. **3-5 fully written ads** (the hero concepts across different angles/formats)
-2. **A test plan** showing the hook/body/CTA/format variations to test (run them in isolation rounds — see Step 5)
-3. **Landing page headline recommendation** for message-match
+## Stage 0 — Classify & Calibrate
 
-Each fully written ad must include:
+Behind a format request ("10 hooks", "make it work on TikTok") sits one of three problems: no proven concept yet, a proven concept wearing out, or a cause outside the creative (auction, page, offer, tracking, the event the optimizer chases) that more ads will not fix. Classify first; diagnose a performance complaint before writing anything.
 
-| Field | Description |
-|-------|-------------|
-| **Platform** | Meta, TikTok, Google, LinkedIn, etc. |
-| **Format** | Static image, video (duration), carousel, etc. |
-| **Awareness Level** | Which of the 5 levels this targets |
-| **Angle** | Which creative angle (Problem, Benefit, UGC, etc.) |
-| **Framework** | Which copywriting framework (PAS, AIDA, BAB, etc.) |
-| **Hook** | The first line / first 3 seconds |
-| **Primary Text / Body** | Full ad copy |
-| **Headline** | Platform headline field |
-| **Description** | Platform description field (if applicable) |
-| **CTA** | Button text or verbal CTA |
-| **Visual Direction** | Image concept, mood, composition, or video storyboard |
-| **Hypothesis** | Why this ad should work (1 sentence) |
-| **Landing Page Headline** | Recommended LP headline for message-match |
-
-For video ads, include a timestamped script table:
-`| Time | Visual | Audio/Text Overlay |`
-
-**Output:** when asked to save deliverables, write them to the marketing-assets dir (default `biz/marketing/assets/`; caller may redirect the `biz/<area>/` root). If no file-write capability is present, return the ads inline. Update an existing file in place rather than creating a duplicate.
-
-**Drafts only.** Never launch, publish, or schedule an ad or campaign (or change live budgets/targeting) in an ad platform without the caller's explicit approval — produce the drafts and hand them back.
-
----
-
-## The Creative Development Process
-
-### Step 0: Gather the Brief (Intake)
-
-Before diagnosing anything, collect the raw materials an ad needs. If the user's brief
-is missing these, **ask 2-4 targeted clarifying questions first** — or state
-clearly-labeled assumptions and flag any invented proof as `[INSERT REAL STAT]` so the
-user knows what must be substantiated. **Never fabricate proof, offers, or numbers.**
-
-Collect:
-- **Product & core value prop** — what it does, the one transformation it delivers
-- **Offer & price** — the specific offer, price, trial/guarantee terms
-- **Audience & awareness level** — who they are and where they sit on the spectrum (Step 1)
-- **Proof assets on hand** — testimonials, case studies, stats, logos, awards (use only real, substantiable proof)
-- **Brand voice & visual constraints** — tone, do's/don'ts, mandatory elements
-- **Mandatory disclosures/claims** — regulated-vertical rules, legal lines (see `references/ad-policy-compliance.md`)
-- **Campaign objective & primary metric** — awareness, leads, or sales; how success is measured
-- **Prior learnings** — past winners/losers
-
-**Competitive / ad-library research**: before choosing an angle (Step 2), scan the Meta
-Ad Library and TikTok Creative Center for the category — catalog competitor angles,
-hooks, and formats; note saturated messages to avoid and white-space angles to exploit.
-(Tools: Foreplay, Atria, Motion App.)
-
-### Step 1: Diagnose the Audience's Awareness Level
-
-Before writing a single word, determine where the audience sits on Eugene Schwartz's
-awareness spectrum. This single decision shapes everything — headline approach, body
-structure, CTA intensity, and creative format.
-
-| Level | Audience State | Lead With | Example |
-|-------|---------------|-----------|---------|
-| **Unaware** | Doesn't know they have a problem | Story, pattern interrupt, identity | "Being the bottleneck isn't a badge of honor." |
-| **Problem-Aware** | Feels the pain, no solution yet | Empathy + agitation of the problem | "Tired of manually sorting 200 support tickets daily?" |
-| **Solution-Aware** | Knows solutions exist, hasn't chosen | Differentiation, mechanism, proof | "The only AI that reads context, not just keywords" |
-| **Product-Aware** | Knows your product, hasn't bought | Social proof, risk reversal, offer | "Join 12,000 teams already saving 15h/week" |
-| **Most Aware** | Ready to buy, needs a push | Price, urgency, direct CTA | "Annual plan: 40% off — ends Friday" (only if the deadline is genuine) |
-
-The lower the awareness, the longer the copy and the more indirect the approach.
-The higher the awareness, the shorter and more direct.
-
-### Step 2: Choose the Creative Angle
-
-An angle is the persuasion frame that connects your product to what the audience
-cares about. Pick one angle per ad — never mix.
-
-| Angle | When to Use | Hook Style |
-|-------|------------|------------|
-| **Problem/Pain** | Audience actively suffering | Agitate the pain, then reveal solution |
-| **Benefit/Outcome** | Audience wants transformation | Paint the after-state vividly |
-| **Social Proof** | Audience needs validation | Lead with numbers, testimonials, logos |
-| **Curiosity/Mystery** | Cold audience, pattern interrupt | Open a loop the viewer must close |
-| **Authority/Expert** | B2B or high-trust purchases | Lead with credibility signal |
-| **Before/After** | Visual transformation possible | Show the contrast dramatically |
-| **UGC/Testimonial** | Platform rewards native feel | Real person, real language, raw footage |
-| **Demonstration** | Product has visible "aha" moment | Show it working in 3 seconds |
-| **Urgency/Scarcity** | Bottom-funnel, ready-to-buy | Deadline, limited quantity, disappearing offer |
-| **Contrarian/Hot Take** | Saturated market, need differentiation | Challenge a common belief |
-
-### Step 3: Select the Copywriting Framework
-
-Match framework to awareness level and angle. See `references/copywriting-frameworks.md`
-for detailed templates and examples.
-
-| Framework | Best For | Structure |
-|-----------|----------|-----------|
-| **PAS** (Problem-Agitate-Solve) | Problem-aware, pain angle | Name pain > intensify > introduce solution |
-| **AIDA** (Attention-Interest-Desire-Action) | Broad audiences, benefit angle | Hook > engage > create want > direct action |
-| **BAB** (Before-After-Bridge) | Transformation angle | Current state > dream state > your product bridges the gap |
-| **4Ps** (Promise-Picture-Proof-Push) | Product-aware, social proof angle | Bold claim > visualize result > prove it > CTA |
-| **SSS** (Star-Story-Solution) | UGC, testimonial angle | Relatable person > their struggle > how product solved it |
-
-### Step 4: Write the Ad — Hook, Body, CTA
-
-Every ad has three parts. Allocate your effort accordingly: 80% on the hook
-(as Ogilvy said, "when you've written the headline, you've spent 80 cents of
-your dollar"), then body, then CTA.
-
-**Hook (first line / first 3 seconds):**
-- The hook's only job is to stop the scroll and earn the next sentence
-- See `references/hook-science.md` for 12 hook categories with examples
-- Benchmark: 30%+ hook rate on Meta, 40%+ on TikTok = strong
-
-**Body (value delivery):**
-- One angle per ad — in longer video ads (30s+), you can include supporting
-  points that serve the same angle (e.g., pain angle: name the pain, show hidden
-  costs, reveal consequences), but never mix angles (don't switch from pain to
-  social proof mid-ad)
-- Use specific numbers over vague claims ("Save 4h/week" not "Save time")
-- Match copy length to awareness level (Unaware = long, Most Aware = short)
-
-**CTA (single clear action):**
-- Direct: "Start free trial", "Get 40% off", "Download now"
-- Soft: "See how it works", "Learn more", "Watch the demo"
-- Match CTA intensity to awareness level (low = soft, high = direct)
-
-**Pricing placement by awareness level:**
-
-| Level | Where to Place Pricing |
-|-------|----------------------|
-| Unaware / Problem-Aware | Don't mention price. Lead with value. |
-| Solution-Aware | Mention price only if it's a competitive advantage ("From $19/mo") |
-| Product-Aware | Include in CTA area with risk reversal ("14 days free, then $19/mo") |
-| Most Aware | Lead with the deal ("40% off — $19/mo → $11/mo") |
-
-**Visual direction (include for every ad):**
-- **Static image**: Describe composition, subject, mood, color palette, text overlay placement
-- **Video**: Include timestamped storyboard (`Time | Visual | Audio/Text`)
-- **Carousel**: Describe each card's visual concept and how cards flow together
-- Match visual style to platform culture: lo-fi/smartphone for TikTok, slightly polished for Meta, professional for LinkedIn, clean/minimal for Display
-
-### Step 5: Generate Variations Systematically
-
-Test **one variable at a time** so you can attribute the result (see
-`references/creative-testing.md`). Build the full pool of options you *could* test,
-but launch them in **isolation rounds** — not all at once:
-
-```
-Hook options:    3-5 (different angles or emotional triggers)
-Body options:    2-3 (different value props or proof types)
-CTA options:     2   (direct vs soft)
-Format options:  2-3 (static, video, carousel)
-
-Round 1 — Hooks:  3-5 hooks × 1 body × 1 CTA × 1 format        = 3-5 ads
-Round 2 — Body:   winning hook × 2-3 bodies × 1 CTA × 1 format
-Round 3 — CTA/format: winning combo × the remaining variables
-```
-
-(Running all combinations at once is full-factorial multivariate testing — the
-cross-product is 24-90 ads, which needs a large budget AND makes it hard to tell
-which element won. Reserve it for the exception below.)
-
-**Exception — algorithmic diversity (Meta Advantage+, Google PMax):** when the
-platform assembles and distributes the creative, upload maximum diversity at once and
-let the algorithm find winners — here breadth beats isolation. See "Creative Diversity
-Testing" in `references/creative-testing.md`.
-
-For each variation, write a one-line hypothesis: "This hook works because
-[psychological principle] for [awareness level] audience."
-
-### Step 6: Compliance Pass (before launch)
-
-Ad creative is what platforms review and regulators scrutinize. Before launching,
-run every ad through the compliance checklist in `references/ad-policy-compliance.md`:
-FTC disclosure on UGC/testimonial/creator ads (#ad, Paid Partnership, in-creative),
-platform prohibited/restricted content (personal attributes, before/after, health,
-finance), regulated-vertical rules (Special Ad Categories change available angles),
-claims substantiation (every stat has proof on file — never fabricate), and
-accessibility (alt text, captions, legibility).
-
-### Step 7: Test, Learn, Iterate
-
-See `references/creative-testing.md` for the full testing methodology.
-The core loop:
-
-1. Launch with equal budget across variations
-2. Kill underperformers after sufficient data — spend/runtime is audience-specific (cold ~$300-500 / 5-7d, warm ~$100-200 / 3-5d; see `references/creative-testing.md`)
-3. Analyze winners — identify the winning ELEMENT (hook? body? CTA? format?)
-4. Create next batch: keep winning elements, vary the rest
-5. Refresh before fatigue — cadence is platform-specific (TikTok ~weekly, Meta bi-weekly, Google/LinkedIn 4-6 weeks; see the fatigue tables)
-
----
-
-## Platform-Native Creative Philosophy
-
-Each platform has a native content style. Ads that match this style outperform
-those that don't — often dramatically. **Creative is the dominant lever in paid media** — Nielsen Catalina Solutions (2017, ~500 CPG campaigns) attributed ~47% of advertising-driven sales lift to creative, the single largest factor; Google's "~70% of campaign performance" line is a Google exec's rule of thumb (not a formal study), and AppsFlyer calls creative the single biggest driver of UA performance. Whatever the exact figure, invest in creative before targeting or budget.
-
-### Meta (Facebook/Instagram)
-- **Video dominates**: 60%+ of user time is video; Meta recommends 4:5 for Feed (fills ~20% more screen than 1:1)
-- **UGC outperforms polished**: Creator-shot clips beat studio productions on hook rate by 5-10 points
-- **Front-load the hook**: First 125 chars of primary text (before "See more") are everything
-- **Advantage+ and Andromeda**: Creative diversity matters more than creative volume; don't just iterate on winners — repurpose winning messages across new formats
-
-### TikTok
-- **Native-first**: Ads must feel like organic FYP content, not commercials
-- **UGC ROI**: +55% ROI over non-UGC; unbranded UGC +19% better than branded (vendor figures, 2025-2026 — re-verify quarterly)
-- **Lo-fi wins**: +81% ROI for content without logos or heavy overlays (vendor figures, 2025-2026 — re-verify quarterly)
-- **Speed**: 90% of cumulative ad-recall impact lands in the first 6 seconds (TikTok Marketing Science); refresh roughly every 7-14 days (third-party practitioner guidance, not a platform rule)
-- **Production**: Smartphone-shot, quick cuts every 2-3 seconds, TikTok-native editing (captions, green screen)
-
-### Google Ads
-- **RSA optimization**: Use all 15 headline slots; mix keyword-focused, benefit-focused, and CTA headlines
-- **PMax assets**: 15 headlines + 5 long headlines + 5 descriptions + 20 images + 5 videos; more = better
-- **Intent matching**: Search ads must match the user's search intent exactly — keyword in headline 1
-- **Refresh**: Replace low-rated assets every 4-6 weeks
-
-### LinkedIn
-- **B2B thought leadership**: Thought Leader Ads deliver 1.7x higher CTR, 1.6x more engagement
-- **Funnel-stage creative**: TOF = thought leadership content, MOF = lead gen, BOF = conversion
-- **Professional tone but human**: Algorithm rewards meaningful conversations, not corporate speak
-- **Refresh**: Every 4-6 weeks; narrow B2B audiences fatigue faster
-
-### Display
-- **Simplicity**: One message, one image, one CTA
-- **Mobile-first**: Most impressions are mobile; design for small screens
-- **Legibility**: Text must be readable at banner sizes (300x250 is most common)
-
-### Reddit, Pinterest, Snap, X, YouTube Shorts, CTV (added 2026)
-- **Reddit**: Native subreddit-style copy; AMA-format works; avoid corporate tone. Conversion ads work for B2B.
-- **Pinterest**: Lifestyle / aspirational visuals; 2:3 vertical pins; women + commerce-heavy audience. Idea Pins for organic-ad hybrid.
-- **Snap**: Vertical full-screen video; first 2s is everything; AR Lens / Sponsored Filters for brand lift.
-- **X (Twitter)**: Hot-take copy + image / short video; engagement signals matter for placement. As of 2026, some advertisers observe it is underpriced for B2B reach — verify current pricing/reach before relying on this.
-- **YouTube Shorts**: Vertical, hook in 1s, captions on. Skippable vs unskippable affects message length.
-- **CTV (Netflix Ads, Disney+, Roku, Hulu, FAST channels)**: 15-30s spots; pair with frequency caps; pixel-based attribution is weak — use lift studies.
-
-### Cross-Platform Adaptation
-
-When adapting a winning concept across platforms, transform — don't just resize.
-
-| Source Format | Target Platform | Adaptation |
-|--------------|----------------|------------|
-| Meta static (PAS copy) | TikTok video | Convert primary text to voiceover, replace image with screen recording or UGC talking head, strip all brand elements |
-| TikTok UGC video | Meta Feed | Keep video but add primary text (PAS format), add headline field, may slightly polish thumbnail |
-| Meta Feed ad | Google RSA | Extract core benefit into 30-char headline, pain point into description, keyword into headline 1 |
-| Meta Feed ad | LinkedIn | Rewrite in professional/insight tone, add thought-leadership framing, adjust CTA from consumer to B2B |
-| Meta carousel | Display banner | Distill to single strongest card's message, one image, one CTA, minimal text |
-
-When adapting across **languages/markets**, transcreate — translate the *intent* of
-hooks/headlines (not the words), adapt humor/proof norms per market, and re-check
-character limits after translation (see the `i18n` skill for the structural side).
-
-For full specs, character limits, and 2026 benchmarks per platform, see
-`references/platform-specs.md`.
-
----
-
-## Core Principles (The Non-Negotiables)
-
-These principles come from decades of tested advertising — Hopkins, Ogilvy, Schwartz,
-and modern performance data all converge on the same truths:
-
-1. **Specificity beats generality** — "12,847 customers" not "thousands of customers"
-2. **Benefits beat features** — "Sleep through the night" not "Contains melatonin" (any quantified outcome must be typical and substantiated)
-3. **One message per ad** — Trying to say two things means saying nothing
-4. **Message match is mandatory** — Ad headline must match landing page headline
-5. **Test, don't guess** — Write 15-25+ headlines before picking (a direct-response discipline; Ogilvy's point was to *test* them, not a fixed count)
-6. **Emotion drives action** — Losses feel roughly 2x heavier than gains in lab estimates (varies by context); use loss framing where it's real (for selecting which psychological principle to apply, see the copywriting skill's persuasion-psychology section)
-7. **Hook earns attention, body earns the click** — Without the hook, nothing else matters
-8. **Platform-native beats platform-agnostic** — Reformat for each platform, don't just resize
-9. **Creative quality > budget or targeting** — ~47% of CPG sales lift (Nielsen Catalina, 2017); ~70% of campaign performance (Google). Invest in creative first.
-10. **Design for sound-off** — Most social video is watched muted; captions/text overlays required
-
----
-
-## Attribution & Measurement (2026)
-
-Platform-reported ROAS lies post-iOS 14.5. Build a real measurement stack:
-
-| Layer | What it does | Tools |
+| Job | Inspect first | Produce (Output blocks) |
 |---|---|---|
-| Server-side conversion API | Bypasses ITP/ETP cookie loss; deduplicates with pixel | **Meta CAPI**, **Google Enhanced Conversions**, **TikTok Events API**, **LinkedIn CAPI**, **Reddit CAPI**, **Pinterest Conversions API** |
-| Mobile attribution | AdAttributionKit / SKAdNetwork + AppsFlyer / Adjust / Singular postback | **AdAttributionKit** (Apple's SKAN successor — no SKAN 5.0 is coming), SKAN 4.0, AEM |
-| Blended / cross-channel | MER (Marketing Efficiency Ratio) = total revenue / total ad spend | **Triple Whale**, **Northbeam**, **Polar**, **Lifesight**, **Rockerbox** |
-| Incrementality | Geo holdouts, ghost-ad tests, conversion lift studies | Meta Conversion Lift, Google Geo Experiments, in-house geo splits |
-| Marketing Mix Modeling | Bayesian / classical MMM at scale | Robyn (Meta OSS), LightweightMMM (Google OSS), Recast |
+| Asset batch or set: headlines, hooks, one ad; RSA, PMax, catalog | landing page (read only); the ad or asset group it joins; asset report | Asset batch or set |
+| Variations ("10 versions of this") | is the control proven? its tags, metrics, why it won | proven: Variant family + Test plan; unproven: Asset batch of distinct concepts |
+| New concepts | customer words; top ads, last 30–90 days | 3–5 Concept cards + Test plan |
+| Program (launch, new platform, a quarter) or 20+ ads | unit economics, capacity, customer research, account history | Program + wave-1 Concept cards + Test plan |
+| Test design ("how should we test", "new ads never spend") | the optimizer's event vs the outcome judged; structure; conversions per week | Test plan |
+| Performance problem ("CPA is up", "ads are tired") | per-ad and per-segment funnel metrics and outcome quality; when it changed, what else did | Diagnosis; Concept cards + Test plan for creative's share |
+| Adapt to a platform or market | the source ad; why it won | rewritten fields + Adaptation notes |
 
-**Default modern stack:** server-side conversion API on every platform + a blended-ROAS dashboard (Triple Whale / Northbeam / in-house) + at least quarterly geo or conversion-lift incrementality tests. Platform ROAS alone is no longer trustworthy.
+Every job adds a Header, plus a Claims log and Handoffs when needed; creator-shot concepts add a Creator brief (asked for alone, the deliverable).
 
-### Generative Ad Creative
+**Small requests** (asset batches and sets, adaptations, a brief for a given concept) skip the work of Stages 1, 2 and 4, never the checks: claims, compliance, auto-generation, message match, counts, and any real problem the evidence shows. A contested choice gets a one-line test (tool, metric, read date), not a ruling. Variations of an unproven ad skip 1 and 4, keep the clone test and name the test that reads them.
 
-- **Meta Advantage+ Creative** (auto-generates background variations, image expansion, video versions) — give it a strong source asset, not all the variations yourself
-- **TikTok Symphony** (TikTok's generative ad creative tool, 2024) — Creative Center + script generation
-- **Google Asset Studio** — automated asset generation for PMax campaigns
-- **Midjourney / Flux / Ideogram** for static creative; **Runway / Kling / Veo / Seedance** for video shots
-- **Foreplay / Motion App / Atria** for creative analytics + competitive ad library tracking
+**Large asks** ship in waves: wave 1 complete and launch-ready (the concepts answering the first learning question), then a queue of later waves, each with what releases it; never skeletons.
 
-Tradeoff: generative speeds up *iteration*, not *strategy*. Brief still has to be human; without an angle, generative just produces faster slop.
+**Calibrate** in one batch, only what changes the output, each question with its default; unable to ask, apply the defaults, list them in the Header, return the questions. Block only on a missing offer or a restricted category with unknown rules.
+- *Objective and metric*: conversions at target CPA; reach or awareness: cost per completed view and hold rate.
+- *Target CPA (or ROAS), spend, conversions per week*: CPA = order value ÷ ROAS; test budget 10–20% of spend; weekly conversions ≈ weekly spend ÷ target CPA.
+- *The optimizer's event vs the outcome judged, and its lag*: they differ when the event fires before quality or payment is known (lead, trial, install, discounted first order); judge the matured outcome (Stage 4).
+- *What runs and has won; production capacity*: cold start, 6 executions (3 concepts × 2).
+- *Delivery*: automated (Advantage+, PMax, Smart+): concepts span personas; manual targeting (titles, keywords) fixes the audience, so concepts span beliefs.
+- *Category, disclosures, evidence, brand mandatories*: inferred from the product and page, stated in the Header; gaps go in the Claims log. Restricted categories (housing, employment, financial, health, political…) limit the concepts: read `references/ad-policy-compliance.md` first.
 
----
+**Goal arithmetic.** When targets conflict (more spend at a lower CPA, a CPA never hit, a deadline inside the outcome's lag), show what creative must deliver: CPA = CPM ÷ (1,000 × CTR × CVR), so x% off CPA at flat CPM needs CTR × CVR × 1 ÷ (1 − x), and added spend usually lifts CPM. If no past winner moved those rates that far, say who else must.
+
+**Done**: the Self-Review passes; every material finding reaches the deliverable; every test judges the business outcome by rules with stated odds.
+
+## Stage 1 — Evidence before ideas
+
+1. **The account's winners**: top ads by the judged outcome per dollar (by spend share only when the optimizer's event is that outcome), tagged, each with one line on why it won.
+2. **Customer words** (default: public reviews and the landing page, labelled hypotheses): 3-star reviews hold desire and objection together; "what almost stopped you?" answers, tickets and sales calls add objections. Top objections become product-aware concepts; before-state phrases become hooks.
+3. **Ad libraries** (if browsing is available; else ask): a competitor ad live 30–60+ days in several variants is a probable winner (*break:* big brands run ads regardless); they show saturated messages, not scripts.
+
+Working output, not delivered: 3–6 persona-moments, each with a belief and evidence.
+
+## Stage 2 — Concepts
+
+- **Concept** = who (one persona in one moment, which fixes the awareness stage) + the belief or desire sold + proof (show > cite > claim). **Execution** = format × style × creator × hook.
+- **Ad name**: `{date}_{concept}_{persona}_{belief}_{format}_{style}_{hook}_{creator}_v{n}`, passed in `utm_content` (Meta: `{{ad.name}}`) so results join to cohorts and learnings roll up by tag.
+
+**Explore** (cold start, a fatigued persona, a new market): concepts differ in who stops, the belief sold, or how it looks, spread across awareness stages (a pain, a mechanism, an objection). **Iterate** (a proven concept): one execution element at a time, cheapest first (ladder: `references/creative-testing.md`).
+
+- **Clone test**: hooks that could trade places without changing who stops are one concept. *Break:* iterate mode, on purpose.
+- **One belief per ad.** *Break:* retargeting ads that answer 2–3 objections in sequence.
+- **Cheapest credible execution first**: a static, lo-fi video or screen recording proves a belief before anyone pays for a shoot. *Break:* beliefs only motion can carry.
+- **Qualify** with price or "not for X" when lead quality matters, accepting the lower CTR (*break:* a volume-starved funnel where sales filters cheaply); otherwise price leads only when it beats the viewer's alternative.
+- **B2B cold**: most buyers are out of market; judge reach into target accounts and later pipeline, not CTR. *Break:* in-market retargeting.
+- **Permutation matrices** only for catalog ads, localization and resizes of winners.
+
+> Clones: "Tired of invoicing?" / "Invoicing eating your Fridays?" (same freelancer, same belief). Distinct: a freelancer chasing a client 60 days late (paid without the awkward email; reminder screen recording); an agency owner at month-end (invoices built from tracked hours); a first-year founder (tax set aside as you go; demo).
+
+## Stage 3 — Write
+
+- **Three tracks**: the first frame (inside the safe zone), the on-screen text and the VO each carry the hook alone.
+- **Hooks from the palette** (`references/hook-science.md`): draft five or more per concept across three or more archetypes, at least one in a native format for each platform it runs on; keep the best 3–5. Shapes vary; the person and belief don't.
+- **Promise and payoff**: the hook's promise is kept within ~5 s (static: the next line), in words no competitor could run, and the brand lands natively by then: product in hand, spoken name or a distinctive asset; never a logo bumper, never stripped out to look organic. *Break:* entertainment formats may pay off later, but the brand still lands by ~5 s.
+- **Claims log**: every factual claim (number, rating, ranking, speed, saving, result, "only", "#1", "clinically") needs evidence on file, logged with source and date: the underlying data, not a page or deck repeating it. The advertiser's own claims count: request it or tag `[SOURCE NEEDED: what]`; recalled or secondhand: `[VERIFY: claim]`. Unsubstantiated at launch: cut or qualify. Comparative claims are dated too; competitor facts via competitor-pages' claims reference, if available.
+- **Compliance at the line** (detail: `references/ad-policy-compliance.md`):
+  - Never link "you" to a sensitive attribute (health, finances, race, religion, sexuality…): "Diabetes-friendly meals, delivered", not "Managing your diabetes?"; roles are fine.
+  - Special ad categories (housing, employment, financial): the creative says who the offer is for, never preferring or excluding a group.
+  - Results shown are typical, or the generally expected result is disclosed beside them ("results not typical" alone fails).
+  - No testimonial from anyone who does not exist (AI avatars, actors posing as customers) or never used the product; paid, gifted or employed creators disclose it in the creative.
+  - Synthetic people, voices and realistic scenes are labelled as platform and law require; no fake UI or buttons; urgency and "was" prices only when real; trial and renewal terms beside the offer.
+  - A live ad that breaks any of these: a Handoff to pause it now, ahead of new work.
+- **Transform, don't resize**: only the concept travels across platforms and languages (how: `references/platform-specs.md`).
+- **Asset sets** (RSA, PMax and Demand Gen asset groups, Meta's flexible format): every asset reads alone in any order; one concept per asset group or flexible ad, or no one can tell which belief won; pin only what legal or the brand fixes (`references/copywriting-frameworks.md`).
+- **Auto-generation** (Google's text customization, Meta's Advantage+ creative enhancements) rewrites copy from your page and assets; assume it is on until checked per ad. In a restricted category, or when the page says what you would not run, turn it off for those ads (a settings Handoff before launch) or review every output; the page's fix is a Handoff.
+- **Creator content** runs from the creator's handle (partnership ads, Spark Ads) when rights allow, with audio licensed for ads.
+
+## Stage 4 — Test plan
+
+**Judge the outcome, not the allocation.** Name each ad set's optimization event and the outcome the business judges. When they diverge, the optimizer funds whichever ad wins the event, often through cheap converters who never qualify, pay or return; spend share and event CPA there prove nothing. Test in protected cells (optimized on the deepest event with enough volume) judged on the true outcome per dollar, graduate winners into the scaling ad set, and hand the event fix (a deeper or value event, qualified outcomes sent back) to the media buyer. *Break:* the event converts to the outcome at similar rates across ads (per ad, from the CRM or log): judge it, spot-check the outcome.
+
+**Structure** (tools per platform: `references/creative-testing.md`):
+- One concept per cell, equal budgets, one version per person where the tool allows. Cells answer the learning questions; contested preferences (polished or lo-fi, price in the hook or not) and open questions become cells, not arguments.
+- Every round has a concurrent control: the current best ad, unchanged, in its own cell; iterations change one element against it. *Break:* cold start (nothing proven): the target CPA stands in for the control, and each line below needs half its conversions (≥28% at ~15); the round's winner becomes the next control.
+- Launch straight into a scaling ad set only when its event is the judged outcome and it already spreads spend across ≥5 distinct concepts; an ad it won't fund is then a weak negative. Elsewhere, new ads the incumbents starve are untested, not losers.
+
+**What the budget can detect.** Expected conversions per cell = cell budget ÷ the control's CPA. Head-to-head, at ~10% odds of promoting an ad merely equal to the control:
+
+| Conversions per cell | Promote when CPA beats the control's by | Catches, ~3 times in 4, a true CPA cut of |
+|---|---|---|
+| ~15 | ≥37% | ~50% |
+| ~30 | ≥28% | ~40% |
+| ~60 | ≥21% | ~30% |
+| ~165 | ≥13% | ~20% |
+
+New concepts can differ that much; hook tweaks rarely do. When the budget can't reach the expected gap, say so and choose fewer cells, a longer window, an earlier event shown to predict the outcome, or leading indicators alone for iterations; never more cells with less spend each. Under ~50 conversions a week: the small-account methods (`references/creative-testing.md`).
+
+**Rules, set before launch**, each with its odds of a wrong kill or promote (defaults labelled; method: `references/creative-testing.md`):
+- **Triage** on leading indicators: after ~1,000 impressions (video) or ~30 expected clicks at the median CTR (static), kill an execution with hook rate or CTR under half the account median for its format and placement; they kill duds, never crown winners. *Break:* qualifying hooks (price, "not for X"): judge cost per qualified result.
+- **Outcome kill**: zero conversions by 2.5× target CPA kills ~8% of at-target ads; "≤1 conversion at 2×" kills 41%.
+- **Promote** only at the read date, on outcome per dollar against the control, past the table's line. Its ~10% is per cell, ~20–35% for a 3–5-cell round: rerun a winner before a costly bet (stricter lines: `references/creative-testing.md`). Ahead of the control but short of the line: provisional, a second round, never straight to scale; level or behind: retire as inconclusive.
+- **Read dates**, whole weeks, fixed before launch: triage, outcome, and a matured-cohort read when the outcome lags; younger cohorts stay out.
+- **After a non-creative shift** (CPM, price, site, tracking, season): read against the concurrent control, not the pre-shift target.
+- **Kill executions fast, concepts slowly**: retire a concept only after 2–3 distinct executions fail. *Break:* a concept with no customer evidence behind it.
+- **Offer ads, harvesting wins, reach tests**: `references/creative-testing.md`.
+
+**Win condition**: outcome per dollar beats the concurrent control past the promote line, on matured cohorts; spend share is a delivery observation, never the win. Most new concepts lose; a winless round with a written why is normal.
+
+## Diagnose
+
+Judge each ad against its own peak, the account's trailing 60–90-day median for its placement and format (a published benchmark only without history, labelled) and the platform's fatigue flag; never a calendar. One cause rarely explains a whole change: run every step before naming one.
+
+1. **Locate**: when it changed, where (ads, placements, segments, new vs returning), and what else changed then (budget, event, price, site, tracking, policy, season); a step on one date points there first.
+2. **Decompose**: cost per judged outcome = CPM ÷ (1,000 × CTR × CVR × event-to-outcome rate); log changes add, so each factor's share is its log change over the cost's.
+3. **Mix or rate**: recompute this period's CPA at last period's spend mix; the gap is mix (spend moved to weaker ads, placements or audiences), the rest is rate change.
+4. **Stage per segment**: where the change sits, which stage failed (hook, hold, CTR, CVR, outcome quality).
+5. **Controls**: ads launched after the change; if they drop too, it is the environment, not wear-out.
+6. **Maturity**: drop cohorts whose outcome hasn't matured; lags inflate recent CPA.
+
+> CPA +42% = CPM +15%, CTR −5%, CVR −15%: CPM explains ~40%, CTR ~15%, CVR ~45%. Creative can win back the CTR share and the part of CVR that is message match; the CPM share is the auction's only if fresh ads' CPMs rose too.
+
+Signatures: **fatigue** is one ad below its own peak on CTR or hook rate, CVR holding, frequency up, fresh ads fine (a new concept for that persona, not a re-skin); **marginal reach**, CPA up after a budget rise with per-ad CTR flat (the media buyer's call; only new personas widen reach); **proxy drift**, event cost steady while outcome quality falls (event fix to the media buyer; qualifying concepts); **outside the ad**, CTR steady while CVR falls (a Handoff). CPM up on every ad, fresh ones too, is the auction: say plainly new creative won't fix it. If the creative is the cause, the funnel in `references/hook-science.md` locates the weak part.
+
+## Output
+
+Budgets size the record, never the analysis: run every check the job implies first, and state each material finding, one line if the job is small. A block with more decisions than its budget (causes, waves) adds a line per extra decision; cut repetition, never a finding. Budgets count prose, not ad copy, scripts or tables. The blocks are a menu: produce those Stage 0 names; omit the rest, headings included.
+
+**Header** (≤80 words; every job): category and disclosures · defaults assumed · open questions · launch blockers, one line each.
+
+**Handoffs** (a line each, ordered by when): what and why · owner by role (site owner, media buyer, legal, analytics) · the exact change · when: before launch, before the first read, or in parallel.
+
+**Program** (≤300 words, plus a line per queued wave): persona × belief grid, evidence per cell · learning questions in the order rounds answer them · new ads a month from demand (winners needed, lifespan, hit rate) against budget and production · new vs iterated share · peak windows · production mix, cost per usable ad (`references/creative-testing.md`) · the queue.
+
+**Concept card** (≤200 words of prose each), headed `### {concept tag}`: who & moment · belief · proof (Claims log rows) · hooks, each as frame / on-screen / VO · video script (`| Time | Shot | On-screen | VO |`); static: what the eye lands on first, then the on-image line · CTA · message match (the page headline it needs; a gap is a Handoff).
+
+**Export table** (outside budgets): `| Ad name | Placement | Field | Text | n/visible, n/max |`, then each ad's ratios; safe zones once per ratio.
+
+**Asset batch or set** (≤100 words of notes): every line with (n/limit); per image ad, the on-image line and what the eye lands on first; RSA and PMax: headlines grouped by message type, then descriptions and paths; pins with their reasons. Variations of an unproven ad: a who · belief line above each ad.
+
+**Variant family** (≤60 words plus one line per variant): why the winner won; per variant, what changes and what stays.
+
+**Test plan** (≤200 words, plus a cell table, control first: `| Cell | Hypothesis | Budget | Expected conversions | Detectable gap |`): optimizer check and the structure it implies · rules with their odds (promote: one-sided α 0.10 per cell, ~75% power) · read dates · win condition · graduation · where results are logged; it is the readout's design record.
+
+**Diagnosis** (≤200 words, +40 per cause beyond two): Diagnose steps 1–6 in brief · per cause: confirming check, action, owner · what creative alone can fix.
+
+**Claims log** (table, outside budgets): `| Claim | Ads | Evidence on file (what, source, date) | Status: on file · requested from [role] · qualified as … · cut |`.
+
+**Adaptation notes** (≤60 words per target): what changed and why, beside the rewritten fields.
+
+**Creator brief** (≤150 words): persona, belief, must-say and must-not-say, 3 hooks, shot list, specs and safe zones, licensed audio, usage term, disclosure.
+
+## Self-Review
+
+Before returning, check and fix:
+1. Every limited field shows its count and fits, counted as the platform counts (Google Ads: each CJK character is 2).
+2. Explore concepts and variations of unproven ads pass the clone test; each concept's hooks span ≥2 archetypes and a native format per platform; every promise pays off within ~5 s or the next line.
+3. Every factual claim, the advertiser's own included, has evidence on file in the Claims log, or is tagged, qualified or cut; every ad passes each Stage 3 compliance bullet.
+4. Asset sets read alone in any order, pins only where required, one concept per group; each concept ships in every ratio its placements render; image ads carry the hook in the on-image line; video has captions, safe-zone text, self-sufficient tracks and the brand natively by ~5 s.
+5. Test plans: the optimizer's event checked, a concurrent control (cold start: the target), each rule's odds (promote: per round too), the detectable gap, read dates (matured cohorts for lagging outcomes), a win on outcome per dollar, never spend share.
+6. Diagnoses: all six steps shown, creative's share apart from the rest.
+7. Nothing edited outside the ads unasked; every outside need is a Handoff with owner, exact change and timing; no skill names, method labels (framework, awareness stage, "angle") or self-review tallies in the deliverable.
+8. **Footprint**: every block within its word budget or stated per-decision allowance; no material finding cut to fit; nothing the job's Stage 0 row did not ask for.
 
 ## Reference Files
 
-| Scenario | Reference |
-|----------|-----------|
-| Copywriting frameworks with templates and examples | `references/copywriting-frameworks.md` |
-| Hook categories, formulas, and benchmarks | `references/hook-science.md` |
-| Creative testing methodology and fatigue management | `references/creative-testing.md` |
-| Platform specs, character limits, image dimensions | `references/platform-specs.md` |
-| AI tools for image/video/audio generation | `references/generative-tools.md` |
-| Ad policy, FTC disclosure, platform/vertical compliance | `references/ad-policy-compliance.md` |
-
----
-
-## Ad Types Quick Reference
-
-### Search Ads (Google/Bing)
-- **Format**: Headlines (30 chars) + Descriptions (90 chars)
-- **Key**: Match user search intent exactly
-- **Framework**: Direct benefit or offer (Product/Most Aware audience)
-
-### Social Feed Ads (Meta/LinkedIn)
-- **Format**: Image/video + Primary text + Headline + Description
-- **Key**: Stop the scroll with visual + hook in first line
-- **Framework**: PAS or BAB for Problem/Solution-Aware; SSS for UGC
-
-### Video Ads (TikTok/Reels/YouTube)
-- **Format**: 6s bumper, 15s, 30s, 60s
-- **Key**: Hook in first 3 seconds, value by 5s, CTA at end
-- **Framework**: SSS for UGC; AIDA for polished; PAS for pain-angle
-
-### Carousel Ads
-- **Format**: 2-10 cards, sequential story
-- **Key**: Each card must stand alone AND advance the narrative
-- **Framework**: BAB across cards (Card 1: Before, Cards 2-3: After, Last: Bridge)
-
-### Display Ads
-- **Format**: Banner images in standard sizes
-- **Key**: Simple message, clear CTA, brand visible
-- **Framework**: Direct offer or single benefit claim
-
-### Catalog / Dynamic Product Ads (Meta Advantage+ Shopping/DPA, Google Shopping)
-- **Format**: Feed-driven — the platform assembles the ad from your product catalog
-- **Key**: Optimize feed copy (product titles/descriptions), image quality, and overlays (sale / free-shipping badges); test dynamic vs single-product formats
-- **Framework**: Direct benefit + price/offer; proof via in-feed reviews/ratings
-
-### Retail Media (Amazon Ads, Walmart Connect, Instacart)
-- **Format**: Sponsored Products, Sponsored Brands (headline + logo + image/video), Sponsored Display, Brand Store / A+ content
-- **Key**: Intent-driven and conversion-proximate (closer to Google Search than social) — keyword/title relevance + tight-headline copywriting
-- **Framework**: Direct benefit/offer; Product/Most-Aware audiences
-
----
+- `references/copywriting-frameworks.md`: writing a feed, video, search, carousel or display ad.
+- `references/hook-science.md`: before writing hooks (archetypes, native formats); hook metrics; the funnel.
+- `references/creative-testing.md`: any test plan or program.
+- `references/platform-specs.md`: always, before export; adapting across platforms.
+- `references/generative-tools.md`: producing with AI.
+- `references/ad-policy-compliance.md`: restricted-category, creator, testimonial or AI-made ads; claims and evidence.

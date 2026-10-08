@@ -1,194 +1,44 @@
-# Cryptographic Failures
+# Cryptography
 
-> OWASP: A04 (Cryptographic Failures)
+> OWASP: A04 Cryptographic Failures. Method, severity and the output contract live in SKILL.md.
 
----
+A weak primitive is a finding only when it is used **for security**. An MD5 ETag, a CRC checksum, or `Math.random()` for a cosmetic value is not. Password *policy* and reset live in `auth.md`; HSTS and TLS headers in `misconfiguration.md`.
 
-## Table of Contents
+## Password & Token Hashing
 
-1. [Password & Credential Hashing](#password--credential-hashing)
-2. [Encryption (At Rest)](#encryption-at-rest)
-3. [Encryption (In Transit)](#encryption-in-transit)
-4. [Key Derivation](#key-derivation)
-5. [Random Number Generation](#random-number-generation)
-6. [Digital Signatures & Verification](#digital-signatures--verification)
-7. [Certificate Management](#certificate-management)
-8. [Homegrown Crypto Detection](#homegrown-crypto-detection)
+**Finding when:**
+- A fast or plain hash stores passwords: `md5`/`sha1`/`sha256(password)`, a single-round digest, a custom hash, or reversible encryption (AES) instead of a password hash (CWE-916).
+- A global or shared salt, or no salt (adaptive hashes salt per password automatically).
+- A raw password over 72 bytes reaches bcrypt with no handling: bcrypt truncates at 72 bytes and at the first NUL. Fix: cap input at 72, or pre-hash as `bcrypt(base64(hmac-sha384(password, pepper)))` with the pepper stored outside the DB, never a plain `sha*` pre-hash (null-byte and password-shucking risks). pyca/bcrypt ≥5.0 raises `ValueError` past 72 bytes; below that it truncates silently.
+- bcrypt over a **composite** input (a cache key of `id + username + password`): the 72-byte truncation drops the password portion (the Okta 2024 class). High or worse.
+- `==`/`===` instead of a constant-time compare for a secret or MAC (CWE-208).
 
+**Not a finding:** a high-entropy random API token (≥128-bit) stored as an unsalted SHA-256 (fast hashing suits secrets that can't be brute-forced, unlike passwords); bcrypt at cost ≥10; `secrets.compare_digest` or `crypto.timingSafeEqual`; a fresh per-call nonce.
 
-## Password & Credential Hashing
+Parameter floors (OWASP Password Storage, verified 2026-10-08; re-check the current cheat sheet before citing a number): Argon2id `m=19456,t=2,p=1`; scrypt `N=2^17,r=8,p=1`; bcrypt cost ≥10; PBKDF2-HMAC-SHA256 ≥600,000. Prefer Argon2id for new systems.
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Argon2id (preferred) or bcrypt (OWASP minimum cost 10; prefer ≥12 where login latency allows — 10–11 is a hardening note, not a finding) for passwords | GPU/ASIC resistance | CWE-916 |
-| bcrypt input length handled — pre-hash (e.g. base64(SHA-256)) passwords >72 bytes; bcrypt silently truncates at 72 bytes / first NULL byte (Argon2id/scrypt have no such limit) | Silent password weakening, hash collisions | CWE-916 |
-| NEVER MD5, SHA1, SHA256 alone for passwords | No key stretching, rainbow tables | CWE-916 |
-| Unique salt per password (auto-handled by bcrypt/argon2) | Pre-computation attacks | CWE-916 |
-| API tokens (high-entropy random ≥128-bit) hashed with SHA-256 before storage — fast unsalted hash is fine since tokens aren't brute-forceable, unlike low-entropy passwords | Token theft from DB | CWE-312 |
-| Timing-safe comparison for all credential checks | Timing side-channel | CWE-208 |
+## Symmetric Encryption
 
-**Patterns to catch:**
-- `md5(password)`, `sha1(password)`, `sha256(password)` for password storage
-- `hashlib.md5`, `crypto.createHash('md5')` used for security purposes
-- Custom hash function or "encryption" for passwords
-- Same salt for all users (global salt)
-- String comparison (`===`, `==`) instead of `crypto.timingSafeEqual` for tokens
-- Password stored with reversible encryption (AES) instead of hashing
-- Raw password >72 bytes passed to bcrypt without pre-hashing (excess silently ignored); binary digest with embedded NULL bytes fed to bcrypt
+**Finding when:**
+- ECB, unauthenticated CBC, or a homegrown, deprecated or undersized primitive guarding data (XOR, Base64 as encryption, DES, RC4, RSA under 2048 bits; CWE-327): use a vetted library, an AEAD for data. A hardcoded key (CWE-321), a password used as a key with no KDF, or one key for both encryption and authentication.
+- A static or zeroed IV or nonce, a nonce reused under one key, or a counter nonce that restarts with the process or is shared across instances. For GCM and Poly1305, reuse is catastrophic: it leaks the XOR of plaintexts *and* recovers the auth key, enabling forgery (CWE-323). A random 96-bit GCM nonce used beyond ~2³² messages per key risks a birthday collision: use XChaCha20-Poly1305 or AES-GCM-SIV when uniqueness can't be guaranteed.
+- Node's `crypto.createCipher()`, removed in Node 22 (weak key derivation): if present, the service also runs an old Node, so flag the runtime too.
 
----
+**Not a finding:** any sound AEAD (AES-GCM, ChaCha20-Poly1305) with unique nonces, AES-128 and AES-256 alike.
 
-## Encryption (At Rest)
+## Randomness, Tokens & Keys
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| AES-256-GCM or ChaCha20-Poly1305 for symmetric encryption | Authenticated encryption required | CWE-327 |
-| NEVER ECB mode (patterns visible in ciphertext) | Pattern preservation | CWE-327 |
-| Unique IV/nonce per encryption operation | For GCM/Poly1305, nonce reuse is catastrophic: leaks plaintext XOR AND recovers the auth key → ciphertext forgery (2016 "forbidden attack"), not just confidentiality loss | CWE-323 |
-| Encryption keys stored in KMS/HSM, not in code or config files | Key exposure | CWE-321 |
-| Key rotation mechanism exists and is exercised | Compromised key longevity | CWE-324 |
-| Sensitive database columns encrypted at application level | DB breach protection | CWE-311 |
+**Finding when:**
+- `Math.random()`, `random.random()`, `rand.Intn` or a predictable seed (`time.Now()`, PID) used for a token, session ID, nonce or reset secret (CWE-338), or a security token short enough to guess (CWE-334). Use the platform CSPRNG (`crypto.getRandomValues`, `secrets`, `crypto/rand`, `SecureRandom`) with ≥128 bits.
+- A UUID used as a secret (RFC 9562 §8: UUIDs MUST NOT be used as security capabilities): v1 leaks time and MAC, v7 creation order, and a v4 from a non-CSPRNG library is guessable (CWE-340).
 
-**Patterns to catch:**
-- `AES-ECB` mode anywhere: `cipher = AES.new(key, AES.MODE_ECB)`
-- `DES`, `3DES`, `RC4`, `Blowfish` (deprecated algorithms)
-- Hardcoded encryption key in source code: `key = "my-secret-key-123"`
-- IV/nonce set to static value or zeros: `iv = b'\x00' * 16`
-- Counter-based nonce that resets on process restart, or a random 96-bit GCM nonce used beyond ~2³² messages per key (birthday collision) — use XChaCha20-Poly1305 or a SIV mode (AES-GCM-SIV) if uniqueness can't be guaranteed
-- Same key used for encryption and authentication
-- Encryption without authentication (AES-CBC without HMAC)
-- Key derived from password without proper KDF (see Key Derivation below)
-- `crypto.createCipher()` in Node.js (deprecated, weak key derivation)
+**Not a finding:** a CSPRNG-backed UUIDv4 token (`crypto.randomUUID()`, Python `uuid4()`; 122 random bits): at most `Hardening:`. An unguessable ID offered *alongside* a real ownership check: the check is the control, never the ID (`auth.md`).
 
----
+## Signatures & TLS
 
-## Encryption (In Transit)
+**Finding when:**
+- Signed data trusted before the signature is verified, or a signature covering only part of the payload (CWE-347); JWT verification with no algorithm allowlist (`auth.md`); an HMAC compared non-constant-time.
+- TLS verification disabled on a production path (any client's verify-off flag or env var) or a self-signed cert accepted there; plain HTTP to an external service; TLS 1.0 or 1.1 allowed (CWE-295, CWE-319, CWE-757).
+- A private key file left world-readable (`chmod 644 *.key`, CWE-732); a committed key is a secret (`supply-chain.md`).
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| TLS 1.2+ enforced (TLS 1.0, 1.1 disabled) | Known protocol attacks | CWE-326 |
-| Strong cipher suites only (no RC4, DES, NULL, EXPORT) | Weak cipher downgrade | CWE-326 |
-| Certificate validation enabled (never disabled) | MITM attacks | CWE-295 |
-| HSTS header with long max-age (≥31536000) | Protocol downgrade | CWE-319 |
-| Internal service communication also encrypted | Lateral movement after breach | CWE-319 |
-| Certificate pinning for mobile apps (when appropriate) | CA compromise | CWE-295 |
-
-**Patterns to catch:**
-- `verify=False` (Python requests), `rejectUnauthorized: false` (Node.js)
-- `InsecureSkipVerify: true` (Go), `@insecure` annotation
-- `NODE_TLS_REJECT_UNAUTHORIZED=0` environment variable
-- HTTP URLs for API calls to external services (no TLS)
-- Self-signed certificates accepted in production
-- TLS configuration allowing SSLv3 or TLS 1.0
-- Missing HSTS header or very short max-age
-
----
-
-## Key Derivation
-
-**Preference order (2026):** Argon2id > scrypt > PBKDF2. Use Argon2id when available; PBKDF2 only when FIPS-140 compliance forces it.
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Argon2id (preferred): OWASP floor `m=19456 (19 MiB), t=2, p=1` (equal-defense alts: m=12288/t=3/p=1, m=9216/t=4/p=1, m=7168/t=5/p=1); harden toward `m≥64 MiB, t≥3` where capacity allows | Memory-hard, GPU-resistant | CWE-916 |
-| scrypt with `N=2^17, r=8, p=1` (acceptable alternative) | Memory-hard | CWE-916 |
-| PBKDF2-HMAC-SHA256 ≥600,000 iterations (legacy / FIPS only) | Brute force resistance | CWE-916 |
-| HKDF for deriving multiple keys from shared secret | Proper key separation | CWE-327 |
-| High entropy salt (≥128 bits, cryptographically random) | Pre-computation resistance | CWE-916 |
-| Parameters reviewed annually against OWASP cheatsheet | Hardware advances | CWE-916 |
-
-> **Last reviewed against OWASP Password Storage Cheatsheet:** 2026-05. Current OWASP-recommended PBKDF2-SHA256 minimum is 600,000 iterations.
-
-**Patterns to catch:**
-- PBKDF2 with <600,000 iterations (SHA-256)
-- Direct use of password as encryption key: `AES(password, data)`
-- Single-round hash as key derivation: `key = sha256(password)`
-- Salt shorter than 128 bits or non-random salt
-- Same derived key used for multiple purposes without HKDF expand step
-
----
-
-## Random Number Generation
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Cryptographic RNG for all security values | Predictable outputs | CWE-338 |
-| `Math.random()` NEVER used for security | Not cryptographic, predictable | CWE-330 |
-| Sufficient entropy for tokens (≥128 bits, ideally 256) | Brute force feasibility | CWE-334 |
-| UUIDs use v4 (random) for security purposes, not v1 (time-based) | Predictable UUIDs | CWE-330 |
-
-**Patterns to catch:**
-- `Math.random()` for tokens, IDs, secrets, session IDs, nonces
-- `random.random()` (Python) for security (use `secrets` module)
-- `rand.Intn()` (Go) without `crypto/rand` for security values
-- Short tokens: `Math.random().toString(36)` (only ~48 bits entropy)
-- UUID v1 used for session tokens (contains timestamp and MAC address)
-- Seed from predictable source (`time.Now()`, process ID)
-- Custom random function ("roll your own")
-
-**Correct alternatives:**
-- JavaScript: `crypto.randomUUID()`, `crypto.getRandomValues()`
-- Python: `secrets.token_hex()`, `secrets.token_urlsafe()`
-- Go: `crypto/rand.Read()`
-- Java: `SecureRandom`
-- Ruby: `SecureRandom.hex`
-
----
-
-## Digital Signatures & Verification
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| RSA keys ≥2048 bits (ideally 4096) | Key factoring | CWE-326 |
-| ECDSA with P-256 or Ed25519 (preferred over RSA for new systems) | Modern standards | CWE-327 |
-| Signature verified before trusting signed data | Unsigned data accepted | CWE-347 |
-| No signature algorithm confusion (JWT "none" alg) | Algorithm downgrade | CWE-327 |
-| Webhook/callback signatures verified with constant-time comparison | Forged payloads | CWE-345 |
-
-**Patterns to catch:**
-- RSA key <2048 bits
-- DSA keys (deprecated, use ECDSA or Ed25519)
-- Signature verification optional or skipped on error
-- JWT without algorithm whitelist: `jwt.verify(token, key)` without `algorithms` param
-- HMAC comparison with `==` instead of constant-time function
-- Signature covers only part of the payload (unsigned fields can be modified)
-
----
-
-## Certificate Management
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Certificates auto-renewed (Let's Encrypt, cert-manager) | Expiration outage | CWE-298 |
-| Revocation strategy appropriate to issuer: short-lived certs and/or CRLs, plus OCSP stapling where the CA still issues OCSP URLs (note: Let's Encrypt ended OCSP 2025-08-06, now CRL-only) | Compromised cert usage | CWE-299 |
-| Wildcard certificates scoped appropriately | Over-broad trust | CWE-295 |
-| Private keys have restricted file permissions (0600) | Key theft | CWE-732 |
-| No self-signed certificates in production | Trust chain validation bypass | CWE-295 |
-
-**Patterns to catch:**
-- Certificate files with world-readable permissions (`chmod 644 server.key`)
-- Private keys stored in git repository (even `.gitignore`d, check history)
-- Self-signed certificates in production deployment configurations
-- Certificate lifetime exceeding the CA/Browser Forum maximum — 200 days (since 2026-03-15), dropping to 100 days (2027-03-15) and 47 days (2029-03-15); any config assuming the old 398-day ceiling is a renewal-automation gap
-- No automated certificate renewal process
-
----
-
-## Homegrown Crypto Detection
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| No custom encryption algorithms | Unaudited, likely broken | CWE-327 |
-| No custom hash functions for security | Not cryptographically proven | CWE-328 |
-| No XOR-based "encryption" | Trivially reversible | CWE-327 |
-| No Base64 treated as encryption | Encoding is not encryption | CWE-311 |
-| Standard well-maintained libraries used (libsodium, OpenSSL, crypto) | Audited implementations | CWE-327 |
-
-**Patterns to catch:**
-- Custom `encrypt()` function that XORs input with a key
-- Base64 encoding called "encryption" or used to "protect" sensitive data
-- ROT13, Caesar cipher, or substitution cipher for any security purpose
-- Custom padding implementation (use PKCS7 from library)
-- Re-implementation of standard algorithms (custom AES, custom SHA)
-- "Obfuscation" passed off as encryption (string reversal, character shifting)
-- `btoa()` / `atob()` used to "secure" data
+**Not a finding:** certificate lifetimes and renewal (operations); mobile certificate pinning (MASVS, out of scope).

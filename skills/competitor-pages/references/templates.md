@@ -1,197 +1,150 @@
 # Competitor Page Templates
 
-Copy structures and section templates for each competitor page format.
-
-## Table of Contents
-
-1. [Filling These Templates So They Get Cited](#filling-these-templates-so-they-get-cited)
-2. [Format 1: [Competitor] Alternative (Singular)](#format-1-competitor-alternative-singular)
-3. [Format 2: [Competitor] Alternatives / Best [Category] Tools (Roundup)](#format-2-competitor-alternatives--best-category-tools-roundup)
-4. [Format 3: You vs [Competitor]](#format-3-you-vs-competitor)
-5. [Format 4: [A] vs [B] (Third-Party Comparison)](#format-4-a-vs-b-third-party-comparison)
-6. [Format 5: Switching from [Competitor] (Migration Guide)](#format-5-switching-from-competitor-migration-guide)
-7. [Section Copy Patterns](#section-copy-patterns)
-8. [Meta Tags Template](#meta-tags-template)
-9. [Schema Templates](#schema-templates)
-
-> **Placeholders:** Fill every bracketed placeholder before publishing. `[Year]` = the current year (2026) — year-stamped titles only help time-sensitive roundup / "which is better" listicles, and they decay, so re-stamp the year **and** refresh the underlying content each January, or omit the year if you can't commit to refreshing. Mark data you don't have yet with `[TODO: ...]` (see `content-architecture.md` → Handling Incomplete Data).
-
----
+Sections are a menu: omit what doesn't apply to this buyer, heading included.
 
 ## Filling These Templates So They Get Cited
 
-A filled-in skeleton ranks; a filled-in skeleton **built from liftable blocks** also gets quoted in AI answers. The difference is entirely in how you write the slots, so apply these five rules to every template below. Rationale and evidence: `content-architecture.md` → Writing for AI Answer Engines.
+Retrieval is not citation, and citation is not recommendation: answer engines lift named, specific, fair sentences and discount self-promotion, and review-style answers mostly cite third-party sites (hence the handoff's off-site follow-ups). So every slot below must read alone, to a skimming buyer and to an engine quoting one sentence:
 
-1. **The TL;DR is the answer, not a trailer.** 40-60 words. Name both products. Carry at least one hard number. If a reader could stop there and act, it is right.
+1. **The TL;DR is the answer, not a trailer.** Name both products. Carry at least one hard number. If a reader could stop there and act, it is right.
 2. **Every bracketed heading becomes a question a buyer asks.** `[Category 1: e.g., Features]` is a slot, not a heading — ship "Which handles [job] better?", not "Detailed Comparison". First sentence under it is the answer.
 3. **Claim sentences name products; connective prose can use "we".** "[Your Product] imports [Competitor] projects in one step" survives being lifted; "we import everything automatically" does not.
-4. **Every comparison slot takes a number and a source.** A worked total for a named team size, a migration time range, a plan price with a link to the competitor's own pricing page. Adjectives are not comparisons.
+4. **Every comparison slot takes a number and a source.** Prices at the page's team sizes, a migration time range, a plan gate with a link to the competitor's own docs. Adjectives are not comparisons.
 5. **Restate the decisive table rows in prose.** Two or three sentences under each table, products named.
+
+**Budgets** are drafting ceilings, not ranking rules: exceed one only where the pages that rank and get cited for this query are deeper on substance, never to pad. TL;DR 40–60 words · question sections 60–180 words, answer first · tables at most 12 rows, only rows this buyer weighs · whole page: the budget in its template header.
+
+**Trust line** under every H1: `By [Author, role] · Updated [date] · [Competitor] prices and features checked [date] from their public pages`, the oldest check date among the page's sources (unchecked: see Markers). **Footer** closing every page, below the sources block: `[Competitor names] are trademarks of their owners; [Your Product] is not affiliated with them.`
+
+**Price slot**, in every template with prices: each side's cheapest plan meeting the stated must-haves at 3–4 team sizes (2–3 in a multi-vendor table) covering both sides of every crossover (SKILL.md Stage 2), one row per billing basis whose crossover differs, captioned `List prices in [currency], checked [date]`; then one sentence saying where each side costs less, naming every crossover: "[Competitor] costs less below [N] seats billed annually; from [N] seats [Your Product] does, $X versus $Y a month at [M]." [M] is the median deal size against [Competitor] (sales notes), else the range's midpoint. If one side wins across the range, say that instead.
+
+**Headings from evidence:** sales-call questions, review phrases, Search Console queries, and the grounding queries in Bing Webmaster Tools' AI Performance report. Cover the few questions that decide, in the buyers' words; exhaustive coverage gets cited less (AirOps, Apr 2026, ChatGPT).
+
+**Markers** are literal, so a draft can be grepped before publishing: `[TODO: …]` an input only the caller has; `[VERIFY: claim — URL to check]` a fact from memory or a secondary source (the caller's notes, a source you didn't fetch), or one two sources contradict; `[SOURCE NEEDED: what]` proof no source gives yet. An unchecked source is marked once, never per claim: each `checked [date]` it backs (its sources line, the price caption, the trust line) reads `checked [VERIFY: <the data's date>, <whose data>]` until you fetch it. Other markers go inline only where a gap blocks publishing; a gap that blocks nothing is cut. Any marker left means not publishable.
+
+**Render** verdicts, tables and prices as text in the initial HTML, never as images or content loaded on click: crawlers that skip JavaScript see only that HTML.
+
+**Title and meta description** go in the page's opening comment. Google sets no length limit but truncates both to the device's width and may rewrite them (Search Central, "title links" and "snippets", checked 2026-10-08). Title: the H1's query words first, then segment or key difference, then brand, about 55 characters (F1: `[Competitor] Alternative for [Segment] | [Your Product]`). Description: the verdict and one number first, since truncation varies by device; about 155 characters in all. Check both in a current SERP preview. `[Year]` = the year of the last substantive refresh, only where a template allows it.
 
 ---
 
 ## Format 1: [Competitor] Alternative (Singular)
 
-**URL**: `/alternatives/[competitor]`
-**Intent**: User actively looking to switch from a specific competitor.
-
-### Page Template
+**URL**: `/alternatives/[competitor]` · **Budget**: 1,200–2,000 words; sections are a menu
 
 ```
 # Looking for a [Competitor] Alternative?
+[Trust line]
 
 ## TL;DR
 [40-60 words. Both products named, at least one hard number, verdict stated outright.
- Shape: "[Your Product] is [positioning]. Teams leave [Competitor] mainly for [specific reason].
- [Your Product] costs $X/mo for a [N]-person team vs [Competitor]'s $Y, and migration takes [range].
- Best for [persona]; [Competitor] remains the better fit for [honest case]."]
+ Shape: "Teams leave [Competitor] mainly when they need [need]. [Your Product] [meets it how]
+ and costs less from [N] seats ($X versus $Y/mo for [M] users, billed annually). Best for
+ [segment]; [Competitor] remains the better fit for [honest case]."]
 
-## Why People Look for [Competitor] Alternatives
-[Validate their pain — don't attack the competitor, empathize with the user]
+## Why Teams Leave [Competitor]
+[The top 2-3 triggers as needs, in the buyers' words, each with source, count and date window:
+ "In 40 of 212 1-3★ G2 reviews from Jan 2025-Jun 2026, reviewers say they needed [need]."
+ Paraphrased: no quoted reviews, no adjectives about [Competitor].]
 
-Common reasons:
-- [Pain point 1 — from review mining, stated concretely enough to be quoted]
-- [Pain point 2]
-- [Pain point 3]
+### [One question per trigger: e.g., "Does [Your Product] [meet need] without [cost]?"]
+[Answer first, both products named; then the proof: a number, a doc link, a first-hand test.]
 
-## [Your Product] as a [Competitor] Alternative
+## [Your Product] vs [Competitor]: Features and Price
 
-### [Question-shaped: e.g., "How does [Your Product]'s pricing compare to [Competitor]'s?"]
-[Answer first — the difference and the number. Then why it matters. Name both products in the answer sentence.]
+| | [Your Product] | [Competitor] |
+|--|---------------|--------------|
+| [Deciding criterion] | [What is true, on which plan] | [What is true, on which plan] |
+| [At least two rows where [Competitor] wins or ties] | ... | ... |
+| Price at [A] / [B] / [C] seats, billed [basis] | $X / $X / $X ([plan]) | $Y / $Y / $Y ([plan]) |
+| Same sizes, billed [other basis], if its crossover differs | ... | ... |
 
-### [Question-shaped: e.g., "Which works better for a team under [N] people?"]
-[Answer-first paragraph comparison]
-
-### [Question-shaped differentiator 3]
-[Answer-first paragraph comparison]
-
-## Feature Comparison
-
-| Feature | [Your Product] | [Competitor] |
-|---------|---------------|--------------|
-| [Feature A] | [How you do it] | [How they do it] |
-| [Feature B] | ... | ... |
-| Pricing starts at | $X/mo | $Y/mo |
-
-[Restate the 2-3 decisive rows in prose, products named — some engines parse tables poorly:
- "[Your Product] includes [Feature A] on every plan; [Competitor] gates it behind [tier] at $Y/seat."]
-
-## Pricing Comparison
-
-[Tier-by-tier breakdown. Include hidden costs, per-seat pricing, what's included. Link [Competitor]'s own pricing page as the source.]
-
-**Sample cost for a 10-person team:**
-- [Your Product]: $X/mo
-- [Competitor]: $Y/mo
-
-[State the total as a sentence too — this is the most-quoted fact on the page:
- "A 10-person team pays $X/mo on [Your Product] versus $Y/mo on [Competitor], a difference of $Z per year."]
+[Price-slot caption. Restate the 2-3 decisive rows in prose, products named: "[Your Product]
+ includes [Feature A] on every plan; [Competitor] gates it behind [tier] at $Y/seat." Then the
+ price slot's sentence, the most-quoted fact on the page: where each side costs less. Beside the
+ table, answer switching cost with what you offer: importer, assisted migration, contract-overlap credit.]
 
 ## Who Should Switch (and Who Shouldn't)
 
-**Switch if you:**
-- [Criteria 1]
-- [Criteria 2]
-
-**Stay with [Competitor] if you:**
-- [Honest criteria — builds trust]
+**Switch if you:** [criteria tied to the triggers]
+**Stay with [Competitor] if you:** [honest criteria]
 
 ## How to Switch
+[What transfers automatically, what needs manual setup, a time range, support offered;
+ link the switching page if one exists.]
 
-[Step-by-step migration path]
-1. [What transfers automatically]
-2. [What needs manual setup]
-3. [Support offered]
+> "[Real quote from a customer who switched]" — [Name, role, company]
 
-> "[Quote from customer who switched]" — [Name], [Company]
-
-## Ready to Try [Your Product]?
-
-[CTA — free trial, demo, or migration help]
+## [CTA heading]
+[Trial, demo or migration help, matched to the reader's stage]
+[Sources block]
+[Footer]
 ```
 
 ---
 
 ## Format 2: [Competitor] Alternatives / Best [Category] Tools (Roundup)
 
-**URL**: `/alternatives/[competitor]-alternatives` (competitor-anchored) or `/best/[category]-tools` (category-anchored)
-**Intent**: User researching options, earlier in journey.
-**Note**: This one template covers both roundup variants — a competitor-anchored "[N] Best [Competitor] Alternatives" and a category-anchored "Best [Category] Tools". Swap the H1 and the "Why look for…" framing accordingly; the section skeleton is the same.
-
-### Page Template
+**URL**: `/alternatives/[competitor]-alternatives` or `/best/[category]-tools` · **Budget**: up to 3,000 words; sections are a menu
 
 ```
-# [N] Best [Competitor] Alternatives in [Year]   <!-- [Year]: re-stamp + refresh content each January, or omit if you can't commit to refreshing -->
+# [N] [Competitor] Alternatives for [Segment]   <!-- or "Best [Category] Tools for [Segment]"; [Year] only if re-tested every year -->
+[Trust line]
+[Disclosure, first two sentences: "[Your Product]'s team publishes this guide, and [Your Product]
+ is one of the entries, labeled as ours. We compared each tool on [criteria] in [month year]."]
 
 ## TL;DR
-[40-60 words naming the top 3 options and who each wins for, with one price or limit.
- This is the block an AI answer to "best [Competitor] alternatives" lifts wholesale — make it the answer.]
+[40-60 words naming the top 3 options and who each is best for, with one price or limit:
+ the block an AI answer to "best [Competitor] alternatives" lifts whole.]
 
-## Why Look for [Competitor] Alternatives?
+## Why Teams Look Beyond [Competitor]
+[Triggers as needs, in the buyers' words, with source, count and date window]
 
-[Common pain points validated by reviews — specific enough to quote]
+## How We Chose and Tested
+[The criteria, in the order they decide; what was tested hands-on, and when; what came from vendor docs.]
 
-## What to Look for in a [Competitor] Alternative
+## The Alternatives
 
-Before evaluating, consider:
-1. [Criterion 1 — e.g., pricing model]
-2. [Criterion 2 — e.g., team size fit]
-3. [Criterion 3 — e.g., specific feature needs]
+### [Tool] — Best for [segment]
+[Open with a liftable verdict you would defend to that vendor; then what it does, how it
+ compares, where it falls short.]
+- **Pricing**: [plan and price at the page's team sizes, date checked]
+- **Best for**: [segment]
 
-## The Best [Competitor] Alternatives
+[4-7 real entries in criteria order, each with first-hand evidence]
 
-### 1. [Your Product] — Best for [use case]
-[Open with a self-contained verdict sentence, product named:
- "[Your Product] is the best [Competitor] alternative for [persona] because [concrete reason, with a number]."
- Then 2-3 paragraphs: what it does, how it compares, who it's for.]
-- **Pricing**: Starting at $X/mo
-- **Best for**: [Persona]
-- **Key differentiator**: [What makes you unique]
-
-### 2. [Alternative B] — Best for [use case]
-[Same shape: verdict sentence first, then an honest, helpful description]
-- **Pricing**: ...
-- **Best for**: ...
-
-### 3. [Alternative C] — Best for [use case]
-[Continue for 4-7 real alternatives]
+### [Your Product] (our product) — Best for [segment]
+[Same shape and scrutiny, shortfalls included. Placed where the criteria put it, never first by default.]
 
 ## Quick Comparison
 
-| | [You] | [Alt B] | [Alt C] | [Alt D] |
-|--|-------|---------|---------|---------|
-| Best for | ... | ... | ... | ... |
-| Pricing | ... | ... | ... | ... |
-| [Key Feature] | ... | ... | ... | ... |
+| | [Tool A] | [Your Product] (ours) | [Tool B] |
+|--|---------|-----------------------|---------|
+| Best for | ... | ... | ... |
+| Price at [2-3 team sizes], billed [basis] | ... | ... | ... |
+| [Deciding criterion] | ... | ... | ... |
 
 [Restate the decisive differences in prose beneath the table, each option named.]
 
-## Which Alternative Is Right for You?
+## Which Is Right for You?
 
+**Choose [Tool A] if:** [criteria]
 **Choose [Your Product] if:** [criteria]
-**Choose [Alt B] if:** [criteria]
-**Choose [Alt C] if:** [criteria]
 
-## Start Your Free Trial
-
-[CTA]
+## [CTA heading]
+[Sources block]
+[Footer]
 ```
-
-**Important**: Include 4-7 real alternatives. Being genuinely helpful builds trust and ranks better.
-
-**This is the highest-citation format.** A ranked list where each entry opens with a named, self-contained "best for X because Y" verdict is the exact shape of the answer an engine is assembling for "best [category]" prompts. The per-entry verdict sentence is what makes it liftable — a numbered list of paragraphs that bury the recommendation is a roundup that never gets quoted.
 
 ---
 
 ## Format 3: You vs [Competitor]
 
-**URL**: `/vs/[competitor]`
-**Intent**: User directly comparing you to a specific competitor.
-
-### Page Template
+**URL**: `/vs/[competitor]` · **Budget**: 1,200–2,000 words; sections are a menu
 
 ```
 # [Your Product] vs [Competitor]: [Key Difference in One Phrase]
+[Trust line]
 
 ## TL;DR
 [40-60 words. The core difference stated outright, both products named, one hard number,
@@ -202,100 +155,78 @@ Before evaluating, consider:
 | | [Your Product] | [Competitor] |
 |--|---------------|--------------|
 | Best for | ... | ... |
-| Pricing | ... | ... |
-| Free plan | ... | ... |
-| [Key Feature 1] | ... | ... |
-| [Key Feature 2] | ... | ... |
-| [Key Feature 3] | ... | ... |
+| Price at [A] / [B] / [C] seats, billed [basis] | ... | ... |
+| Same sizes, billed [other basis], if its crossover differs | ... | ... |
+| [Deciding criteria] | ... | ... |
+| [At least two rows where [Competitor] wins or ties] | ... | ... |
 
 [Two or three sentences restating the decisive rows in prose, both products named.]
 
-## Detailed Comparison
+## [Your Product] vs [Competitor] for [Segment]
 
-<!-- Each H3 is a question a buyer asks, not a category label. Answer in the first sentence,
-     then explain. These headings are what fan-out sub-queries match against. -->
+<!-- Keyword H2, not "Detailed Comparison"; below it, 3-4 question H3s,
+     one per deciding criterion, worded the way buyers ask. -->
 
-### [e.g., "Which has the features a [persona] actually needs?"]
-[Answer first — the concrete difference. Then why it matters. Don't just list.]
+### [e.g., "Which costs less for a team that needs [feature]?"]
+[Answer first with the price slot's sentence (where each side costs less), then the arithmetic.]
 
-### [e.g., "Which costs less for a [N]-person team?"]
-[Tier comparison, hidden costs, worked total as a sentence]
-
-### [e.g., "Which is easier to get started with?"]
-[UX comparison, learning curve, onboarding — with a time estimate if you have one]
-
-### [e.g., "Which offers better support?"]
-[Support channels, response times, documentation]
-
-### [e.g., "Which integrates with [the tools this audience uses]?"]
-[Ecosystem comparison]
+### [Deciding criterion 2, as the buyer asks it]
+[Answer first — the concrete difference. Then why it matters.]
 
 ## Who [Your Product] Is Best For
-[One self-contained verdict sentence first — "[Your Product] is the better choice for [persona] because [reason]." — then the bullets.]
-- [Persona/use case 1]
-- [Persona/use case 2]
+[A liftable verdict first ("[Your Product] is the better choice for [segment] because [reason]"),
+ then the bullets.]
 
 ## Who [Competitor] Is Best For
-[Same shape. Honest, and named: "[Competitor] is the better choice for [persona] because [reason]."]
-- [Persona/use case 1 — be honest]
-- [Persona/use case 2]
-
-## What Customers Say
-
-> "[Testimonial from someone who switched]" — [Name], [Role]
-
-> "[Another testimonial]" — [Name], [Role]
+[Same shape, just as honest.]
 
 ## Switching from [Competitor]?
-[Migration support, what transfers, how long it takes]
+[What transfers, how long it takes, support offered; link the switching page.]
 
-## Try [Your Product] Free
-[CTA]
+> "[Real quote from someone who switched]" — [Name, role, company]
+
+## [CTA heading]
+[Sources block]
+[Footer]
 ```
 
 ---
 
 ## Format 4: [A] vs [B] (Third-Party Comparison)
 
-**URL**: `/compare/[a]-vs-[b]`
-**Intent**: User comparing two competitors (not you directly).
-
-### Page Template
+**URL**: `/compare/[a]-vs-[b]` · **Budget**: 1,000–1,800 words; sections are a menu
 
 ```
-# [Competitor A] vs [Competitor B]: Which Is Better in [Year]?   <!-- [Year]: re-stamp + refresh content each January, or omit if you can't commit to refreshing -->
+# [Competitor A] vs [Competitor B]: Which Is Better for [Segment]?   <!-- [Year] only if re-tested every year -->
+[Trust line]
+[Disclosure, first two sentences: "[Your Product]'s team publishes this comparison; we make a
+ competing tool, covered at the end. We compared both on [criteria] in [month year]."]
 
 ## TL;DR
 [40-60 words. Answer the question the title asks — which wins, for whom, on what number —
- then hint at the third option. A page that refuses to pick gets read and never quoted.]
+ then name the third option. A page that refuses to pick gets read and never quoted.]
 
 ## What Is [Competitor A]?
-[Definition block: "[Competitor A] is [category] for [audience]. It [primary capability].
- Unlike [common confusion], it [key distinction]." Then who it's for and key strengths.]
+[Definition first: "[Competitor A] is [category] for [audience]; unlike [common confusion],
+ it [key distinction]." Then who it's for and its strengths.]
 
 ## What Is [Competitor B]?
-[Same definition-block shape]
+[Same shape]
 
-## Head-to-Head Comparison
-
-<!-- Question-shaped H3s, answer in the first sentence, both products named. -->
+## [Competitor A] vs [Competitor B] for [Use Case]
 
 ### [e.g., "Which is better for [primary use case]?"]
 [Balanced comparison, verdict first]
 
-### [e.g., "Which costs less at [N] seats?"]
-[Balanced comparison, worked total]
-
-### [e.g., "Which is easier to adopt?"]
-[Balanced comparison, verdict first]
+### [e.g., "Which costs less for a [segment] team?"]
+[The price slot's sentence, both products named]
 
 ## Comparison Table
 
-| | [Competitor A] | [Competitor B] | [Your Product] |
-|--|---------------|---------------|---------------|
+| | [Competitor A] | [Competitor B] | [Your Product] (ours) |
+|--|---------------|---------------|-----------------------|
 | Best for | ... | ... | ... |
-| Pricing | ... | ... | ... |
-| [Feature] | ... | ... | ... |
+| Price at [2-3 team sizes], billed [basis] | ... | ... | ... |
 
 [Prose restatement of the decisive rows, all three named.]
 
@@ -304,35 +235,33 @@ Before evaluating, consider:
 **Choose [A] if:** [criteria]
 **Choose [B] if:** [criteria]
 
-## Consider [Your Product] Too
+## Where [Your Product] Fits
+[The segment it serves better than both, and one it doesn't. Don't oversell.]
 
-[Brief positioning — why you're a relevant alternative. Don't oversell.]
-
-## Try [Your Product] Free
-[CTA]
+## [CTA heading]
+[Sources block]
+[Footer]
 ```
 
 ---
 
 ## Format 5: Switching from [Competitor] (Migration Guide)
 
-**URL**: `/migrate/[competitor]` or `/switch/[competitor]`
-**Intent**: User has decided to switch and needs to know how — the highest-intent format. Best for technical products where migration effort is the main objection.
-
-### Page Template
+**URL**: `/switch/[competitor]` or `/migrate/[competitor]` · **Budget**: 800–1,500 words; sections are a menu
 
 ```
 # Switching from [Competitor] to [Your Product]
+[Trust line]
 
 ## TL;DR
 [40-60 words with the actual numbers: how long a typical switch takes, what transfers automatically,
  what doesn't, and the support you offer. Both products named — "Migrating from [Competitor] to
  [Your Product] takes [range] for a typical [size] team; [what] transfers automatically, [what] needs
- reconfiguration." This is the block that answers "is it hard to migrate off [Competitor]?"]
+ reconfiguration." It answers "is it hard to migrate off [Competitor]?"]
 
 ## Who Should Switch (and Who Shouldn't)
 **Switch if you:** [criteria]
-**Stay with [Competitor] if you:** [honest criteria — builds trust]
+**Stay with [Competitor] if you:** [honest criteria]
 
 ## What Transfers
 | Data / Setting | Transfers automatically | Needs manual setup |
@@ -340,156 +269,77 @@ Before evaluating, consider:
 | [e.g., Projects] | Yes — via importer | — |
 | [e.g., Integrations] | — | Reconnect after import |
 | [e.g., Custom fields] | Partial | Map remaining fields |
+| [What doesn't transfer at all] | No | [Workaround, or none] |
 
 ## Migration Steps
-1. [Export from [Competitor] — where/how]
-2. [Import into [Your Product] — tool, CLI, or assisted]
-3. [Reconnect integrations / invite team]
-4. [Verify and go live]
+[In the order the importer runs them; each step names who does it (an admin, your team,
+ each user) and how long it takes.]
 
 **Estimated time:** [realistic range]
 **Downtime:** [none / ~X min] — [rollback plan if something fails]
 
 ## Migration Support
-[White-glove onboarding, migration credits, dedicated support channel, docs links.]
+[What you actually offer: importer, assisted migration, credit for contract overlap, docs links.]
 
-> "[Quote from a customer who migrated — time saved, how smooth it was]" — [Name], [Company]
+> "[Real quote from a customer who migrated — time taken, what was hard]" — [Name, role, company]
 
-## Start Your Migration
-[CTA — "Start migrating — we'll help" / book a migration call]
+## [CTA heading]
+[Start the import, or book a migration call]
+[Sources block]
+[Footer]
 ```
 
-**Important**: A "transfers automatically" promise that breaks erodes trust fast — and it's a comparative claim subject to the same truthfulness bar as the rest of the page. Verify the "What Transfers" table against the competitor's *current* export options and date-stamp it (see `content-architecture.md` → Keeping Data Accurate).
+Each What Transfers row is a comparative claim: source it from the competitor's current export docs and your importer's docs (a sources-block line, or a register row in a program), and re-check both on every refresh.
 
 ---
 
-## Section Copy Patterns
+## Liftable Verdict Blocks
 
-### TL;DR Formulas
-
-- "[Your Product] is [positioning]. Unlike [Competitor], which [their approach], [Your Product] [your approach]. Best for [persona]."
-- "The biggest difference: [Your Product] [key differentiator], while [Competitor] [their approach]. Choose [Competitor] for [use case], [Your Product] for [use case]."
-- With a number (prefer this — the figure is what makes it quotable): "[Your Product] costs $X/mo for a [N]-person team versus [Competitor]'s $Y, and includes [feature] that [Competitor] gates behind [tier]. Best for [persona]; [Competitor] remains the better fit for [honest case]."
-
-### Liftable Verdict Blocks
-
-One self-contained sentence an engine can quote without any surrounding context. Use one per option in every "Who it's for" / roundup entry / recommendation slot — these are what AI answers reach for on "which should I use for X" prompts.
-
-- **Recommendation:** "[Product] is the best fit for [specific persona] because [concrete reason with a number]. [Key distinction from the alternative]."
-- **Comparison:** "[Product A] [does X] while [Product B] [does Y]. Choose [A] when [use case]; choose [B] when [use case]."
-- **Definition (for third-party/overview sections):** "[Product] is [category] for [audience]. It [primary capability]. Unlike [common confusion], it [key distinction]."
-
-Test each one by reading it alone, out of context. If it needs the paragraph above it to make sense, or if the subject is "we" or "it", rewrite it.
-
-### Honest Weakness Patterns
-
-Frame weaknesses as scope decisions, not failures — and name the products, because these sentences are unusually quotable and a first-person version lands in an AI answer with no idea who "we" is:
-
-- "[Your Product] is deliberately narrow. If you need [feature], [Competitor] is the better choice."
-- "[Competitor] has more [category] features; [Your Product] focuses on [your strength] instead."
-- "For teams larger than [N], [Competitor]'s enterprise features are the better fit."
-
-(First person is fine in the surrounding voice — "we built it this way because…". Keep it out of the claim sentence itself.)
-
-### Social Proof Patterns
-
-- Direct quotes from switchers, with name and role (most powerful — and quoted attribution is one of the strongest citability signals)
-- "[N]% of [Your Product] customers previously used [Competitor]" — name the product rather than "our customers", so the stat survives being lifted
-- Before/after metrics: "[Company] reduced [metric] by X% after switching from [Competitor] to [Your Product]"
-- Third-party ratings and badges (G2, Capterra) alongside first-party quotes — independent validation is both more persuasive and the only compliant source for `aggregateRating`
-- Named companies with logos (with permission)
-
-### CTA Patterns
-
-- "See why [N] teams switched from [Competitor]"
-- "Try [Your Product] free — no credit card required"
-- "Get a personalized demo comparing [Your Product] to [Competitor]"
-- "Start migrating from [Competitor] today — we'll help"
+Every "Who it's for" block, roundup entry and recommendation slot opens with one sentence an engine can quote alone: "[Product] is the best fit for [segment] because [reason with a number]", or "[A] [does X] while [B] [does Y]; choose [A] when [use case], [B] when [use case]." Read each out of context: if it needs the paragraph above, or its subject is "we" or "it", rewrite it.
 
 ---
 
-## Meta Tags Template
+## Sources Block
 
-```html
-<!-- Alternative page -->
-<title>[Competitor] Alternative — [Your Product] | [Benefit]</title>
-<meta name="description" content="Looking for a [Competitor] alternative? [Your Product] offers [key benefit]. Compare features, pricing, and see why teams switch.">
+Closes every page, above the footer, visible: one line per source, not per claim, at most about 12 lines. It shows buyers and counsel where each fact came from and when.
 
-<!-- Alternatives page ([Year]: re-stamp + refresh each January, or omit if you can't commit to refreshing) -->
-<title>[N] Best [Competitor] Alternatives in [Year]</title>
-<meta name="description" content="Compare the best [Competitor] alternatives including [Alt 1], [Alt 2], and [Your Product]. Features, pricing, and honest recommendations.">
-
-<!-- Vs page -->
-<title>[Your Product] vs [Competitor] — [Key Difference]</title>
-<meta name="description" content="[Your Product] vs [Competitor] compared: features, pricing, and who each is best for. See the detailed breakdown.">
-
-<!-- Third-party comparison ([Year]: re-stamp + refresh each January, or omit if you can't commit to refreshing) -->
-<title>[A] vs [B] — Detailed Comparison [Year]</title>
-<meta name="description" content="[A] vs [B] compared: features, pricing, pros and cons. Plus a third option you might not have considered.">
+```
+## Sources
+Prices are list prices in [currency], checked [date].
+- [Competitor] pricing and plans: [URL], checked [date]
+- [Competitor] [feature or limit] documentation: [URL], checked [date]
+- [Your Product] pricing: [URL], checked [date]
+- Review themes: [N] 1-3★ reviews of [Competitor] on [site], [date window]
+- [A source you didn't fetch]: [URL], checked [VERIFY: <the data's date>, <whose data>]
+<!-- Kept in the draft file, stripped from the published page: an archive capture per price
+     and plan-gate source ([source URL] → [capture URL or saved copy]) -->
 ```
 
 ---
 
-## Schema Templates
+## Claims Register
 
-> **FAQ schema (updated May 2026):** Google fully deprecated FAQ rich results on May 7, 2026 — they no longer appear in Search for any site (the 2023 health/gov carve-out is gone; Google removed the FAQ rich-result documentation on June 15, 2026, and secondary reports put Rich Results Test support ending in June and Search Console API support in August 2026). FAQPage is still valid and Google still parses it to understand the page, so it's harmless to keep — but expect zero SERP rich result, and don't add it expecting an AI-citation lift either: evidence that the FAQ format or markup itself lifts AI citations is mixed and single-source, and does not hold up consistently. What earns citations is the *content* in the answers — comparisons, statistics, definitions — not the Q&A wrapper. Prefer Product + ItemList + Review schema below. (This is the canonical FAQ-schema caveat; `content-architecture.md` points here.)
+For a page program or scheduled refresh cycle (SKILL.md Stage 2); a single page needs only its sources block. One file per competitor, plus one for [Your Product] whose rows every page cites (defaults `biz/marketing/competitor-pages/claims/{competitor}.md` and `claims/{your-product}.md`; caller may redirect). Counsel reviews this file, then the rendered page (title, TL;DR, table, verdicts) for its net impression. Budget: one row per fact, no commentary.
 
-### Product + Offer (per product compared)
+```
+# Claims Register: [Competitor]
+Owner: [name] · Refresh by: [date] · Markets: [US, EU, …]
 
-> **Only include `aggregateRating` if the rating is genuinely displayed on the page AND comes from real reviews.** Don't self-rate your own product or paste placeholder numbers — fake or markup-only ratings risk a Google manual action that strips ALL your rich results, and self-controlled reviews on `Organization`/`LocalBusiness` types are outright ineligible for the star feature. The compliant source is independent third-party reviews you're licensed to display (e.g., aggregated G2/Capterra). For pure SaaS, `SoftwareApplication` (with `Offer`/`AggregateRating` nested) models the product more precisely than bare `Product` — to use it, swap `@type` in the example below and add `applicationCategory` + `operatingSystem`; the rest of the shape is identical. The `price` must match the price shown on the page.
-
-```json
-{
-  "@context": "https://schema.org",
-  "@type": "Product",
-  "name": "[Your Product]",
-  "description": "...",
-  "offers": {
-    "@type": "Offer",
-    "price": "[your price — also shown on the page]",
-    "priceCurrency": "USD",
-    "availability": "https://schema.org/InStock"
-  },
-  "aggregateRating": {
-    "@type": "AggregateRating",
-    "ratingValue": "[from real, on-page, third-party reviews]",
-    "reviewCount": "[must match the count shown on the page]"
-  }
-}
+| # | Claim as written | Type | Source URL | Snapshot | Verified | Pages using it |
+|---|------------------|------|------------|----------|----------|----------------|
+| C1 | "[Competitor] includes SSO only on its Enterprise plan, priced by sales" | Plan gate | [their pricing page URL] | [capture URL or saved copy] | [YYYY-MM-DD] | vs-[competitor], alternatives-[competitor] |
 ```
 
-### ItemList (ranked alternatives)
+Types: price, limit, plan gate, feature, integration, certification, export, performance, superlative, opinion, customer result, implied (its source: the rows that prove it, e.g. "C3 + C7").
 
-```json
-{
-  "@context": "https://schema.org",
-  "@type": "ItemList",
-  "itemListElement": [
-    { "@type": "ListItem", "position": 1, "name": "[Your Product]", "url": "https://yoursite.com" },
-    { "@type": "ListItem", "position": 2, "name": "[Competitor B]", "url": "https://competitor-b.com" }
-  ]
-}
-```
+**Snapshot:** the URL an archive capture returned when you verified (e.g., the Wayback Machine's Save Page Now) or a dated PDF or HTML copy saved beside the register; never a guessed archive URL. Once their page changes, the snapshot is your only proof of what it said; a row without one stays unverified, `[VERIFY]` in its Verified cell, and blocks every page using it. **Pages using it** holds page slugs, as in the output path.
 
-### FAQPage (no SERP rich result since May 2026, and not a citation lever — see caveat above)
+---
 
-Add entries only where a real buyer sub-question needs answering, and put a number in every answer. The value is the answer text, which must also appear as visible on-page content — engines that read structured data read it alongside the visible HTML, and markup-only answers are both invisible to most retrieval and a policy problem.
+## Markup
 
-```json
-{
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "mainEntity": [
-    {
-      "@type": "Question",
-      "name": "What is the best alternative to [Competitor]?",
-      "acceptedAnswer": { "@type": "Answer", "text": "[Balanced answer, products named, with a concrete number — mirrors the visible on-page answer verbatim]" }
-    },
-    {
-      "@type": "Question",
-      "name": "How long does it take to migrate from [Competitor] to [Your Product]?",
-      "acceptedAnswer": { "@type": "Answer", "text": "[Realistic range, what transfers automatically, what needs reconfiguration]" }
-    }
-  ]
-}
-```
+- `Article` (author, `datePublished`, `dateModified`) or `WebPage`, plus `BreadcrumbList`. `dateModified` matches the visible "Updated" date, which changes only on substantive updates.
+- No `Product`, `Offer`, `SoftwareApplication`, `Review` or `AggregateRating` on vs, alternative, roundup or switching pages. Google's review-snippet guidelines bar ratings aggregated from other websites and reviews of a category or list of items, and product rich results support only single-product pages (checked 2026-10-08). An `Offer` on a competitor's plan also implies you sell it.
+- Ratings never go in markup. Your own, where shown, is visible, dated text in the review site's required citation format, linked and sourced; a competitor's, only as SKILL.md Stage 2 allows.
+- No `ItemList` (Google's list carousels don't cover software) or `FAQPage` (the FAQ/HowTo rule lives with search-visibility, if available).
+- Every fact lives in visible HTML text; markup never states anything the page doesn't.

@@ -1,256 +1,84 @@
 # Event Tracking Design
 
-## Table of Contents
+Writing the tracking code is a developer task.
 
-1. [When to Use This Reference](#when-to-use-this-reference)
-2. [Event Naming Convention](#event-naming-convention)
-3. [Essential Events by Context](#essential-events-by-context)
-4. [Standard Properties](#standard-properties)
-5. [Tracking Plan Template](#tracking-plan-template)
-6. [Validation Checklist](#validation-checklist)
-7. [Server-Side vs Client-Side Events](#server-side-vs-client-side-events)
-8. [Common Mistakes](#common-mistakes)
+**Start from what exists:** inventory the code's tracking calls (capture, track, gtag, dataLayer), the schema and the billing webhooks; the tracking code's git history is its changelog. Plan only the gaps.
 
-## When to Use This Reference
+## Naming
 
-Use when designing a new tracking plan, adding events for a new feature, auditing existing tracking, or setting up analytics for a new product. This reference covers the naming, structure, and validation of analytics events — not the implementation code (that's a developer task).
+There is no industry standard: pick one convention, write it in the tracking plan, enforce it. This skill's default is `object_action`, lowercase with underscores, past tense (`signup_completed`, `cta_clicked`).
+- Context goes in properties, not names: `cta_clicked` with `cta_location`, never `cta_hero_clicked`; `signup_completed` with `method`, never `signup_google_completed`.
+- GA4 accepts letters, digits and underscores, starting with a letter, and reserves some names. Where GA4 has a recommended event, send that name (`sign_up`, `purchase`, `generate_lead`) through the plan's GA4 column, so its reports and Ads conversions work.
 
----
+## Identity
 
-## Event Naming Convention
+- Identify at signup and login, merge the anonymous ID into the person once, and reset on logout (shared devices).
+- B2B: every event carries the account key (a group), and activation and retention are computed per account.
+- First-touch UTMs should survive identification as person properties (PostHog: `$initial_utm_*`); confirm it in your tool.
 
-Use **Object-Action** format, lowercase with underscores.
+## Event Contract
 
-```
-{object}_{action}
-```
+- Fire on the committed state change (the database write, the payment confirmation), not on the click that requested it.
+- Money and lifecycle events fire server-side and carry the source's idempotency key, because billing webhooks retry.
+- One source per event name: `signup_completed` comes from the server only, and the client just identifies. Two sources double-count funnels.
+- Money: integer minor units plus an ISO 4217 currency code, the unit declared in the plan.
+- No free text that could carry personal data (search queries, error messages, form fields): send categories or lengths.
+- Derive time since signup at query time; don't store it on events.
+- Server SDKs batch events: flush or shut down the client before a webhook or serverless handler returns, or the events are lost.
 
-**Examples:**
-- `signup_completed` (not `user_signed_up` or `signupComplete`)
-- `feature_used` (not `used_feature`)
-- `purchase_completed` (not `bought` or `purchase`)
-- `cta_clicked` (not `button_clicked` — placement goes in a `cta_location` property)
+## Governance
 
-### Rules
+- Each event names the metric it feeds and an owner: no metric, no event. Start with 10–15 events.
+- **State lives in the database:** compute accounts, seats, plan and MRR from app or billing tables, not from events that mirror them and drift. Instrument behavior that leaves no row (views, attempts, abandonment), plus the state changes funnels must join; the renewal and plan-change rows below are the fallback where billing is out of reach.
+- Never rename a live event: add the new one, deprecate the old, note the switch date.
+- Alert when a key event's daily volume leaves its band.
 
-1. **Object first, then action.** This groups related events together when sorted alphabetically.
-2. **Past tense, always.** Completed actions and recorded observations alike: `signup_completed`, `email_sent`, `page_viewed`, `feature_used`.
-3. **Be specific about the object, not its placement.** `checkout_button_clicked` names a semantically distinct element; `button_clicked` names nothing. Placement variants of the *same* element (hero vs footer CTA) are one event plus a property (rule 4).
-4. **Context in properties, not name.** Don't create `signup_email_completed` and `signup_google_completed` — use `signup_completed` with a `method` property. Same for placement: `cta_clicked` with `cta_location`, never `cta_hero_clicked`.
+## Day-One Events
 
-### Anti-Patterns
+| Event | Side | Fires when (committed) | Key properties | Feeds |
+|---|---|---|---|---|
+| `lead_submitted` | client | lead or demo form accepted | `form_type`, `lead_intent` | content-site conversion |
+| `signup_completed` | server | account created | `method`, `plan_type` | signups, cohorts |
+| `onboarding_step_completed` | client | step saved | `step_name` | activation funnel |
+| `[core_action]` (named per product, e.g. `project_created`) | where it commits | the core value action | domain properties | Aha, retention |
+| `purchase_completed` | server | payment confirmed | `plan_type`, `amount_minor`, `currency`, `interval` | revenue |
+| `subscription_renewed` | server | renewal invoice paid | same as purchase | revenue retention |
+| `subscription_upgraded` / `subscription_downgraded` | server | plan change billed | `from_plan`, `to_plan`, new recurring `amount_minor` | NRR |
+| `subscription_cancelled` | server | cancellation takes effect | `reason`, `plan_type` | churn |
 
-| Bad | Why | Better |
-|-----|-----|--------|
-| `click` | Too generic | `cta_clicked` + `cta_location` property |
-| `button_clicked` | No context about what button | `checkout_button_clicked` |
-| `user_did_thing` | Redundant "user" prefix | `thing_completed` |
-| `signupCompleted` | camelCase breaks convention | `signup_completed` |
-| `signup-completed` | Hyphens break some tools | `signup_completed` |
-| `SIGNUP_COMPLETED` | Uppercase is inconsistent | `signup_completed` |
+Secondary features share one `feature_used` event with `feature_name`. User and account properties: `plan_type` with one value list, `signup_date`, `company_size`.
 
----
+**`aha_moment_reached` is derived, then instrumented.** During discovery, compute Aha candidates from the underlying action events, so the hypothesis can change without re-instrumenting and history can be backfilled. Emit this synthetic event only once the definition is validated, as a funnel convenience, not the source of truth.
 
-## Essential Events by Context
-
-### Marketing Site
-
-| Event | Trigger | Key Properties |
-|-------|---------|----------------|
-| `page_viewed` | Page load (auto in most tools) | `page_title`, `page_path`, `referrer` |
-| `cta_clicked` | Any CTA button click | `cta_location`, `cta_text`, `destination` |
-| `form_submitted` | Contact/demo form submit | `form_type`, `source` |
-| `signup_started` | Signup flow initiated | `source`, `plan_type` |
-| `signup_completed` | Account created | `method` (email/google/github), `source`, `plan_type` |
-| `demo_requested` | Demo form submitted | `company_size`, `source` |
-
-### Product / App
-
-| Event | Trigger | Key Properties |
-|-------|---------|----------------|
-| `onboarding_step_completed` | Each onboarding step | `step_number`, `step_name`, `time_since_signup` |
-| `onboarding_completed` | All steps done | `total_time`, `steps_skipped` |
-| `feature_used` | Core feature interaction | `feature_name`, `context` |
-| `aha_moment_reached` | User hits the Aha Moment action | `time_since_signup`, `method` |
-| `purchase_completed` | Subscription or payment | `plan_type`, `amount`, `currency`, `interval` |
-| `subscription_renewed` | Billing period renews (server-side, from billing webhook) | `plan_type`, `amount`, `interval` |
-| `subscription_upgraded` | Plan upgrade | `from_plan`, `to_plan`, `revenue_delta`, `amount` (new recurring) |
-| `subscription_downgraded` | Plan downgrade | `from_plan`, `to_plan`, `revenue_delta`, `amount` (new recurring) |
-| `subscription_cancelled` | Cancellation | `reason`, `plan_type`, `lifetime_days` |
-| `invite_sent` | User invites someone | `invite_method`, `recipient_count` |
-| `referral_completed` | Referred user signs up | `referrer_id`, `referral_source` |
-
-> **`aha_moment_reached` is derived, then instrumented.** During discovery, compute Aha candidates
-> from the underlying action events (so the hypothesis can change without re-instrumenting and you
-> can backfill history). Only emit this synthetic event once the definition is validated — as a
-> funnel convenience, not the source of truth.
-
-### Engagement (Product — add on demand, beyond the day-one set)
-
-| Event | Trigger | Key Properties |
-|-------|---------|----------------|
-| `search_performed` | In-app search | `query`, `results_count` |
-| `export_completed` | Data export | `format`, `record_count` |
-| `integration_connected` | Third-party integration | `integration_name` |
-| `error_encountered` | User-facing error | `error_type`, `error_message`, `context` |
-| `feedback_submitted` | In-app feedback | `feedback_type`, `rating` |
-
----
-
-## Standard Properties
-
-Properties add context to events without multiplying event names.
-
-### Global Properties (attach to every event)
-
-| Property | Type | Example |
-|----------|------|---------|
-| `page_title` | string | "Pricing - ProductName" |
-| `page_path` | string | "/pricing" |
-| `page_referrer` | string | "https://google.com" |
-
-### User Properties (set once, apply to all events)
-
-| Property | Type | Example |
-|----------|------|---------|
-| `user_id` | string | "usr_abc123" |
-| `user_type` | string | "free" / "pro" / "enterprise" |
-| `plan_type` | string | "starter" / "pro" / "team" |
-| `signup_date` | datetime | "2025-01-15" |
-| `company_size` | string | "1-10" / "11-50" / "50+" |
-
-### Campaign Properties (from UTM parameters)
-
-| Property | Type | Example |
-|----------|------|---------|
-| `utm_source` | string | "twitter" |
-| `utm_medium` | string | "social" |
-| `utm_campaign` | string | "launch_2025" |
-| `utm_content` | string | "hero_cta" |
-| `utm_term` | string | "saas_analytics" |
-
-PostHog captures UTMs automatically as `$initial_utm_*` person properties on first visit.
-
----
+**Referral loop** (add when the loop exists): `invite_sent` is share intent (link copied, share sheet opened, invite queued; `invite_method`), because delivery of link and share-sheet invites can't be observed; `invite_clicked` (the invitee lands; `referrer_id`); `referral_completed` (server, the referred signup; `referrer_id`, `referral_source`); `reward_granted` (server; `referrer_id`, side, value).
 
 ## Tracking Plan Template
 
-A tracking plan is the single source of truth for what to track. Store it in the analytics dir (default `biz/analytics/tracking-plan.md`; caller may redirect).
+The tracking plan (default `biz/analytics/tracking-plan.md`; caller may redirect) is the single source of truth.
 
 ```markdown
-# Tracking Plan — [Product Name]
-
+# Tracking Plan — [Product]
+<!-- the event table + ≤300 words; sections are a menu: omit what doesn't apply, heading included -->
+Convention: [object_action, past tense] · Unit: [user | account] · Identity: [identify at …; reset on logout]
 ## Aha Moment
-- **Definition**: [Action X] within [Y days] of signup, [Z times]
-- **Event**: `aha_moment_reached`
-- **Status**: Validated / Hypothesis
-
+Definition: [Action X] within [Y days], [Z times] · Status: hypothesis | validated [date; evidence: reports/aha-analysis.md]
 ## Events
-
-### Marketing Site
-| Event | Trigger | Properties | Tool |
-|-------|---------|------------|------|
-| `signup_completed` | Account created | method, source, plan_type | PostHog + GA4 |
-| `cta_clicked` | CTA button click | cta_location, cta_text | PostHog |
-
-### Product
-| Event | Trigger | Properties | Tool |
-|-------|---------|------------|------|
-| `onboarding_step_completed` | Step done | step_number, step_name | PostHog |
-| `feature_used` | Core action | feature_name | PostHog |
-
-### Revenue
-| Event | Trigger | Properties | Tool |
-|-------|---------|------------|------|
-| `purchase_completed` | Payment success | plan_type, amount, currency | PostHog + GA4 |
-| `subscription_renewed` | Billing webhook | plan_type, amount, interval | PostHog |
-
-## User Properties
-| Property | Set When | Example Values |
-|----------|----------|----------------|
-| plan_type | Signup / upgrade | free, pro, team |
-
-## Funnels to Track
-1. Visit → Signup → Aha Moment → D7 Return → Paid
-2. Trial Start → Feature Used → Upgrade
+| Event | Trigger (committed state) | Side | Properties | Metric | Owner | GA4 name |
+## Properties
+| Property | Type / allowed values | Set when |
+## UTM and channel rules
+[medium vocabulary; utm_id; first-party capture of UTMs and click IDs — GA4/GTM reference]
+## Funnels
+[unit · ordered steps · window; full specs live in funnels.md]
+## Change log
+- YYYY-MM-DD: added / deprecated [event] — [reason]
 ```
 
----
-
-## Validation Checklist
+## Validation
 
 Before shipping tracking:
-
-- [ ] Events fire on correct triggers (test manually)
-- [ ] Properties populate with correct types and values
-- [ ] No duplicate events (e.g., double-firing on SPA navigation)
-- [ ] Works across browsers (Chrome, Safari, Firefox)
-- [ ] Works on mobile viewports
-- [ ] Conversions recorded correctly in both PostHog and GA4
-- [ ] No PII leaking in event properties (emails, names, addresses)
-- [ ] Event names follow naming convention (object_action, lowercase, underscores)
-- [ ] Tracking plan document is updated with new events
-- [ ] Test accounts are filtered out (PostHog internal user filtering)
-
----
-
-## Server-Side vs Client-Side Events
-
-Not all events should fire from the browser. Events tied to money or critical business logic should fire server-side for reliability.
-
-### When to Use Server-Side Events
-
-| Event Type | Side | Why |
-|-----------|------|-----|
-| `purchase_completed` | Server | Payment confirmation comes from the payment provider (Stripe webhook, etc.), not the browser. Client-side purchase events can be lost to ad blockers, page closes, or network issues. |
-| `subscription_renewed` | Server | Recurring billing happens without user interaction — there's no browser session to fire from. |
-| `subscription_upgraded` / `downgraded` | Server | The plan change should be confirmed by the billing system before recording. |
-| `subscription_cancelled` | Server | Cancellation should reflect the actual billing state, not just a button click. |
-| `referral_completed` | Server | The referred user's signup should be validated server-side to prevent fraud. |
-| `signup_completed` | Both | Fire server-side as the source of truth (account actually created in DB), client-side for immediate PostHog person identification. |
-| `feature_used` | Client | In-app interactions happen in the browser — client-side is natural. |
-| `cta_clicked` | Client | UI interactions are inherently client-side. |
-| `page_viewed` | Client | Navigation is a browser event. |
-
-### PostHog Server-Side Implementation
-
-Use PostHog's server-side SDKs or API to send events from your backend:
-
-```python
-# Python (e.g., in a Stripe webhook handler)
-from posthog import Posthog
-posthog = Posthog('YOUR_API_KEY', host='https://us.i.posthog.com')
-
-posthog.capture(
-    distinct_id=user_id,
-    event='purchase_completed',
-    properties={
-        'plan_type': 'pro',
-        'amount': 29.99,
-        'currency': 'USD',
-        'interval': 'monthly',
-        'payment_provider': 'stripe',
-    }
-)
-```
-
-The key principle: **if losing the event would mean losing revenue data, fire it server-side.** Client-side events are fine for UX analytics (clicks, views, navigation) where occasional loss is tolerable.
-
----
-
-## Common Mistakes
-
-### Tracking Too Much
-Every event has a maintenance cost. Start with 10-15 events maximum. You can always add more when a specific analysis demands it. Tracking 200 events from day one means 190 events nobody looks at.
-
-### Tracking Too Little
-At minimum, track: signup, Aha Moment action, core feature usage, payment, and cancellation. Without these five, you cannot calculate CC, retention, or activation rate.
-
-### Inconsistent Naming
-`userSignedUp`, `signup_completed`, and `sign-up` all mean the same thing. Pick one convention and enforce it. The naming convention in this document (object_action, lowercase, underscores) is the standard.
-
-### Properties as Event Names
-Don't create `clicked_hero_cta`, `clicked_footer_cta`, `clicked_sidebar_cta`. Create `cta_clicked` with a `location` property. This keeps the event count manageable and makes analysis easier.
-
-### Not Tracking Time
-For onboarding and activation, always include a `time_since_signup` property. Knowing that users who reach the Aha Moment within 3 days retain 2x better than those who take 14 days is critical for Aha Moment parameter sweeping.
+- each event fires once per committed change, with typed properties (test in the tool's debug view; watch for double fires on single-page-app navigation);
+- server-side totals reconcile with the database or billing within a stated tolerance;
+- internal and test accounts are filtered out;
+- no personal data in properties;
+- GA4 key events are marked, and the plan's change log is updated.

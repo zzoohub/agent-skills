@@ -1,196 +1,66 @@
-# React Three Fiber Setup & Core Patterns
+# React Three Fiber: Setup and Lifecycle
 
-R3F v9 + React 19. React Three Fiber is a React renderer for Three.js -- every JSX element maps directly to a Three.js class.
+The R3F side of SKILL.md's Build steps, for R3F 9 on React 19.
 
-## Table of Contents
-
-1. [Setup](#setup)
-2. [JSX Maps to Three.js](#jsx-maps-to-threejs)
-3. [useFrame -- The Render Loop](#useframe----the-render-loop)
-4. [Loading Assets](#loading-assets)
-5. [Event System](#event-system)
-6. [Common Imports](#common-imports)
-
-
-## Setup
-
-```bash
-bun add three @react-three/fiber @react-three/drei
-bun add -d @types/three
-```
-
-### WebGPU-First Canvas
+## WebGPU Canvas
 
 ```tsx
 import * as THREE from 'three/webgpu'
-import { Canvas, extend } from '@react-three/fiber'
-import { useState } from 'react'
+import { Canvas, extend, type ThreeToJSXElements } from '@react-three/fiber'
 
-// Extend R3F's catalog with WebGPU-compatible classes
+declare module '@react-three/fiber' { interface ThreeElements extends ThreeToJSXElements<typeof THREE> {} }
 extend(THREE as any)
 
-function App() {
-  const [frameloop, setFrameloop] = useState<'never' | 'always'>('never')
-
-  return (
-    <Canvas
-      frameloop={frameloop}
-      gl={async (props) => {
-        const renderer = new THREE.WebGPURenderer({
-          ...props,
-          antialias: true,
-          alpha: true,
-          powerPreference: 'high-performance',
-        } as any)
-        await renderer.init()
-        setFrameloop('always')
-        return renderer
-      }}
-    >
-      <Scene />
-    </Canvas>
-  )
+const glFactory = async (props) => {
+  const renderer = new THREE.WebGPURenderer({ ...props, antialias: true } as any) // XR: forceWebGL (r173+), multiview (r176+)
+  await renderer.init()
+  return renderer
 }
+
+<ErrorBoundary fallback={<Poster />}>
+  <Canvas gl={glFactory} dpr={[1, 2]} onCreated={({ gl }) => {
+    gl.toneMapping = THREE.NeutralToneMapping       // R3F's default is ACES Filmic
+    const stop = gl.onDeviceLost.bind(gl)           // r170+; three's handler halts rendering: keep it
+    gl.onDeviceLost = (info) => { stop(info); showPosterAndRemount() }
+  }}>
+    <Scene />
+  </Canvas>
+</ErrorBoundary>
 ```
 
-WebGPURenderer init is **async** -- set `frameloop="never"` until ready, then flip to `"always"`.
+- R3F 9 waits for an async `gl` factory before the first frame (checked 9.8); a rejected `init()` fails the root, so the error boundary shows the poster. R3F 8 calls the factory synchronously with the canvas, and an async factory silently yields a plain `WebGLRenderer`: construct `new WebGPURenderer({ canvas })` there and hold `frameloop="never"` until `init()` resolves.
+- R3F sets ACES Filmic tone mapping on first configure (`NoToneMapping` with `flat`), overriding anything set inside the factory: set yours in `onCreated`.
+- XR apps without TSL can keep R3F's default `WebGLRenderer` (`web-xr.md`). Build config: `../threading.md` § Vite config, plus `react()`.
+- Next.js: code-split the Canvas with `next/dynamic` and `ssr: false`, called inside a Client Component.
 
-The async `gl` callback can reject (no `navigator.gpu`, adapter denied, headless CI). Catch it and surface a fallback UI rather than letting the rejection throw inside `<Canvas>`, and wrap the `<Canvas>` in an error boundary. WebGPURenderer falls back to WebGL 2 automatically, but a hard init failure should still degrade gracefully (show a "3D not supported" state).
+## Lifecycle
 
-### Vite Configuration
+- Render on demand, adaptive DPR and frame pacing: `performance.md`.
+- Animated scenes switch to `frameloop="never"` while an IntersectionObserver reports the canvas offscreen; workers and audio need their own pause.
+- On unmount R3F disposes objects it created from JSX, but not `<primitive>` objects, objects passed as props, or loader caches: call `useGLTF.clear(url)` for models that won't return.
 
-```typescript
-// vite.config.ts
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import wasm from 'vite-plugin-wasm'
-import topLevelAwait from 'vite-plugin-top-level-await'
+## useFrame
 
-export default defineConfig({
-  plugins: [react(), wasm(), topLevelAwait()],
-  build: { target: 'esnext' },
-  server: {
-    headers: {
-      // Only needed for SharedArrayBuffer (WASM threads). See SKILL.md.
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
-})
-```
+Mutate refs inside `useFrame`; never `setState` there, which re-renders the component at the display's rate (60, 90, 120 Hz or more). R3F's `delta` comes unclamped from its clock: `const dt = Math.min(delta, 0.1)`.
 
-> **COEP gotcha**: `require-corp` blocks any cross-origin resource that lacks a CORP/CORS header — including the CDN-hosted Draco/Basis decoders `useGLTF` uses by default. If you enable COEP for `SharedArrayBuffer`, **self-host the decoders** (serve `/draco/` and `/basis/` locally and point the loaders at them) or model loading will silently fail.
-
-## JSX Maps to Three.js
-
-Every JSX element maps directly to a Three.js class. Constructor args use the `args` prop.
+## Loading
 
 ```tsx
-<mesh position={[0, 1, 0]} castShadow>
-  <sphereGeometry args={[1, 32, 32]} />
-  <meshStandardNodeMaterial color="hotpink" roughness={0.4} />
-</mesh>
-```
-
-Use **Node materials** (`meshStandardNodeMaterial`, `meshPhysicalNodeMaterial`, etc.) when targeting TSL/WebGPU.
-
-## useFrame -- The Render Loop
-
-Mutate refs directly inside `useFrame`. Never call `setState` here -- it triggers a re-render every frame (60/90/120+ Hz depending on display/headset refresh).
-
-```tsx
-import { useFrame } from '@react-three/fiber'
-import { useRef } from 'react'
-
-function Spinner() {
-  const ref = useRef<THREE.Mesh>(null!)
-  useFrame((_, delta) => {
-    ref.current.rotation.y += delta
-  })
-  return (
-    <mesh ref={ref}>
-      <boxGeometry />
-      <meshStandardNodeMaterial color="orange" />
-    </mesh>
-  )
+function Model({ url }: { url: string }) {
+  const { scene } = useGLTF(url)        // suspends; Draco and meshopt decoders are wired automatically
+  return <Clone object={scene} />       // the cached scene is shared: clone per placement
 }
+
+<ErrorBoundary fallback={<Poster />}>
+  <Suspense fallback={<Poster />}><Model url="/model.glb" /></Suspense>
+</ErrorBoundary>
 ```
 
-`delta` is seconds since last frame -- use it for frame-rate-independent animation.
+- Without the error boundary, a 404 or decode failure crashes the tree. `useGLTF.preload(url)` starts the fetch at module load.
+- Draco decoders load from a CDN by default; self-host with `useGLTF.setDecoderPath('/draco/')` in new code (on a working app that is a shared-loader change: `../assets.md` § Loading). KTX2 textures need a `KTX2Loader` set through `useGLTF`'s `extendLoader` argument.
+- `gltfjsx` generates typed components; what its `--transform` does to the asset, and the flags for name-addressed parts: `../assets.md` § Inspect, then optimize.
 
-## Loading Assets
+## Events
 
-```tsx
-import { useRef, useEffect } from 'react'
-import { useGLTF, useTexture, useAnimations } from '@react-three/drei'
-
-function Model() {
-  const { nodes, materials, animations } = useGLTF('/model.glb')
-  const group = useRef<THREE.Group>(null!)
-  const { actions } = useAnimations(animations, group)
-
-  useEffect(() => {
-    actions['Idle']?.reset().fadeIn(0.5).play()
-  }, [])
-
-  return (
-    <group ref={group}>
-      <mesh geometry={nodes.Body.geometry} material={materials.Skin} />
-    </group>
-  )
-}
-useGLTF.preload('/model.glb')
-```
-
-Drei's `useGLTF` auto-configures decompression — **both** Draco (decoder fetched from a CDN) and Meshopt — so a `--transform`'d (Draco) or meshopt'd `.glb` loads without manual decoder wiring. `useGLTF` also suspends while loading: wrap the consuming subtree in `<Suspense fallback={...}>` and add an error boundary (e.g. `react-error-boundary`) so a 404/decode failure shows a fallback instead of crashing the tree. Use `gltfjsx` CLI to generate typed R3F components from glTF files:
-
-```bash
-npx gltfjsx model.glb --transform --types --shadows
-```
-
-## Event System
-
-R3F supports pointer events via raycasting. Same events work on desktop, mobile, and XR (controllers/hands).
-
-```tsx
-<mesh
-  onClick={(e) => { e.stopPropagation(); handleClick(e.point) }}
-  onPointerOver={() => setHovered(true)}
-  onPointerOut={() => setHovered(false)}
->
-```
-
-`e.stopPropagation()` prevents the event from hitting objects behind.
-
-## Common Imports
-
-```tsx
-// Core
-import * as THREE from 'three/webgpu'
-import { Canvas, useFrame, useThree, extend } from '@react-three/fiber'
-
-// TSL
-import { Fn, uniform, float, vec2, vec3, vec4, color,
-  positionLocal, normalLocal, uv, time,
-  sin, cos, mix, smoothstep, mx_noise_float,
-  texture, storage, instanceIndex } from 'three/tsl'
-
-// Drei
-import { Environment, OrbitControls, useGLTF, useAnimations,
-  Text, Html, Instances, Instance, Merged, Float,
-  ContactShadows, PerformanceMonitor, AdaptiveDpr } from '@react-three/drei'
-
-// XR
-import { createXRStore, XR, XROrigin, XRSpace,
-  useXR, useXRHitTest, useXRInputSourceState,
-  IfInSessionMode, TeleportTarget } from '@react-three/xr'
-
-// Physics
-import { Physics, RigidBody, CuboidCollider, BallCollider,
-  interactionGroups } from '@react-three/rapier'
-
-// ECS
-import { createWorld, trait, relation } from 'koota'
-import { WorldProvider, useWorld, useQuery, useTrait,
-  useActions } from 'koota/react'
-```
+- R3F raycasts every object that has pointer handlers on each pointer move: keep handlers on few objects, and wrap dense meshes in drei's `<Bvh>` or use `raycast={meshBounds}`.
+- `onClick` also fires after an orbit drag; ignore clicks whose `e.delta` (pixels between down and up) exceeds a few pixels.

@@ -1,313 +1,175 @@
-# Platform: Web
+# Web Platform
 
-## Table of Contents
+## Token Variables
 
-1. [Token Output — CSS Custom Properties](#token-output--css-custom-properties)
-2. [Dark Mode](#dark-mode)
-3. [Responsive](#responsive)
-4. [Focus States](#focus-states)
-5. [Reduced Motion](#reduced-motion)
-6. [Component Usage Example](#component-usage-example)
-7. [Tailwind CSS Integration](#tailwind-css-integration)
-8. [Units: rem vs px](#units-rem-vs-px)
+Names are `--ds-` plus the kebab-case token path (`fg.onAccent` → `--ds-fg-on-accent`): `base.css` holds theme-independent tokens, then one block per theme (`:root, [data-theme="light"]` and `[data-theme="dark"]`, so any element can carry a theme) holds every semantic key, generated (`pipeline.md`) or hand-written.
 
-## Token Output — CSS Custom Properties
-
-Tokens compile to CSS variables. Components reference variables, never raw values.
+## Theme Application
 
 ```css
-:root {
-  /* Color — semantic */
-  --color-bg-primary: #f9fafb;
-  --color-bg-secondary: #f3f4f6;
-  --color-bg-tertiary: #e5e7eb;
-  --color-bg-inverse: #111827;
-  --color-bg-overlay: rgba(0, 0, 0, 0.5);
-  --color-text-primary: #111827;
-  --color-text-secondary: #4b5563;
-  --color-text-inverse: #f9fafb;
-  --color-text-link: #2563eb;
-  --color-text-link-hover: #1d4ed8;
-  --color-interactive-primary: #2563eb;
-  --color-interactive-primary-hover: #1d4ed8;
-  --color-border-default: #e5e7eb;
-  --color-border-focus: #3b82f6;
-  --color-status-error: #dc2626;
-  --color-status-error-bg: #fef2f2;
-  --color-status-success: #16a34a;
-  --color-status-success-bg: #f0fdf4;
+:root, [data-theme="light"] { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
+```
 
-  /* Spacing */
-  --spacing-component-xs: 4px;
-  --spacing-component-sm: 8px;
-  --spacing-component-md: 12px;
-  --spacing-component-lg: 16px;
-  --spacing-component-xl: 24px;
-  --spacing-layout-xs: 16px;
-  --spacing-layout-sm: 24px;
-  --spacing-layout-md: 32px;
-  --spacing-layout-lg: 48px;
-  --spacing-layout-xl: 64px;
+`color-scheme` makes native controls, scrollbars and form fields follow the theme. Set `data-theme` before first paint with a blocking script early in `<head>`:
 
-  /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+```html
+<script>
+  (function () {
+    var root = document.documentElement;
+    var serverBrand = root.dataset.brand; // a server-rendered brand always wins
+    var media = matchMedia('(prefers-color-scheme: dark)');
+    function apply() {
+      var choice = null, brand = root.dataset.brand; // kept if storage is unreadable
+      try { choice = localStorage.getItem('theme'); brand = serverBrand || localStorage.getItem('brand'); } catch (e) {}
+      root.dataset.theme = choice === 'light' || choice === 'dark' ? choice : media.matches ? 'dark' : 'light';
+      if (brand) root.dataset.brand = brand; else delete root.dataset.brand;
+    }
+    apply();
+    media.addEventListener('change', apply); // the OS setting, live
+    addEventListener('storage', apply); // another tab's theme, brand or logout
+  })();
+</script>
+```
 
-  /* Motion */
-  --duration-instant: 100ms;
-  --duration-fast: 200ms;
-  --duration-normal: 300ms;
-  --duration-slow: 500ms;
-  --easing-default: cubic-bezier(0.4, 0, 0.2, 1);
-  --easing-enter: cubic-bezier(0, 0, 0.2, 1);
-  --easing-exit: cubic-bezier(0.4, 0, 1, 1);
+The toggle stores `light` or `dark` (or removes the key for system) and sets `data-theme` the same way. React frameworks that render `<html>` need `suppressHydrationWarning` on it; render the toggle's icon only after mount. A server-read cookie can render explicit choices; system still resolves in the script. Under a strict CSP the script needs a nonce or hash. To follow the system without JS, also emit the dark block, with `color-scheme: dark`, under `@media (prefers-color-scheme: dark)` for `:root:not([data-theme])` (Style Dictionary's `css/variables` takes the two as a selector array). `light-dark()` can replace the dark block only while light and dark are the only modes; it resolves from the `color-scheme` these blocks set.
 
-  /* Radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --radius-full: 9999px;
+**Brands** apply the same way on `data-brand`, one generated block per brand × mode. Render the attribute from the server when the tenant is known (domain, session). A brand that arrives after first paint (fetched after login, remote config) is set once on arrival and stored, so the head script replays it and only a first visit shows the default brand. Clear the stored brand and the attribute at logout, and replace both on a tenant switch, or a shared device shows the last tenant's brand wherever the server cannot brand the page (a shared login page). Canvas, charts, maps and third-party widgets that copy colors at init re-read them on every theme or brand change.
 
-  /* Shadows */
-  --shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-dropdown: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
-  --shadow-modal: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
-  --shadow-toast: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+## Tailwind v4 Bridge
 
-  /* Z-Index */
-  --z-base: 0;
-  --z-dropdown: 100;
-  --z-sticky: 200;
-  --z-overlay: 300;
-  --z-modal: 400;
-  --z-popover: 450;
-  --z-toast: 500;
+Map each semantic variable once, under a name that reads as its role, and reset the namespaces the system owns (a shadcn project keeps shadcn's names: `shadcn.md`):
 
-  /* Opacity */
-  --opacity-disabled: 0.5;
-  --opacity-overlay: 0.5;
-  --opacity-hover: 0.8;
+```css
+@import "tailwindcss";
+@import "./generated/base.css";
+@import "./generated/light.css";
+@import "./generated/dark.css";
+
+/* For `dark:` classes in generated components only. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
+@theme inline {
+  --color-*: initial;
+  --color-base: var(--ds-bg-base);
+  --color-raised: var(--ds-bg-raised);
+  --color-subtle: var(--ds-bg-subtle);
+  --color-accent: var(--ds-bg-accent);
+  --color-accent-hover: var(--ds-bg-accent-hover);
+  --color-danger-subtle: var(--ds-bg-danger-subtle);
+  --color-fg: var(--ds-fg-default);
+  --color-fg-muted: var(--ds-fg-muted);
+  --color-link: var(--ds-fg-accent);
+  --color-on-accent: var(--ds-fg-on-accent);
+  --color-danger-strong: var(--ds-fg-danger-strong);
+  --color-line: var(--ds-border-default);
+  --color-input: var(--ds-border-input);
+  --color-focus: var(--ds-border-focus);
+  /* …one line per remaining semantic color */
+  --shadow-*: initial;
+  --shadow-card: var(--ds-elevation-card);
+  /* …dropdown, modal, toast */
+  --radius-*: initial;
+  --radius-md: var(--ds-radius-md);
+  /* …sm, lg, full */
+  --text-*: initial;
+  --text-body-md: var(--ds-type-body-md-font-size);
+  --text-body-md--line-height: var(--ds-type-body-md-line-height);
+  --text-body-md--font-weight: var(--ds-type-body-md-font-weight);
+  /* …one triple per type style */
+  --default-transition-duration: var(--ds-duration-fast);
+  --default-transition-timing-function: var(--ds-easing-default);
 }
 ```
 
-> This `:root` block is an excerpt — it omits some semantic tokens (e.g. `text.tertiary`, `border.strong`, `status.warning`/`warning-bg`). For the complete set, generate `:root` from `semantic.tokens.json` (see `references/tokens.md`).
+- Utilities read as roles (`bg-accent text-on-accent`, `text-link`, `border-input`, `outline-focus`). After the resets, `text-white`, `bg-red-500` and `text-sm` no longer generate; `transparent` and `current` still do.
+- One namespace serves every property, so `text-accent` still generates: the fill misused as link text (3.99:1 on dark `bg.raised`). Text tokens get their own stems (`fg`, `link`, `on-*`, `*-strong`), and the role gate below catches the crossover.
+- `inline` makes utilities emit `var(--ds-…)` directly, so theme overrides reach them; keep the two names distinct.
+- Spacing keeps Tailwind's numeric scale (the same 4px grid). Its utilities read `--spacing` where used, so density remaps that one variable on `[data-density]`, never below `0.1875rem`, where `h-8` reaches the 24px target floor. z-index has no namespace: `z-(--ds-z-index-modal)`; `z-50` and `z-[60]` count as literals.
+- Tailwind v3, or a JS config loaded with `@config`: map the same names under `theme` itself for the namespaces the system owns; under `theme.extend` the default palette survives.
 
-## Dark Mode
+## Class Merging
 
-Two-layer approach: respect system preference, allow manual override.
+Register token-named sizes and shadows, or `cn('text-body-md', 'text-fg-muted')` keeps only the color, because the merger reads both as text colors:
 
-```css
-/* System preference (auto) */
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --color-bg-primary: #111827;
-    --color-bg-secondary: #1f2937;
-    --color-bg-tertiary: #374151;
-    --color-bg-inverse: #f9fafb;
-    --color-text-primary: #f9fafb;
-    --color-text-inverse: #111827;
-    --color-text-secondary: #d1d5db;
-    --color-text-link: #60a5fa;
-    --color-interactive-primary: #3b82f6;
-    --color-interactive-primary-hover: #60a5fa;
-    --color-border-default: #374151;
-    --color-border-focus: #60a5fa;
+```ts
+import { clsx, type ClassValue } from 'clsx';
+import { extendTailwindMerge } from 'tailwind-merge';
 
-    --shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.2);
-    --shadow-dropdown: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.2);
-    --shadow-modal: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
-    --shadow-toast: 0 20px 25px -5px rgba(0, 0, 0, 0.4), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
-  }
-}
+const twMerge = extendTailwindMerge({
+  extend: {
+    theme: {
+      text: ['caption', 'body-sm', 'body-md', 'body-lg', 'heading-sm', 'heading-md', 'heading-lg', 'display', 'code'],
+      shadow: ['card', 'dropdown', 'modal', 'toast'],
+    },
+  },
+});
 
-/* Manual override */
-[data-theme="dark"] {
-  --color-bg-primary: #111827;
-  --color-bg-secondary: #1f2937;
-  --color-bg-tertiary: #374151;
-  --color-text-inverse: #111827;
-  /* ... same color remaps + shadow overrides ... */
-}
+export const cn = (...inputs: ClassValue[]) => twMerge(clsx(inputs));
 ```
 
-Set `data-theme` on `<html>`. Components never check theme — they just read CSS variables.
+On the `cn` package (shadcn's replacement for `clsx` plus `tailwind-merge`), `createCn` from `cn/config` takes the same options; `cn build` (its CLI, Vite plugin or Next.js wrapper) registers the `@theme` scales itself, into tables the helper loads with `createCn` from `cn/engine`. Every component imports this one helper.
 
-## Responsive
+## Guards
 
-Mobile-first. Base styles are mobile, scale up with `min-width`.
+- **Literal count** (any stack, React Native included). First add one `-g '!<path>'` per file that only defines tokens (`tailwind.config.*`, theme objects, a CSS file of `:root` blocks), then read a sample of matches: definitions, generated output and vendored CSS are not literals, and a count that includes them misleads. In a mixed file, subtract its definition lines.
+  ```sh
+  rg -n -g '*.{css,scss,ts,tsx,js,jsx}' -g '!**/{tokens,generated}/**' \
+    -e '#[0-9a-fA-F]{3,8}\b' -e '\b(rgba?|hsla?|oklch|oklab|lab|lch|color)\(' \
+    -e '\b(bg|text|border|ring|outline|fill|stroke|shadow|from|via|to|divide|placeholder|caret|decoration)-([a-z]+-)*([a-z]+-(50|[1-9]00|950)|white|black)\b' \
+    -e '\b[a-z]+(-[a-z]+)*-\[([^\[\]]|\[[^\]]*\])*\]([^\]:/]|$)' -e '\bz-\d+\b|z-?[iI]ndex:\s*-?\d' \
+    -e '\b(duration|delay)(-\d+\b|\s*:\s*\d)' -e '(transition|animation)[-A-Za-z]*\s*:[^;]*[^\w.-]\.?\d+(\.\d+)?m?s\b' \
+    . | grep -vc token-exempt
+  ```
+- **Tailwind:** the bridge's namespace resets keep off-system utilities from generating.
+- **Stylelint** (package `stylelint-declaration-strict-value`). `ignoreFunctions: false` catches `rgb()` and `oklch()` literals; `expandShorthand` checks only the color inside `border: 1px solid var(--ds-…)`. A gradient in the `background` shorthand still fails: make it a token.
+  ```json
+  "scale-unlimited/declaration-strict-value": [
+    ["/color$/", "fill", "stroke", "box-shadow", "z-index", "font-size"],
+    { "ignoreFunctions": false, "expandShorthand": true,
+      "ignoreValues": ["transparent", "/^currentcolor$/i", "inherit", "none", "auto"] }
+  ]
+  ```
+- **Role gate** (expect no matches): a fill used as text, or a text token used as a fill, in this bridge's names or shadcn's. An on-token drawn as a graphic on its own fill (a radio dot, a switch thumb) is a pair: mark the line `token-exempt: graphic on its fill`.
+  ```sh
+  rg -n -g '*.{ts,tsx,js,jsx}' \
+    -e '\btext-(accent|danger|warning|success|raised|subtle|primary|secondary|destructive|muted)(-hover|-subtle)?([^\w-]|$)' \
+    -e '\bbg-(fg|link|on-[a-z]+|[a-z]+-strong|[a-z]+-foreground)\b' . | grep -v token-exempt
+  ```
 
-```css
-/* Base = mobile */
-@media (min-width: 640px)  { /* sm — large phones, landscape */ }
-@media (min-width: 768px)  { /* md — tablets */ }
-@media (min-width: 1024px) { /* lg — laptops */ }
-@media (min-width: 1280px) { /* xl — desktops */ }
-```
+## Upgrading from v3
 
-## Focus States
+After `npx @tailwindcss/upgrade` (check its Node requirement), diff meaning, not only syntax: borders and rings default to `currentColor`, a bare `ring` is 1px, `outline-none` removes the outline (the old behavior is `outline-hidden`), and the `shadow`, `rounded` and `blur` scales moved a step (`shadow-sm` → `shadow-xs`). Each silently changes a pair or a focus indicator.
 
-Visible for keyboard users, hidden for mouse.
+## Focus
 
 ```css
 :focus-visible {
-  outline: 2px solid var(--color-border-focus);
+  outline: 2px solid var(--ds-border-focus);
   outline-offset: 2px;
 }
-
-:focus:not(:focus-visible) {
-  outline: none;
+html {
+  scroll-padding-top: 4rem; /* token-exempt: sticky header height, so focus is never hidden under it */
 }
 ```
 
-## Reduced Motion
+## Layering
 
-```css
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-  }
-}
-```
+Modal `<dialog>` (`showModal()`) and `popover` render in the top layer, above any z-index. z-index tokens order only in-flow and portal layers, where a menu, select or tooltip inside a modal needs `zIndex.popover` above `zIndex.modal`. Keep all overlays in one system: a z-indexed toast renders beneath a top-layer modal, inert.
 
-## Component Usage Example
+## Responsive
 
-```css
-.button-primary {
-  background-color: var(--color-interactive-primary);
-  color: var(--color-text-inverse);
-  padding: var(--spacing-component-md) var(--spacing-component-lg);
-  border-radius: var(--radius-md);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  font-weight: 600;
-  transition: background-color var(--duration-fast) var(--easing-default);
-}
+Components respond to their container, pages to the viewport: a card styled by viewport breakpoints breaks when it moves into a sidebar. Mark the container (`@container`) and style parts with `@md:` variants or `@container (width >= 28rem)`.
 
-.button-primary:hover {
-  background-color: var(--color-interactive-primary-hover);
-}
-```
+## Diagnosis
 
-## Tailwind CSS Integration
-
-If the project uses Tailwind, map design tokens to the Tailwind config so you get utility classes that use your tokens. This is the recommended approach for Tailwind projects.
-
-### Tailwind v4 (CSS-based config)
-
-Tailwind v4 uses CSS `@theme` to define tokens. Use `@theme inline` here: the `inline` keyword makes each generated utility emit the referenced value (`var(--color-x)`) directly, so it resolves on the element that uses the utility. Without `inline`, the utility reads Tailwind's own theme variable, and a theme variable that aliases another variable (e.g. `--color-x: var(--x)`) is resolved where the theme variable is defined (`:root`) — a `[data-theme="dark"]` override scoped to a subtree would then not reach the utility. For same-name entries like the ones below, plain `@theme` usually also works, because the unlayered `:root` / dark declarations above beat Tailwind's `@layer theme` output; `inline` keeps it correct regardless of how the token CSS is layered. With `inline`, the `:root` / `[data-theme="dark"]` overrides flow straight through to the utilities:
-
-```css
-/* globals.css */
-@import "tailwindcss";
-
-@theme inline {
-  --color-bg-primary: var(--color-bg-primary);
-  --color-bg-secondary: var(--color-bg-secondary);
-  --color-bg-tertiary: var(--color-bg-tertiary);
-  --color-bg-inverse: var(--color-bg-inverse);
-  --color-text-primary: var(--color-text-primary);
-  --color-text-secondary: var(--color-text-secondary);
-  --color-text-inverse: var(--color-text-inverse);
-  --color-text-link: var(--color-text-link);
-  --color-interactive-primary: var(--color-interactive-primary);
-  --color-interactive-primary-hover: var(--color-interactive-primary-hover);
-  --color-border-default: var(--color-border-default);
-  --color-border-focus: var(--color-border-focus);
-  --color-status-error: var(--color-status-error);
-  --color-status-success: var(--color-status-success);
-
-  --shadow-card: var(--shadow-card);
-  --shadow-dropdown: var(--shadow-dropdown);
-  --shadow-modal: var(--shadow-modal);
-  --shadow-toast: var(--shadow-toast);
-
-  --spacing-component-xs: var(--spacing-component-xs);
-  --spacing-component-sm: var(--spacing-component-sm);
-  --spacing-component-md: var(--spacing-component-md);
-  --spacing-component-lg: var(--spacing-component-lg);
-  --spacing-component-xl: var(--spacing-component-xl);
-  --spacing-layout-xs: var(--spacing-layout-xs);
-  --spacing-layout-sm: var(--spacing-layout-sm);
-  --spacing-layout-md: var(--spacing-layout-md);
-  --spacing-layout-lg: var(--spacing-layout-lg);
-  --spacing-layout-xl: var(--spacing-layout-xl);
-}
-```
-
-Usage: `bg-bg-primary`, `text-text-secondary`, `shadow-card`, `p-component-md`.
-
-### Tailwind v3 (JS config)
-
-Tailwind v4 no longer detects `tailwind.config.js` automatically, but still loads it for backward compatibility via an explicit `@config "./tailwind.config.js";` in the CSS entry (some options — `corePlugins`, `safelist`, `separator` — are unsupported). Prefer `@theme` for new v4 projects.
-
-```javascript
-// tailwind.config.js
-module.exports = {
-  theme: {
-    extend: {
-      colors: {
-        bg: {
-          primary: 'var(--color-bg-primary)',
-          secondary: 'var(--color-bg-secondary)',
-          inverse: 'var(--color-bg-inverse)',
-        },
-        text: {
-          primary: 'var(--color-text-primary)',
-          secondary: 'var(--color-text-secondary)',
-          link: 'var(--color-text-link)',
-        },
-        interactive: {
-          primary: 'var(--color-interactive-primary)',
-          'primary-hover': 'var(--color-interactive-primary-hover)',
-        },
-        border: {
-          DEFAULT: 'var(--color-border-default)',
-          focus: 'var(--color-border-focus)',
-        },
-        status: {
-          error: 'var(--color-status-error)',
-          success: 'var(--color-status-success)',
-        },
-      },
-      boxShadow: {
-        card: 'var(--shadow-card)',
-        dropdown: 'var(--shadow-dropdown)',
-        modal: 'var(--shadow-modal)',
-        toast: 'var(--shadow-toast)',
-      },
-      zIndex: {
-        dropdown: 'var(--z-dropdown)',
-        sticky: 'var(--z-sticky)',
-        overlay: 'var(--z-overlay)',
-        modal: 'var(--z-modal)',
-        popover: 'var(--z-popover)',
-        toast: 'var(--z-toast)',
-      },
-    },
-  },
-};
-```
-
-Usage: `bg-bg-primary`, `text-text-secondary`, `shadow-card`, `z-modal`.
-
-The key idea: Tailwind utilities become the consumption layer, CSS custom properties remain the source of truth. Dark mode works automatically because the CSS variables swap values.
-
-## Units: rem vs px
-
-For better accessibility, consider defining spacing and typography tokens in `rem` instead of `px`. Users who set a larger browser font size will benefit from layouts that scale proportionally.
-
-```css
-:root {
-  /* rem-based spacing (1rem = 16px at default browser settings) */
-  --spacing-component-xs: 0.25rem;  /* 4px */
-  --spacing-component-sm: 0.5rem;   /* 8px */
-  --spacing-component-md: 0.75rem;  /* 12px */
-  --spacing-component-lg: 1rem;     /* 16px */
-  --spacing-component-xl: 1.5rem;   /* 24px */
-}
-```
-
-The px values in this skill's token definitions are the canonical reference. When outputting for web, the pipeline can convert px to rem automatically (divide by 16). For React Native, px values are correct since RN uses device-independent points.
+| Symptom | Cause | Check |
+|---|---|---|
+| Wrong theme flashes on reload | theme applied after hydration | served HTML or the `<head>` script sets `data-theme` |
+| The default brand shows after login, or until a reload | brand applied in an effect after paint, or only server-rendered | the attribute is set on arrival, stored, and replayed by the `<head>` script |
+| Another open tab keeps the old theme or brand | no `storage` listener, or a brand set once and never updated | change it in one tab, watch the other |
+| A utility ignores a theme override | `@theme` without `inline`, or a default-palette class | the compiled rule reads `var(--ds-…)` |
+| A nested theme keeps the outer colors | an alias such as `--background: var(--ds-bg-base)` declared only on `:root`, where it resolves | the alias's computed value inside the band (declare it on `:root, [data-theme]`) |
+| `cn()` drops a size or shadow class | names not registered with the merger, or a bare `cn` import | `cn('text-body-md', 'text-fg-muted')` keeps both |
+| No focus indicator in forced colors | box-shadow ring plus `outline-none` | emulate forced colors |
+| Native controls stay light in dark mode | no `color-scheme` on the themed element | computed `color-scheme` |

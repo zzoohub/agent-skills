@@ -1,182 +1,137 @@
 ---
 name: competitor-pages
 description: |
-  Competitor comparison pages, alternative pages, and vs pages — built to rank in search, get cited
-  in AI answers, and convert.
-  Use when: creating "[Competitor] alternative" pages, "vs" comparison pages, competitor comparison
-  tables, migration guides, or when user mentions "competitor page", "alternative page", "vs page",
-  "comparison page", "switching from", "migrate from", "competitor alternative".
-  Do NOT use for: competitive analysis strategy (the caller's job — this skill produces the
-  published page; the internal analysis is biz/marketing/competitors.md), pricing strategy or
-  competitor-pricing analysis (use pricing — this skill only renders a comparison table from prices
-  you already have), site-wide SEO/AEO/GEO strategy, keyword research, technical SEO, or AI-citation
-  measurement (use search-visibility — this skill bakes page-level GEO into the page itself), or
-  page conversion optimization (use cro).
+  Comparison pages for buyers mid-decision: "[Competitor] alternative(s)",
+  "[You] vs [Competitor]", "[A] vs [B]", own-site "best [category]" roundups
+  and "switching from [Competitor]" guides, with every competitor claim
+  sourced and dated and page-level SEO/AEO/GEO built in. Use when creating,
+  refreshing or auditing these pages, their comparison tables or a
+  competitor page set, or when the user says "competitor page",
+  "alternative page", "vs page" or "comparison page". Do NOT use for:
+  competitive analysis (the caller's), pricing strategy (pricing), site-wide
+  SEO or AI-citation tracking (search-visibility), page CRO (cro), or your
+  own system migration (software-architecture, arch-decision).
 ---
 
 # Competitor Comparison Pages
 
-Create high-converting competitor comparison, alternative, and migration pages that capture high-intent demand — from typed search queries and from the AI answers buyers increasingly ask instead.
+## Premise
 
----
+Behind the requested page is a buyer's decision. The page has four readers: the buyer mid-decision, the competitor's sales rep hunting for an error to forward, their counsel, and answer engines that quote single sentences. It is good when a defined buyer can decide from it alone where [Your Product] wins, where it doesn't and what switching costs, every competitor fact holds up on its check date, and it is the one URL of yours for its query. Sometimes the right call is no page.
 
-## Why Competitor Pages Matter
+## Modes
 
-- **High-intent traffic** — Users searching "[X] alternative" are ready to switch
-- **Bottom-of-funnel** — These visitors have the highest conversion potential
-- **Intent over volume** — Competitor and "alternative" keywords convert because of buyer intent, not volume; some big competitors have meaningful volume, but many terms are low-volume and extremely high-converting. Prioritize by intent, not raw volume
-- **The formats AI answers cite most** — "best [category]" roundups and "[A] vs [B]" comparisons sit at the top of the content types generative engines cite, because a comparison page's sections map directly onto the sub-questions AI search decomposes a query into. Write these pages to be **lifted**, not only ranked
-- **Brand positioning** — Define how your product compares on your terms
+| Mode | When | Do | Return |
+|---|---|---|---|
+| **New page** (default) | One page, one competitor or query | Stages 1–3 | The page with its sources block; handoff |
+| **Refresh / audit** | An existing page; "still accurate?"; a competitor change | Stage 1 items 1 and 4; patch in place, never fork; rebuild at its URL only on request or when its format or most claims fail (`references/portfolio.md` § Refresh) | The patched or rebuilt page, a change list, handoff |
+| **Portfolio** | Several competitors; an existing page set; "which pages should we build?" | URL map, triage, Stage 1 for the top 3–5 (`references/portfolio.md`) | URL map, ranked plan, one exemplar page and its register |
+| **Fragment** | One block: a table, TL;DR or migration section | Stage 1 items 1–3 (defaults allowed); Stage 2 for its facts | That block and its source lines |
 
-**Set expectations honestly, though: this page is necessary, not sufficient.** "Alternative" and "vs" queries are review-style queries, and for those, generative engines draw the majority of brand citations from *earned and third-party* sources (G2, Capterra, Reddit, press, roundups) rather than the brand's own domain — on branded queries a large majority of citations (roughly 68-85% in one ~23K-citation study) come from third-party sites, and review-style queries lean on them hardest (directional, methodology-dependent). This page is the slice you fully control and the one AI engines quote for concrete pricing/feature facts; it does not substitute for off-site presence. Route that workstream to the search-visibility capability (site-wide/off-site/measurement), if available, and hand review-site and community presence back to the caller as off-site follow-ups.
+**The request sets the deliverables; the mode adds to them.** Whatever the caller names (a template, a redirect map) ships, or the handoff says why not. Budgets cap what is written, never what is checked: a finding that changes the buyer's answer or the URL plan reaches the caller unasked.
 
----
+## Stage 1 — Frame the decision
 
-## Five Page Formats
+**Read first** (defaults; caller may redirect): the competitor analysis (`biz/marketing/competitors.md`), pricing (`biz/marketing/pricing.md`), marketing strategy (`biz/marketing/strategy.md`), any page or claims register for this competitor under `biz/marketing/competitor-pages/`, the keyword map (`biz/marketing/seo/keyword-map.md`), and Search Console data for your comparison URLs, if shared.
 
-| Format | Use When | Example | Template |
-|--------|----------|---------|----------|
-| **[Competitor] Alternative** (singular) | Single competitor, strong differentiator | "Notion Alternative" | Format 1 |
-| **[Competitor] Alternatives / Best [Category] Tools** (roundup) | Multiple options; category leadership; earlier-stage research | "Best Project Management Tools" | Format 2 |
-| **[You] vs [Competitor]** | Head-to-head, both well-known | "Linear vs Jira" | Format 3 |
-| **[A] vs [B]** (third-party) | User comparing two others; you're the relevant third option | "Asana vs Monday" | Format 4 |
-| **Switching from [Competitor]** (migration) | Migration-ready users, technical product | "Switching from Heroku" | Format 5 |
+**Ask once** for what those files leave open, each question with its default, plus internal facts (migration time, importer scope) and switcher quotes. Unable to ask, apply the defaults and list them as handoff assumptions.
 
-The formats do different jobs and you should not rank them on one axis. Formats 1 and 5 (singular Alternative, Switching-from) are the **conversion** plays — narrowest audience, highest intent. Format 2 (roundup / "Best [Category]") is the **visibility** play — it is the shape AI answers cite most often, because a ranked list of options with per-option verdicts is exactly what a "best X for Y" prompt is asking for. A portfolio usually wants both, not the highest-intent format alone.
+1. **Reader, stage (query map below) and price range.** The price range is the team sizes the segment's deals against X span (sales notes; default the segment's band, such as 5–50 seats), on each billing basis buyers use, in the market's currency; never a range picked because you win there.
+2. **Trigger:** why buyers leave X now. Default: X's 1–3★ reviews from the last 12–18 months and your customers' answers to "what did you use before?" Keep the buyers' words.
+3. **Deciding criteria, scored.** The 3–4 criteria that decide deals against X, in buyers' words (loss notes and sales calls first, reviews second), each marked win, tie or loss with its proof; the wedge is the win this segment weighs most. At least two are ties or losses; if not, add what X's 4–5★ reviews praise. Default: inferred from reviews, for the caller to confirm.
+4. **What already answers the query.** Per candidate query (singular, plural, vs, switch, pricing): the top-10 formats and any URL of yours that ranks or draws impressions for it. For 3–5 buyer prompts in answer engines, if tools allow (else listed for the caller): the sources cited and each wrong fact about [Your Product], which the page corrects, sourced. Without search data, URL decisions stay conditional.
+5. **A first-hand artifact** the top pages lack. Default: item 1's price comparison across the range.
+6. **Job, markets, owner.** The job sets the measure: *acquire* (trials and demos from the page), *enable* (sales sends it; win rate against X where buyers saw it) or *defend* (accuracy and recommendation in answers to item 4's prompts). Defaults: vs pages enable and defend, others acquire; US + EU, strictest rule governs; the requester owns a 90-day refresh.
 
----
+**Query map.** Template URLs are defaults for new pages only.
 
-## When to Use Which Reference
+| Query | Reader | Format |
+|---|---|---|
+| "[X] alternative" | Leaving X; not yet sold on you | F1 alternative |
+| "[X] alternatives", "best [X] alternatives", "best [category]" | Building a shortlist | F2 roundup |
+| "[You] vs [X]", "[X] vs [You]" | Has shortlisted you, often mid-sales-cycle | F3 vs |
+| "[A] vs [B]" | Hasn't considered you | F4 third-party vs |
+| "switch from [X]", "migrate from [X]", "[X] to [You]" | Decided; worried about the effort | F5 switching guide |
+| "[X] pricing" | Checking X's cost; may not know you | A dated price section on your page already drawing these impressions; else, if X's pricing is hard to read, an F1 variant at `/compare/[competitor]-pricing` |
 
-| Scenario | Reference |
-|----------|-----------|
-| Writing for AI answer engines (fan-out section architecture, liftable blocks, chunk sizing), classic SEO/heading/schema strategy, research process, competitor-data model, handling incomplete data, data-freshness discipline | `references/content-architecture.md` |
-| Copy-paste page skeletons per format, liftable-block and section copy patterns, meta-tag templates, JSON-LD schema examples | `references/templates.md` |
+**Pick the build from the situation, not from search volume.**
 
----
+| Situation | Build | Break when |
+|---|---|---|
+| Clear win for a segment leaving X | F1 led by its trigger, plus F3 | — |
+| Feature parity, different business model | F3 on the scored criteria; no checkmark war | — |
+| X wins on breadth, you win a niche | F1 as "[X] alternative for [niche]" | No demand, no deals in the niche |
+| Buyers compare two others | F4 or F2, disclosed | No first-hand knowledge of both |
+| Migration effort is the objection | F5 | Nothing transfers: answer it in F1/F3 |
+| X announced a price rise, sunset or acquisition | F1 or F5 within days, linking the announcement | Rumor only |
+| X is also your partner, reseller or key integration | Criteria-only F3 or no page; the partnership owner decides | — |
+| No defensible wedge | No F1/F3; return the positioning gap | Caller insists: a criteria-only F3, flagged |
 
-## Workflow
+**One URL per intent**, checked before any page, merge or redirect. A URL's intent is the query it was built to answer (format, title, H1), usually where it ranks best; its impressions elsewhere are spillover, not ownership.
 
-When triggered, follow these steps in order:
+- **What ranks decides.** The URL built for an intent and ranking for its query, or the keyword map's owner, is its page: refresh it in place, whatever its path; moving it needs a reason worth a 301's risk. Never add a rival (a reversed-name or `/compare/` twin of a vs page, a second F1): the two split rankings, and answer engines pick one.
+- **Singular or plural is a results question.** "[X] alternative" and "[X] alternatives" are one intent when their top 10s share at least 3 URLs (search-visibility's test): one page targets both, in the format those results reward (lists mean F2). Otherwise they are separate intents, one URL each when built, cross-linked.
+- **Plural, "best" and list-dominated queries stay multi-vendor.** When the query asks for options, or 6 or more of its top 10 are lists, a single-vendor page neither ranks nor converts: build or fix a fair F2 (Stage 3); if you can't, target the singular, vs or switch query and earn a place on the ranking lists (off-site follow-up). *Break:* a list-dominated vs or singular query may still get a vendor page to enable or defend, aimed at that query alone, never at a plural or "best" query or a roundup's URL or redirect.
+- **Merge only within one intent, on evidence:** two URLs built for it, both taking meaningful impressions for its query over three months or more, trading places, neither holding a stable top position. Keep the one closer to the format the results reward, then the one with more clicks and links; fold in the other's unique content and 301 it. Different intents sharing a query: retarget each URL (title, H1, anchors) and cross-link; never 301 a roundup into a single-vendor page or back.
+- **Own the vs page** for every competitor in at least 10% of competitive deals, whatever its search volume; otherwise answer engines describe you from their page and reviews. *Break:* no wedge yet; fix positioning first.
 
-### Step 1: Gather Context
+The Frame is done when the six answers (or defaults), the build and each page's URL decision are recorded.
 
-Ask the user for the information you need. Don't start drafting until you understand the basics:
+## Stage 2 — Research into sources
 
-- **Your product**: Name, what it does, target audience
-- **Competitor(s)**: Which competitor(s) to compare against
-- **Key differentiators**: What makes the user's product better for their audience
-- **Available data**: Do they have pricing details, feature lists, testimonials, migration docs?
-- **Page format**: Which of the five formats fits (suggest one based on their description)
+**Never from memory.** Every competitor fact on the page comes from a source fetched in the last 30 days (research order and hard cases: `references/claims.md`). The competitor analysis and sales notes are leads, not sources; [Your Product]'s facts need sources too.
 
-If the user already provided most of this in their prompt, confirm your understanding and ask only about gaps.
+**Scale the record to the request.** A single page or fragment carries a sources block, one dated line per source (template: `references/templates.md`). A page program or scheduled refresh cycle keeps a claims register per competitor, so a changed source reopens every page it feeds. Without web access, draft from the caller's data: every check date no fetch of yours backs becomes `[VERIFY: <the data's date>, <whose data>]`, once per source, never per claim. Mark inline only a missing or disputed fact; cut a fact the page doesn't need.
 
-### Step 2: Research
+- **✗ only** when the capability is missing on every plan, natively and via official add-ons, per current docs; otherwise write what is true ("Enterprise only", "add-on $X/user/mo", "beta", "via Zapier").
+- **Like-for-like prices across the range.** On each side, the cheapest plan meeting this buyer's must-haves (SSO, say) at dated list price, for every size in item 1's range on each billing basis. Find each crossover, where the cheaper side flips (flat fee against per-seat, seat minimums, tier jumps, unequal annual discounts); state it, and show sizes on both sides of it, never only where one side wins. If you lose across the range, say so and win on the criteria. No estimated "contact sales" prices; usage pricing and a worked example: `references/claims.md`; your own price response: the pricing capability, if available.
+- **Claim types.** Performance: a reproducible test on current versions, if their terms allow (`references/claims.md`); else cut. "Best", "only", "#1": a named, current, independent source, or cut. Opinions: attributed. Customer results, switcher counts and quotes: real, attributed, dated, incentives disclosed; never one customer's result as typical, never a placeholder quote that could ship as real. Internal data (win rates, deal counts, sales anecdotes, which customer left which tool) stays off the page unless its owner, and any customer named, cleared it.
+- **Net impression.** Rows picked to win mislead even when each is true: include the rows this buyer weighs, losses too. Whatever the title, TL;DR or table implies ("cheaper for teams like yours") needs the proof an outright claim would; if you couldn't state it, don't imply it.
+- **Review-site content:** by default no competitor rating, review quote or badge (the sites' vendor rules: `references/claims.md`); paraphrase themes with count, site and date window.
+- **No denigration.** Never their breaches, outages, lawsuits or layoffs. *Break:* a change they announced themselves (a price rise, an end of life), linked and stated neutrally.
+- **Trademarks.** Plain-text competitor names, no logos without counsel's approval, the template's footer; market rules and disputes: `references/claims.md`.
 
-Use web search to fill knowledge gaps — see `references/content-architecture.md` for the research process. Focus on publicly available information: pricing pages, feature lists, review sites, changelogs.
+## Stage 3 — Draft
 
-### Step 3: Select Format
+Write from the matching template in `references/templates.md`, inside its word budget.
 
-Pick the right format from the Five Page Formats table above (each maps to a template in `references/templates.md`). If unclear, suggest the best fit and explain why.
+- **Structure follows the decision.** Alternative pages: the top 2–3 triggers as buyers' needs → how [Your Product] resolves each → proof; vs pages: the scored criteria as question headings. The naive page tours features and never says why the reader is leaving. *Break:* without trigger evidence, criteria only and fewer claims.
+- **Concede specifically.** At least two rows or verdicts where [Competitor] wins or ties, from the scored ties and losses, one stated plainly ("[Competitor] has native Gantt charts; [Your Product] does not"), plus who should stay with [Competitor]. Never concede the wedge; no token concessions ("[Competitor] has been around longer"). *Break:* switching pages say what doesn't transfer instead.
+- **Own-site roundups and A-vs-B pages (F2, F4)** open with the template's disclosure. No self-awarded "#1" or "best overall"; [Your Product]'s labeled entry sits where the criteria place it, never first by default. Every entry needs first-hand evidence and a "best for [segment]" verdict you would defend to that vendor. Why: `references/claims.md`.
+- **Specifics, not adjectives,** about either product. Reject "enterprise-grade", "no bloat" and "clunky" (nothing to quote, easy to mock), checkmark grids (they hide plan gates) and undated screenshots.
 
-### Step 4: Draft
+## Output
 
-Use the matching template from `references/templates.md`. Fill in everything you can from user input and research. Mark gaps with `[TODO: ...]` placeholders — see `references/content-architecture.md` for how to handle incomplete data.
+1. **The page**, opening with an HTML comment holding the title, meta description, target query and item 4's prompts (search-visibility reads them there, if available) and closing with its sources block. With file-write: `biz/marketing/competitor-pages/{slug}.md` (default; caller may redirect the `biz/<area>/` root; publishing is the caller's), `{slug}` being the page's URL path without slashes (`vs-linear`, `switch-linear`), updated in place; otherwise inline.
+2. **Portfolio or a scheduled refresh cycle only: register rows**, merged into `biz/marketing/competitor-pages/claims/{competitor}.md`, [Your Product]'s into `claims/{your-product}.md` (defaults; same redirect).
+3. **Every other artifact the request named**, outside the handoff's budget.
+4. **Handoff, at most 150 words:** assumptions applied; publish blockers (open markers by type; counsel's sign-off on the sources and rendered page, naming every performance, superlative, implied and customer-result claim); URL decisions and the evidence they await; job, measure, target query and prompts; refresh owner and date, with a change monitor on each price and plan-gate source; off-site follow-ups; proposed changes to the competitor analysis, which this skill never edits.
 
-Draft to be **liftable from the start** — self-contained verdicts, named entities, sourced numbers, section headings shaped as the sub-questions buyers actually ask. This is a drafting constraint, not a cleanup pass; retrofitting extractability onto finished marketing prose means rewriting it. See `references/content-architecture.md` → Writing for AI Answer Engines.
+The page never narrates this method: no "wedge", "liftable" or register IDs in the copy.
 
-### Step 5: Review and Refine
+## Self-Review
 
-After drafting, review for four things:
-- **Honesty** — are competitor strengths acknowledged?
-- **Specificity** — vague claims replaced with sourced data?
-- **Completeness** — all sections filled or marked TODO?
-- **Citability** — can each key claim stand alone if an AI answer lifts that one sentence? Are the verdict and the headline numbers inside the first third of the page? Is every comparative claim attached to a named product rather than "we"/"they"? (Full checklist: `references/content-architecture.md` → Citability Checklist.)
+Run on the finished work; fix and re-run. A fragment checks only the items its block touches.
 
----
+1. Every artifact the request named is delivered, or the handoff says why not.
+2. TL;DR: 40–60 words, names the products and who should choose each (F5: switch time, what transfers and what doesn't), with at least one sourced number.
+3. Concessions: F1/F3 at least two plus "Stay with [Competitor] if" (F3: "Who [Competitor] Is Best For"); F5 what doesn't transfer; F2/F4 each entry's shortfall, yours included. Never the wedge.
+4. Every competitor fact traces to a sources line checked within 30 days of publishing, or that line's date is a `[VERIFY]`; inline markers sit only on missing or disputed facts; the handoff counts every marker.
+5. No ✗ where any plan or official add-on has the capability.
+6. Prices span item 1's range on each billing basis, each crossover stated and shown from both sides, with seats, billing basis, parity plan, currency and check date beside them.
+7. No unsubstantiated superlative, "only", performance or implied claim; no uncleared testimonial or internal fact; incentives disclosed.
+8. At least one first-hand artifact.
+9. Question headings answered in their first sentence, products named; decisive rows restated in prose; trust line under the H1, footer at the end; markup, if any, only Article or WebPage plus BreadcrumbList; title about 55 characters, query first; description opening with the verdict and a number.
+10. F2/F4: disclosure first, published criteria, no self-awarded #1, yours not first by default, a year only if re-tested.
+11. URLs: no new URL rivals a ranking one; no single-vendor page takes a plural or "best" query or a roundup's redirect; every merge joins two URLs of one intent.
+12. Competitor-PMM test: their product marketer would accept every fact about their product as of the check date, and find no adjective about it, nor any review-site rating or quote of theirs.
+13. Portfolio: with another competitor's name swapped in, most sentences on each page become false (`references/portfolio.md`).
+14. **Footprint:** the page is within its template's budget and every section answers a question this buyer has; the handoff is at most 150 words; a portfolio plan at most 300 plus its URL map, one row per URL.
 
-## Output Format
+## Reference Files
 
-Produce the page in **markdown** by default. Include an HTML block at the top for meta tags (title, description). If the user specifies a different format (HTML, JSX, MDX), adapt accordingly.
-
-When asked to save the draft (and a file-write capability is present), write it to the competitor-pages dir (default `biz/marketing/competitor-pages/{slug}.md`; caller may redirect the `biz/<area>/` root) — the published page itself lives wherever the project's site content lives. Update an existing file in place rather than creating a duplicate.
-
----
-
-## Tone Calibration
-
-Match the tone to the target audience:
-
-- **Enterprise / B2B**: Professional, data-driven, emphasize ROI, security, compliance, and scale. Avoid casual language. Use phrases like "designed for teams of 50+", "enterprise-grade".
-- **SMB / Startup**: Direct, practical, emphasize speed, simplicity, and value. OK to be conversational. Use phrases like "get started in minutes", "no bloat".
-- **Developer / Technical**: Precise, no fluff, emphasize APIs, extensibility, performance. Show code examples or CLI comparisons where relevant. Avoid marketing-speak.
-- **Consumer / Creative**: Friendly, benefit-focused, emphasize experience and ease. Use screenshots or visual comparisons where possible.
-
-If the audience isn't obvious, ask. The wrong tone undermines an otherwise good page.
-
----
-
-## Core Principles
-
-### Be Honest
-Don't trash competitors. Acknowledge their strengths. Users can smell bias — balanced comparisons convert better than hit pieces.
-
-### Lead with Your Unique Strengths
-Don't organize around competitor weaknesses. Lead with what makes you different and better for your target user.
-
-### Include Specific Comparisons
-Features, pricing, use cases — be specific. Vague "we're better" claims don't convince anyone. Tables and data convert.
-
-### Write Liftable Blocks
-Generative engines retrieve *passages*, not pages, and then discard most of what they retrieve during synthesis — being findable is not being cited. Every claim that matters should survive being quoted alone:
-
-- **Self-contained.** No "as shown above", no "this is why". A lifted sentence carries its own subject, number, and source.
-- **Named entities, not pronouns, near every key claim.** "[Your Product] includes SSO on the $12/seat plan" — not "we include it on our mid tier". Pronouns are fine in connective prose; they are not fine in the sentence you want quoted.
-- **Front-load the verdict and the numbers.** The opening third of the page carries a disproportionate share of AI citations (measured on ChatGPT; a safe default for other engines), so the TL;DR must contain the actual answer and the headline figures — not a tease that pays off in section 6.
-- **Definitive, evidenced statements.** Assertive declaratives outperform hedged prose ("may", "might", "could") — but confidence *with* the number or source attached, not bare confidence.
-- **Comparisons, definitions, and figures are the highest-value units.** They are exactly what this page type produces natively; the job is formatting them so they extract cleanly.
-
-Mechanics (block sizes, section architecture, evidence base): `references/content-architecture.md` → Writing for AI Answer Engines.
-
-### Make Claims Defensible
-Every comparative claim about a named competitor must be (1) true at publish time, (2) backed by a citable public source (link their pricing/docs page), (3) objective and verifiable rather than vague superiority, and (4) kept current. Comparative advertising is legally risky — a false or stale claim about a named competitor can create Lanham Act §43(a) and FTC exposure, not just lost trust. Date-stamp competitor data and re-verify it on a cadence (see `references/content-architecture.md`).
-
-### Target Both Query Surfaces
-The same page has to win two differently-shaped surfaces. Write for both.
-
-**Typed search queries** (classic SEO — short, keyword-shaped):
-- "[Competitor] alternative"
-- "[Competitor] vs [Your Product]"
-- "Best [category] tools"
-- "Switch from [Competitor]"
-
-**Conversational prompts and their fan-out sub-questions** (AEO/GEO — AI search decomposes one prompt into several sub-queries and retrieves a passage for each, so a page that only answers the head query loses to pages that answer the parts):
-- "what should I use instead of [Competitor] for a [N]-person team"
-- "is [Competitor] or [Your Product] better for [use case]"
-- "how much does [Competitor] actually cost with [N] seats"
-- "is it hard to migrate off [Competitor]"
-- "why do people leave [Competitor]"
-
-Give each sub-question its own heading and its own self-contained answer. Derive the list from the specific competitor and audience — the examples above are shapes, not a checklist.
-
-### Include Social Proof
-Real migration stories, switch testimonials, and "I switched from X" quotes are the most powerful social proof on competitor pages. If the user doesn't have these yet, add `[TODO: Add testimonial from customer who switched from [Competitor]]` placeholders.
-
----
-
-## Page Structure Overview
-
-Head-to-head pages (singular Alternative, You vs [Competitor]) typically include these sections. Roundup (plural / "Best [Category]") and third-party ([A] vs [B]) pages use a different structure — see `references/templates.md` — and omit any section that doesn't apply:
-
-1. **Trust header** — Author or "Reviewed by [role]", "Last updated: [date]", and "Competitor pricing/features verified as of [date]" (E-E-A-T + freshness; pair with `Article`/`dateModified` schema). Visible dates and named authors are also among the cheapest citability upgrades — undated pages lose to dated ones in AI answers
-2. **Hero** — Clear headline addressing the search intent
-3. **TL;DR / Verdict** — The single most important block on the page. State the answer, name both products, and carry at least one hard number (price, limit, time-to-migrate). This is what gets quoted; a teaser that defers the answer to section 6 wastes the highest-citation real estate on the page
-4. **Quick Comparison Table** — Feature/pricing comparison at a glance. Restate the two or three decisive rows in prose immediately after the table — table cells extract cleanly for some engines and poorly for others, so carry the key facts in both forms
-5. **Key Differentiators** — 3-5 areas where you win, with specifics. One question-shaped heading each, one self-contained answer each
-6. **Honest Acknowledgments** — Where the competitor is strong. Balanced pages get cited by engines that are explicitly trying to synthesize a fair comparison; hit pieces read as promotional and get discarded
-7. **Who It's For** — An explicit "best for [persona] because [reason]" verdict per option, each quotable on its own. This is the block AI answers reach for on "which should I use for X" prompts
-8. **Social Proof** — Testimonials from switchers + third-party ratings/badges (or TODOs if unavailable)
-9. **Migration Path** — How easy it is to switch, with a realistic time estimate
-10. **CTA** — Clear next step (trial, demo, import). On long pages repeat it after the comparison table and at decision points, add risk-reversal near the table (free trial, no credit card, easy cancellation, security/compliance badges), and consider a sticky compare/CTA bar. Route by segment: trial-led for SMB/developer, demo-led for enterprise (see Tone Calibration)
-
----
+| File | Read when |
+|---|---|
+| `references/templates.md` | Drafting any page or block; title and meta; the sources block or a register; markup |
+| `references/claims.md` | Stage 2 research; pricing cases; review-site rules; performance, "best" or market-law questions; disputes |
+| `references/portfolio.md` | Portfolio or Refresh mode; URL maps and redirects; an underperforming page |

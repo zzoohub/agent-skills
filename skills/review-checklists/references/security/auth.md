@@ -1,273 +1,116 @@
-# Authentication & Authorization Security
+# Authentication & Authorization
 
-> OWASP: A01 (Broken Access Control), A07 (Authentication Failures)
+> OWASP: A01 Broken Access Control, A07 Authentication Failures. Method, severity and the output contract live in SKILL.md; this file is a decision aid: the exploitable shape, and what separates it from the decoy.
 
-## Table of Contents
-
-1. [Password Security](#password-security)
-2. [Multi-Factor Authentication (MFA)](#multi-factor-authentication-mfa)
-3. [Passkeys / WebAuthn](#passkeys--webauthn)
-4. [Session Management](#session-management)
-5. [Cookie Security](#cookie-security)
-6. [Cross-Site Request Forgery (CSRF)](#cross-site-request-forgery-csrf)
-7. [JWT Security](#jwt-security)
-8. [OAuth / SSO](#oauth--sso)
-9. [SAML 2.0 SSO](#saml-20-sso)
-10. [Authorization (Access Control)](#authorization-access-control)
-11. [Rate Limiting & Brute Force](#rate-limiting--brute-force)
-
----
-
-## Password Security
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Strong adaptive hashing (bcrypt/argon2id) with proper cost factor | Rainbow tables, GPU cracking | CWE-916 |
-| No password in logs, errors, responses, or URLs | Credential leakage | CWE-532 |
-| Secure reset flow (expiring, single-use, random token) | Account takeover via reset | CWE-640 |
-| Password change requires current password verification | Session hijack escalation | CWE-620 |
-| Minimum password length enforced (>=8, ideally >=12) | Brute force feasibility | CWE-521 |
-| Breached password check (Have I Been Pwned API or similar) | Credential stuffing with known passwords | CWE-521 |
-
-**Patterns to catch:**
-- Weak hash algorithms (MD5, SHA1, SHA256 without key stretching for passwords)
-- Password field included in API responses or serialized user objects
-- Reset tokens that don't expire or are reusable
-- Reset token is user ID or email encoded in base64 (predictable)
-- Password stored in plaintext or reversible encryption
-- No minimum password complexity or length requirement
-- Same error message not used for "user not found" vs "wrong password" (see Rate Limiting section)
-
----
-
-## Multi-Factor Authentication (MFA)
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| TOTP implementation uses proper time window (30s, ±1 step) | Replay and timing attacks | CWE-294 |
-| Recovery codes are single-use and securely stored | Recovery code reuse | CWE-294 |
-| MFA cannot be silently disabled without re-authentication | MFA bypass via settings | CWE-306 |
-| MFA challenge cannot be skipped by modifying client flow | Step-skipping attack | CWE-304 |
-| Backup authentication method doesn't weaken MFA | Weakest link bypass | CWE-1390 |
-| SMS-based MFA = **restricted authenticator** (NIST SP 800-63B-4, finalized mid-2025) | SIM swap; phishing | CWE-1390 |
-| Passkeys (FIDO2/WebAuthn) preferred over TOTP where supported | Phishing-resistant by design | CWE-1390 |
-
-> **NIST SP 800-63B-4 status (finalized mid-2025):** SMS/PSTN OTP is now formally a "restricted authenticator" — use requires offering alternatives, informing users of risks, and maintaining a migration plan. Passkeys (syncable) are explicitly approved at AAL2; device-bound passkeys at AAL3.
-
-**Patterns to catch:**
-- TOTP secret transmitted to client after setup (should only display once during enrollment)
-- MFA verification endpoint without rate limiting
-- MFA status stored only in JWT/client without server-side verification
-- Recovery flow that bypasses MFA entirely (e.g., email-only reset disables MFA)
-- No re-authentication required before changing MFA settings
-
----
-
-## Passkeys / WebAuthn
-
-Default to passkeys for new auth systems where supported (Chrome, Safari, Edge, Firefox all support since 2023). Two flavors:
-
-| Flavor | AAL (NIST 800-63B-4) | Notes |
-|---|---|---|
-| **Syncable passkeys** (iCloud Keychain, Google Password Manager, 1Password) | AAL2 | Recovery via the platform's sync ecosystem. Survives device loss. |
-| **Device-bound passkeys** (security keys, platform attestations) | AAL3 | Cannot be exfiltrated. Required for high-assurance. Plan recovery carefully. |
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Use COSE algorithm allowlist (ES256, EdDSA); reject weak algs | Algorithm confusion | CWE-327 |
-| Verify origin and RP ID on attestation/assertion | Phishing | CWE-290 |
-| User verification (UV) required for sensitive operations | Stolen-device replay | CWE-294 |
-| Recovery flow does NOT downgrade to SMS / email-only | Recovery downgrade defeats phishing resistance | CWE-1390 |
-| For syncable passkeys: surface "this credential is synced across your devices" to users | Informed consent | — |
-| Attestation verified for AAL3 / device-bound deployments | Counterfeit authenticator | CWE-290 |
-
-**Patterns to catch:**
-- Accepting `none` attestation when policy requires AAL3
-- RP ID matching relaxed across subdomains
-- Password fallback enabled by default alongside passkeys (defeats phishing resistance)
-- No mechanism to enumerate / revoke passkeys per user
-
----
-
-## Session Management
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Server-side invalidation on logout | Token theft persistence | CWE-613 |
-| Session ID regeneration after auth state change | Session fixation | CWE-384 |
-| Concurrent session limits or notification | Account sharing, stolen sessions | CWE-613 |
-| Idle timeout (15-30 min) + absolute timeout (8-24 hours) | Abandoned session hijack | CWE-613 |
-| Separate long-lived token for remember-me | Reduced exposure window | CWE-613 |
-| Session bound to user-agent (and IP only for high-security contexts) | Session theft detection | CWE-384 |
-
-> **IP binding caveat:** Pinning sessions to IP breaks mobile users on cellular networks and any user behind CGNAT. Recommend only for high-security contexts (banking, admin panels, gov) where false-positive logouts are acceptable. Consumer apps should rely on UA + behavioral signals instead — but note UA is itself client-controlled and is usually captured alongside the stolen cookie, so UA binding is low-cost anomaly detection an attacker can replay, not a real control; it complements (never replaces) server-side invalidation and refresh-token rotation.
-
-**Patterns to catch:**
-- Logout only clears client state, server still accepts token
-- Same session ID before and after login
-- No mechanism to invalidate all sessions ("log out everywhere")
-- Session tokens in URL parameters (exposed in referrer headers, logs)
-- Missing `Set-Cookie` security attributes (see Cookie Security below)
-
----
-
-## Cookie Security
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| `HttpOnly` flag on session cookies | XSS cannot steal session | CWE-1004 |
-| `Secure` flag on all sensitive cookies | Prevents transmission over HTTP | CWE-614 |
-| `SameSite=Lax` or `Strict` on session cookies | CSRF mitigation | CWE-1275 |
-| Cookie `Path` restricted to application scope | Reduces exposure surface | CWE-1004 |
-| `__Host-` prefix for sensitive cookies | Prevents subdomain attacks — requires `Secure`, NO `Domain` attribute, and `Path=/`; browser silently rejects the cookie otherwise | CWE-1004 |
-| No sensitive data stored in cookies beyond session ID | Cookie theft exposure | CWE-315 |
-
-**Patterns to catch:**
-- Session cookie without `HttpOnly` (XSS can read it via `document.cookie`)
-- Cookie set without `Secure` flag (sent over plain HTTP)
-- `SameSite=None` without `Secure` (browser rejects, or enables cross-site)
-- Token/user data stored in cookie instead of just session reference
-- Cookie expiration set excessively long (months/years)
-- `__Host-` cookie set with a `Domain` attribute or a non-root `Path` (silently dropped by the browser)
-
----
-
-## Cross-Site Request Forgery (CSRF)
-
-> OWASP: A01 (Broken Access Control)
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Synchronizer (anti-CSRF) token on all state-changing requests — per-session/per-request, generated and validated server-side, never reflected to the attacker | Forged cross-site state change | CWE-352 |
-| Double-submit cookie only when stateless — token signed/HMAC-bound to the session (raw double-submit is weak to subdomain/cookie injection) | Double-submit bypass | CWE-352 |
-| Origin/Referer validated on state-changing requests (complementary to tokens) | Cross-origin forgery | CWE-352 |
-| `SameSite=Lax`/`Strict` treated as defense-in-depth, NOT a substitute for tokens | Over-reliance on SameSite | CWE-352 |
-| Bearer/`Authorization`-header APIs not also accepting the credential from a cookie | Cookie-auth reintroduces CSRF | CWE-352 |
-
-**SameSite is not sufficient alone:** `Lax` still permits top-level GET-initiated state changes; Chrome's "Lax+POST" ~2-minute window sends cookies that carry *no* `SameSite` attribute (Lax-by-default) on cross-site top-level POSTs for two minutes after they are set — it does not apply to cookies set with an explicit `SameSite=Lax`, so never build a CSRF finding on it against an explicit-Lax cookie; SameSite does not isolate same-site subdomains and JS-initiated same-site requests bypass it. Require an anti-CSRF token on every sensitive POST/PUT/PATCH/DELETE.
-
-**Patterns to catch:**
-- State-changing endpoint (POST/PUT/PATCH/DELETE) with no anti-CSRF token, relying only on the session cookie
-- `SameSite=Lax` treated as full CSRF protection for cookie-authenticated POSTs
-- Anti-CSRF token reflected back to the client/attacker, or not bound to the session
-- Raw double-submit cookie (token not signed/HMAC-bound) — forgeable via subdomain cookie injection
-- API that authenticates via both `Authorization` header AND cookie (cookie path is CSRF-able)
-- XSS present alongside CSRF defenses (XSS defeats both token and header checks — fix XSS too)
-
----
-
-## JWT Security
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Algorithm explicitly verified (whitelist, not blacklist) | Algorithm confusion attack ("none", HS256/RS256 swap) | CWE-327 |
-| Algorithm fits the topology — asymmetric (ES256/EdDSA via JWKS) when verifiers are not the issuer; HS256 only when one service both issues and verifies | Shared-secret sprawl: every HS256 verifier can also mint valid tokens | CWE-321 |
-| Short-lived access tokens (5-15 minutes) | Token theft window | CWE-613 |
-| Refresh token rotation (new refresh token on each use) | Refresh token theft detection | CWE-613 |
-| Stateless JWTs have a revocation strategy — jti deny-list, server-side token-version/sessions table checked per request, or short access TTL + revocable refresh token; logout, password change, and role change must invalidate already-issued access tokens | Stolen/stale token usable until `exp` | CWE-613 |
-| Sensitive claims verified server-side on every request | JWT tampering | CWE-345 |
-| Token in httpOnly cookie (NOT localStorage); pair with `SameSite=Lax`/`Strict` + CSRF defense, OR keep it out of cookies and send via the `Authorization` header | XSS token theft vs CSRF re-exposure (cookies auto-send cross-site) — see Cookie Security & CSRF | CWE-922, CWE-352 |
-| `iss`, `aud`, `exp` claims validated | Token misuse across services | CWE-345 |
-| JWK/JWKS endpoint properly secured | Key confusion attacks | CWE-327 |
-
-**Patterns to catch:**
-- JWT verification without algorithm whitelist (`algorithms: ["RS256"]`)
-- Long-lived access tokens (hours/days instead of minutes)
-- Same refresh token valid after use (no rotation)
-- Role/permissions stored only in JWT, not verified against DB
-- Token stored in `localStorage` or `sessionStorage` (XSS accessible)
-- JWT secret is a simple string (not cryptographically random, >=256 bits)
-- Token in URL parameters or query strings
-- Missing `exp` claim or very distant expiration
-- Logout / password reset / role change does not invalidate already-issued access tokens (stateless JWT stays valid until `exp`)
-
----
-
-## OAuth / SSO
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| State parameter validated (tied to user session) | CSRF on OAuth flow | CWE-352 |
-| PKCE for all public clients (and recommended for confidential) | Auth code interception | CWE-345 |
-| Redirect URI strictly validated against allowlist | Open redirect to steal tokens | CWE-601 |
-| Token exchange happens server-side | Token exposure to client | CWE-522 |
-| ID token `nonce` validated | Replay attacks | CWE-345 |
-| Scopes are minimal (principle of least privilege) | Over-privileged tokens | CWE-269 |
-
-**Patterns to catch:**
-- Missing state parameter check on callback
-- Redirect URI from user input without strict allowlist matching
-- Redirect URI validation using string prefix (allows `evil.com?redirect=good.com`)
-- Access token handled in frontend JavaScript (implicit flow)
-- Missing PKCE on mobile/SPA clients
-- OAuth tokens stored without encryption at rest
-- Generic post-login/logout redirect (`returnUrl`/`next`/`redirect`/`continue`) not validated against a relative-path-only rule or host allowlist (open redirect → phishing, chainable into token theft)
-
----
-
-## SAML 2.0 SSO
-
-> OWASP: A07 (Authentication Failures), A01 (Broken Access Control)
-
-| Check | Why | CWE |
-|-------|-----|-----|
-| Consumed assertion is the SAME element the signature covers (verify signature reference binding) | XML Signature Wrapping (XSW) | CWE-347 |
-| Reject responses with missing/unsigned assertions (no signature-exclusion bypass) | Unsigned assertion accepted | CWE-347 |
-| Canonicalization / XML-comment-truncation handled in the parser | 2018 comment-truncation auth bypass (CVE-2017-11427 class) | CWE-347 |
-| `Audience` (SP entityID), `Recipient`, `Destination`, `InResponseTo` validated | Assertion replay / misdirection | CWE-290 |
-| Assertion validity window enforced (`NotBefore` / `NotOnOrAfter`) | Replay of expired assertion | CWE-294 |
-| External entity resolution disabled in the SAML response parser | XXE via SAML response | CWE-611 |
-| Vetted SAML library used, not hand-rolled XML/DSig | Implementation flaws | CWE-290 |
-
-**Patterns to catch:**
-- Signature verified but the assertion is located by tag-name/XPath rather than bound to the signed element (XSW)
-- Assertion accepted without checking it is actually signed/enveloped (signature exclusion)
-- No `Audience`/`Recipient`/`InResponseTo` validation (assertion reuse across SPs)
-- `NotOnOrAfter` not enforced (expired-assertion replay)
-- External entities enabled in the SAML XML parser (XXE — see api.md "Injection Prevention")
-- Hand-rolled XML signature verification instead of a maintained SAML library
-
----
+Password *storage* (hashing, pepper, bcrypt limits) lives in `crypto.md`. This file owns password *policy*, reset, sessions, cookies, CSRF, JWT, federation, redirects and access control.
 
 ## Authorization (Access Control)
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Ownership verified before every data access | IDOR | CWE-639 |
-| Role check on every protected endpoint (server-side) | Broken access control | CWE-285 |
-| Default deny — explicit allow per endpoint | Forgotten endpoints exposed | CWE-276 |
-| Indirect references where possible (UUIDs, not sequential IDs) | ID enumeration | CWE-639 |
-| Horizontal privilege checked (user A can't access user B's data) | Horizontal escalation | CWE-639 |
-| Vertical privilege checked (regular user can't access admin) | Vertical escalation | CWE-269 |
-| Resource-level permissions, not just endpoint-level | Granular access bypass | CWE-285 |
+The costliest, highest-recall section. Work it first on any handler that takes an object ID.
 
-**Patterns to catch:**
-- Data fetched by ID without ownership check: `db.find(req.params.id)`
-- Role check only on frontend (hidden UI elements, not enforced server-side)
-- New endpoints inherit no protection by default
-- Sequential integer IDs exposed in URLs (`/api/users/123`)
-- Admin endpoints rely only on separate URL path, no role verification
-- Missing permission check on sub-resources (user owns order, but can they see its invoice?)
-- `isAdmin` or `role` field settable via API request body
+**Scoped load, then siblings.** The load must be scoped by the authenticated principal: owner or tenant from the session, never from the body, a header or the path. Then check every sibling the diff touches: list vs get, read vs write, single vs bulk, export or search, other transports to the same method (REST, GraphQL, RPC, WebSocket), nested routes (does `:id` belong to `:org`?). Authz checked on the path ID while the operation acts on a body ID is the same bug.
 
----
+**Finding when:**
+- An object loads by user-supplied ID with no principal scope: `db.find(req.params.id)` returned without an owner or tenant check (CWE-862 missing / CWE-863 wrong / CWE-639 user-controlled key).
+- A sibling of a scoped handler is unscoped: the GET checks ownership but the bulk export, the GraphQL resolver or the PATCH does not.
+- A role or tenant read from the request (`req.body.role`, `X-Tenant-Id`, a JWT claim the client can set) rather than the server's session.
+- `isAdmin`, `role` or `orgId` settable through a mass-assignment sink (`api.md`).
+- Default-allow routing: a new endpoint inherits no authz because protection is opt-in.
 
-## Rate Limiting & Brute Force
+**Not a finding:**
+- Sequential or guessable IDs on a scoped query. Enumeration raises severity; the bug is the missing scope check.
+- Scope enforced in the data layer (session-bound RLS, a repository that requires the principal): cite it and move on.
+- A frontend-only role gate the server also enforces.
 
-| Check | Why | CWE |
-|-------|-----|-----|
-| Strict limit on login endpoint (5-10 attempts / 15 min) | Credential stuffing | CWE-307 |
-| Very strict limit on password reset (3-5 / hour) | Account enumeration | CWE-307 |
-| Lockout or CAPTCHA after threshold | Automated attacks | CWE-307 |
-| Timing-safe comparison for all credential checks | Timing-based enumeration | CWE-208 |
-| Consistent error messages (same for "not found" and "wrong password") | User enumeration | CWE-203 |
-| Rate limit by multiple dimensions (IP + account + fingerprint) | Distributed brute force | CWE-307 |
+## Password Policy & Reset
 
-**Patterns to catch:**
-- No rate limit on login/register/reset endpoints
-- Different error messages: "user not found" vs "wrong password"
-- Early return on user lookup failure (timing difference reveals existence)
-- Rate limit only by IP (bypassed with IP rotation)
-- Registration endpoint allows unlimited account creation
-- OTP/MFA code verification without attempt limit
-- Password reset email sent regardless of account existence (timing difference)
+Anchor to NIST SP 800-63B-4 (verified 2026-10-08): single-factor minimum **15** characters; 8 allowed only when the password is always paired with a second factor; accept at least 64; **SHALL NOT** impose composition rules or periodic rotation; **SHALL** check a breach and commonality blocklist. Force a change only on evidence of compromise.
+
+**Finding when:**
+- Composition rules (required character classes) or scheduled forced rotation: these now *reduce* security and contradict the standard.
+- A reset token that is predictable (a UUIDv1, a base64 user ID or email, anything not from a CSPRNG), never expires, or is reusable.
+- A reset or magic-link URL built from `Host`/`X-Forwarded-Host`: the attacker sets the host and the victim's token lands on the attacker's domain (CWE-640).
+- A password or email change without the current password or a fresh factor, or an email change with no notice to the old address: change the email, reset the password, and the account is taken over (CWE-620).
+- A password echoed in logs, errors, responses or a URL (CWE-532).
+- Plaintext or reversible password storage (hashing details: `crypto.md`).
+
+**Not a finding:** a short single-factor minimum (8) with a blocklist in place: at most a `Hardening:` line.
+
+## Multi-Factor Authentication (MFA)
+
+**Finding when:** a full-privilege session issued after the first factor, with the second enforced only by a client redirect (protected routes must check MFA completion server-side, CWE-304); MFA can be disabled or its settings changed without re-authentication; a recovery or reset path silently drops MFA (an email-only reset disables it); MFA state is trusted from a client-held value (JWT claim, localStorage) with no server check; the TOTP secret is returned to the client after enrollment; the verify endpoint has no attempt cap; a TOTP or recovery code is accepted more than once (no record of the last used time step or of the consumed code, CWE-294).
+
+**Not a finding:** SMS OTP offered as one option (NIST marks PSTN a **restricted** authenticator), unless it is the only or default second factor with no stronger option and no risk notice.
+
+## Passkeys / WebAuthn
+
+**Finding when:** an assertion is accepted without verifying origin and RP ID; no COSE algorithm allowlist (list at least ES256 and RS256; Windows platform authenticators need RS256); user verification not required for a sensitive action; recovery downgrades to SMS or email only (defeats phishing resistance).
+
+**Not a finding:** a syncable passkey, unless the system claims AAL3, which needs a non-exportable key: NIST SP 800-63B-4 says syncable authenticators SHALL NOT be used there.
+
+## Sessions & Cookies
+
+**Finding when:**
+- Logout or a password reset leaves the server-side session or token valid: a stolen session survives the reset.
+- The session ID isn't regenerated at login or privilege change (fixation, CWE-384); a session token rides in a URL; a session cookie lacks `Secure`.
+- A `__Host-` cookie set with a `Domain` attribute or a non-root `Path`: the browser silently drops it, so the protection you think you have is absent (`__Host-` requires `Secure`, no `Domain`, `Path=/`).
+
+**Not a finding:**
+- A missing `HttpOnly`, or a token in `localStorage`/`sessionStorage`, unless an XSS sink can read it (chain them) or it defeats a revocation requirement. HttpOnly cookies and header-bearer tokens are both valid designs.
+- A session lifetime, unless it exceeds the reauthentication limit of the AAL the system claims (AAL1 ≤30 d; AAL2 ≤24 h, ≤1 h idle; AAL3 ≤12 h, ≤15 min idle).
+- No UA or IP binding: a weak signal an attacker replays with the stolen cookie, never a substitute for server-side invalidation.
+
+## CSRF
+
+A finding only when **all three** hold (OWASP CSRF cheat sheet, verified 2026-10-08):
+1. the credential is **ambient**: a cookie, HTTP auth or client cert sent automatically; and
+2. a cross-site page can **trigger** the change: a mutating GET, a form-encodable POST (`application/x-www-form-urlencoded`, `multipart/form-data`, `text/plain`), or credentialed CORS; and
+3. **nothing checks origin**: no anti-CSRF token, no `Sec-Fetch-Site`/`Origin` check (with an `Origin` fallback for browsers lacking Fetch Metadata), no required custom header, no non-form content type enforced.
+
+A synchronizer token, Fetch Metadata with the Origin fallback, and a required custom header on an AJAX/JSON API are each **primary** defenses. `SameSite` is defense in depth, not a substitute.
+
+**Finding when:** a state-changing cookie-authenticated endpoint has none of the origin checks; a synchronizer token checked only for presence or format, or against any issued token rather than the session's own; a raw double-submit cookie (token not signed or bound to the session), forgeable through subdomain cookie injection; an API that accepts the credential from *both* an `Authorization` header and a cookie (the cookie path is CSRF-able); `SameSite` as the only defense: Medium when explicitly `Lax` or `Strict`, High when left to the browser default or paired with a mutating GET or an attacker-controllable same-site origin.
+
+**Not a finding:** a pure bearer-header API that never reads a cookie; Chrome's temporary "Lax+POST" window against an *explicit*-Lax cookie.
+
+## JWT Security
+
+Token lifetimes are arch-doc policy; flag verification, topology and revocation defects here.
+
+**Finding when:**
+- Verification with no algorithm allowlist: accepts `none`, or an HS256/RS256 swap where the public key is used as an HMAC secret (CWE-347).
+- `decode` without `verify`; a signature checked over only part of the payload.
+- `kid`, `jku` or `x5u` from the token reaches a file path, URL or fetch (key injection: forge any token).
+- HS256 where verifiers are not the issuer: every holder of the shared secret can also mint tokens. Asymmetric (ES256/EdDSA via JWKS) when verifier ≠ issuer.
+- No revocation path, *and* logout, password reset or role change must invalidate already-issued tokens but doesn't (a stateless token stays valid until `exp`).
+- `iss`, `aud` or `exp` not validated; a low-entropy secret.
+
+**Not a finding:** roles carried as JWT claims, unless staleness is harmful (a removed admin keeps access until `exp` with no revocation).
+
+## OAuth / SSO
+
+Federation is the highest-impact takeover surface: trace the **identity-binding** path.
+
+**Finding when (OAuth / OIDC, RFC 9700):**
+- `redirect_uri` validated by prefix or substring, not exact string match (`evil.com?x=good.com`, `good.com.evil.com`).
+- No PKCE on a public client; `state` not generated or compared; `nonce` not validated on the ID token.
+- The password grant (ROPC), which RFC 9700 says MUST NOT be used. The implicit grant is SHOULD NOT: rate it by whether token injection and leakage are mitigated.
+- A public client's refresh token neither rotated with reuse detection nor sender-constrained (an RFC 9700 MUST).
+- Any redirect target taken from input (`returnUrl`, `next`, `/go?url=`) not restricted to a relative path or host allowlist: open redirect (CWE-601), chainable into token theft. Protocol-relative (`//evil`), backslash and `user@host` forms bypass naive checks.
+- Account identity keyed on **email** instead of `(issuer, subject)`; accounts auto-linked on an unverified or IdP-asserted email; an invite bound to the wrong email.
+
+**Not a finding:** a vetted library at its defaults; flag only the check the diff removes or misconfigures.
+
+## SAML 2.0 SSO
+
+**Finding when:**
+- Signature verified but the consumed assertion located by tag name or XPath rather than bound to the signed element (XML Signature Wrapping, CWE-347).
+- The signature checked by one XML parser and the assertion read by another: a parser differential forges any user (ruby-saml CVE-2025-25291/25292). Flag two different parsers in one verify path.
+- NameID or an attribute read from the first text node (`firstChild`, lxml or REXML `.text`) rather than the element's full text: a comment inside the value truncates it to another user's identity while the signature still verifies (CVE-2017-11427 class). Read identity through the SAML library's API.
+- An assertion accepted without confirming it is actually signed; `Audience`, `Recipient`, `InResponseTo` or `NotOnOrAfter` not validated; external entities enabled in the SAML parser (XXE, `api.md`); hand-rolled DSig instead of a vetted library.
+
+## Credential-guessing surfaces
+
+**Finding when:** login, OTP, password-reset, invite or coupon endpoints have no attempt limit (NIST floor: at most 100 consecutive failures per authenticator per account); a per-request limiter on a guessing mutation that GraphQL aliases or batched operations multiply inside one request (count attempts per operation and per account, CWE-307); a non-constant-time credential comparison; a login or reset path that skips the hash for unknown users (timing reveals which accounts exist); distinguishable "user not found" and "wrong password" responses (enumeration, CWE-203).
+
+**Not a finding:** a missing generic rate limit on an endpoint that isn't a guessing surface (`Hardening:`; amplification-based DoS: `api.md`).

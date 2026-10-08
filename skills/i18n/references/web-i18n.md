@@ -1,414 +1,124 @@
-# Web i18n with Paraglide JS v2
+# Vite web apps with Paraglide JS
 
-**Docs: [inlang.com/m/gerre34r/library-inlang-paraglideJs](https://inlang.com/m/gerre34r/library-inlang-paraglideJs)**
+Verified against @inlang/paraglide-js 2.26 on 2026-10-08. If the lockfile major differs, follow that version's docs (paraglidejs.com). Locale lists are placeholders. The v1 adapters (`@inlang/paraglide-sveltekit`, `-next`, `-astro`) are deprecated; v2 is one package.
 
-> **Version:** Paraglide JS v2.x (`@inlang/paraglide-js@^2.0.0`). v1 framework-specific adapters (`@inlang/paraglide-sveltekit`, `@inlang/paraglide-next`, `@inlang/paraglide-astro`) are deprecated — all functionality is consolidated into the core package.
+Paraglide compiles each message into a typed function: unused messages drop out of the bundle, and an unknown message or missing parameter fails the type check, but a missing translation falls back silently by truncation (pt-BR → pt), then to `baseLocale`, the source language. When some markets can't read the source, gate 1 at the release cut is what keeps them from seeing it (gates below).
 
-Compiler-based i18n — translations compile into tree-shakable JS functions. Unused messages are eliminated from the bundle. Full TypeScript type safety is automatic. Framework-agnostic: SvelteKit, TanStack Start, Astro, React Router, or any Vite-based setup.
+## Init
 
-## Table of Contents
+`npx @inlang/paraglide-js@latest init` adds the dependency without installing it (install afterwards) and writes `project.inlang/settings.json`, including `modules` (the message-format plugin) and that plugin's `pathPattern` (`./messages/{locale}.json`). Edit `baseLocale` and `locales` there; let `init` write the rest. To share ICU or i18next catalogs with another app, swap the format plugin (`@inlang/plugin-icu1`, `@inlang/plugin-i18next`).
 
-1. [Setup](#setup)
-2. [Message Format](#message-format)
-3. [Usage](#usage)
-4. [SSR Middleware (v2)](#ssr-middleware-v2)
-5. [Strategy Configuration](#strategy-configuration)
-6. [Language Switcher](#language-switcher)
-7. [SEO](#seo)
-8. [Type Safety](#type-safety)
-9. [Common Pitfalls](#common-pitfalls)
-
----
-
-## Setup
-
-```bash
-# init scaffolds project.inlang/ + messages/ and installs the package — no separate `bun add` needed
-bunx @inlang/paraglide-js@latest init
-```
-
-### Project Structure
-
-```
-project-root/
-├── project.inlang/
-│   └── settings.json
-├── messages/
-│   ├── en.json
-│   ├── es.json
-│   ├── id.json
-│   ├── ja.json
-│   ├── ko.json
-│   └── pt-BR.json
-└── src/
-    └── paraglide/          # Generated (do NOT edit, add to .gitignore)
-        ├── messages.js
-        ├── runtime.js      # getLocale, setLocale, localizeHref, locales
-        └── server.js       # paraglideMiddleware for SSR
-```
-
-### Configuration
-
-```json
-// project.inlang/settings.json (v2 — no modules array needed)
-{
-  "baseLocale": "en",
-  "locales": ["en", "es", "id", "ja", "ko", "pt-BR"]
-}
-```
-
-Message files go in `messages/` by default. Override with compiler `pathPattern` option if needed.
-
-### Vite Plugin (Recommended)
-
-```typescript
+```ts
 // vite.config.ts
-import { paraglideVitePlugin } from "@inlang/paraglide-js";
+import { defineConfig } from 'vite';
+import { paraglideVitePlugin } from '@inlang/paraglide-js';
 
 export default defineConfig({
   plugins: [
     paraglideVitePlugin({
-      project: "./project.inlang",
-      outdir: "./src/paraglide",
-      strategy: ["url", "cookie", "baseLocale"],
+      project: './project.inlang',
+      outdir: './src/paraglide', // generated, ships its own .gitignore; never edit
+      strategy: ['url', 'cookie', 'baseLocale'], // see Strategy
     }),
-    // ... other plugins (sveltekit(), react(), etc.)
   ],
 });
 ```
 
----
+Other bundlers: Paraglide's webpack, Rspack, Rollup, Rolldown or esbuild plugins; without a plugin, run the compiler with `--watch` in development.
 
-## Message Format
+Bundle size grows with locale count, since each used message carries every locale: measure past ~10 locales; the experimental `experimentalStaticLocale` compiler option builds one locale per bundle.
 
-### Simple Messages & Interpolation
+## Messages
 
 ```json
-// messages/en.json
 {
-  "auth.login.title": "Sign In",
   "greeting": "Hello, {name}!",
-  "items_in_cart": "You have {count} items in your cart."
-}
-```
-
-Variables use `{variableName}` syntax. Keys with dots compile to underscore functions: `m.auth_login_title()`.
-
-### Pluralization (Variants)
-
-Uses `Intl.PluralRules`. Each language needs only its relevant plural categories:
-
-```json
-// messages/en.json — one/other
-{
   "follower_count": [{
     "declarations": ["input count", "local countPlural = count: plural"],
     "selectors": ["countPlural"],
-    "match": {
-      "countPlural=one": "{count} follower",
-      "countPlural=other": "{count} followers"
-    }
-  }]
+    "match": { "countPlural=one": "{count} follower", "countPlural=*": "{count} followers" }
+  }],
+  "order_total": [{
+    "declarations": ["input amount", "input currency", "local total = amount: number style=currency currency=$currency"],
+    "match": { "amount=*": "Total: {total}" }
+  }],
+  "terms": "Agree to our {#link}Terms{/link}."
 }
 ```
 
-```json
-// messages/ja.json — other only (East Asian languages have no grammatical plural)
-{
-  "follower_count": [{
-    "declarations": ["input count", "local countPlural = count: plural"],
-    "selectors": ["countPlural"],
-    "match": { "countPlural=other": "フォロワー {count}人" }
-  }]
-}
+- **End every plural `match` with a `*` variant.** A count in a category you didn't list (es/fr/it/pt `many` for 1,000,000; ru `few`) otherwise renders the message key. Translators list their locale's categories before `*`.
+- **Currency is an input** (`currency=$currency`; without `$` it's a literal code baked into every locale): `m.order_total({ amount, currency: order.currency })`.
+- **Rich text is markup**: `{#link}…{/link}` in the message, rendered by `ParaglideMessage` from `@inlang/paraglide-js-react` (Svelte, Vue and Solid adapters exist), which type-checks tag names. Don't parse tags out of strings.
+- Flat keys (`m.greeting()`); dotted keys compile to `m["auth.login.title"]()`.
+
+```ts
+import { m } from './paraglide/messages.js';
+import { getLocale, setLocale, localizeHref } from './paraglide/runtime.js';
+
+m.greeting({ name }, { locale: 'de' }); // explicit locale, e.g. for an email rendered server-side
+setLocale('de'); // reloads the page by default; { reload: false } leaves re-rendering to you
+localizeHref('/about'); // "/de/about" under the url strategy
 ```
 
-```json
-// messages/ko.json — other only (East Asian languages have no grammatical plural)
-{
-  "follower_count": [{
-    "declarations": ["input count", "local countPlural = count: plural"],
-    "selectors": ["countPlural"],
-    "match": { "countPlural=other": "팔로워 {count}명" }
-  }]
-}
-```
+## Strategy
 
-| Language | Plural categories |
-|---|---|
-| en | `one`, `other` |
-| es, pt-BR | `one`, `other` (+ `many` for large/compact magnitudes) |
-| ja, ko, id | `other` only |
+`strategy` is the resolution precedence of SKILL.md §2b; the first strategy that yields a locale wins.
 
-Indonesian (`id`) has no grammatical plural — use the `other`-only shape shown for ja/ko above. For any locale, confirm with `new Intl.PluralRules(locale).resolvedOptions().pluralCategories`.
+- **Public routes: `url` first.** Its default pattern serves the base locale unprefixed, so `/` resolves to `baseLocale` and later strategies never run there: a returning visitor on `/` gets the base locale.
+- **To negotiate, prefix every locale, base included**, so only locale-less URLs negotiate: `urlPatterns: [{ pattern: '/:path(.*)?', localized: [['de', '/de/:path(.*)?'], ['en', '/en/:path(.*)?']] }]` with `strategy: ['url', 'cookie', 'preferredLanguage', 'baseLocale']`. The middleware 307-redirects document requests for `/` or `/about` to the stored or negotiated prefix; `/de/about` stays German. Not `routeStrategies` on `/`: it also matches de-localized URLs, so `/de/` would follow the visitor's cookie or browser language. Don't share-cache locale-less URLs; the redirect also depends on the cookie.
+- **Signed-in, non-indexed routes:** `routeStrategies` with `['cookie', 'baseLocale']` or a custom strategy that reads the profile; `exclude: true` skips the middleware for API routes.
+- **Client-only SPA:** `['localStorage', 'preferredLanguage', 'baseLocale']`.
+- `preferredLanguage` tries each tag, then its bare language; it doesn't map zh-TW to zh-Hant. Name Chinese locales by region (zh-TW, zh-HK; Simplified as zh-CN, never a bare `zh`, whose fallback would cross scripts) or match with a custom strategy.
+- Cookie across subdomains: `cookieDomain: 'example.com'`.
 
-### Number & Date Formatting
+## SSR middleware
 
-Built-in formatters map to `Intl` APIs (`number` → `Intl.NumberFormat`, `datetime` → `Intl.DateTimeFormat`):
+`paraglideMiddleware` scopes the locale to each request through AsyncLocalStorage; outside it, server code sees the base locale. Keep AsyncLocalStorage on (Vercel Edge; Cloudflare Workers with `nodejs_compat`): `disableAsyncLocalStorage` leaks one request's locale into another unless the runtime isolates every request.
 
-```json
-{
-  "total_price": [{
-    "declarations": ["input amount", "local formatted = amount: number style=currency currency=USD"],
-    "match": { "amount=*": "Total: {formatted}" }
-  }]
-}
-```
+```ts
+// SvelteKit: src/hooks.server.ts (app.html: <html lang="%lang%" dir="%dir%">)
+import type { Handle } from '@sveltejs/kit';
+import { paraglideMiddleware } from '$lib/paraglide/server';
+import { getTextDirection } from '$lib/paraglide/runtime';
 
-### Select (Conditional Variants)
-
-```json
-{
-  "notification": [{
-    "declarations": ["input type"],
-    "selectors": ["type"],
-    "match": {
-      "type=comment": "New comment on your post",
-      "type=follow": "New follower",
-      "type=*": "New notification"
-    }
-  }]
-}
-```
-
-`*` is the catch-all default.
-
----
-
-## Usage
-
-```typescript
-import { m } from "./paraglide/messages.js";
-import {
-  getLocale, setLocale, locales, baseLocale, isLocale,
-  localizeHref, deLocalizeHref,
-} from "./paraglide/runtime.js";
-
-m.auth_login_title();                              // "Sign In"
-m.greeting({ name: "Alice" });                     // type-safe params
-m.greeting({ name: "Alice" }, { locale: "ko" });   // force specific locale
-
-getLocale();                        // "en"
-setLocale("ko");                    // reloads page (v2 default behavior)
-setLocale("ko", { reload: false }); // no reload (handle re-render yourself)
-
-localizeHref("/about");                     // "/ko/about"
-localizeHref("/about", { locale: "en" });   // "/en/about"
-deLocalizeHref("/ko/about");                // "/about" (strip locale prefix)
-
-isLocale("en");    // true (type guard)
-isLocale("xyz");   // false
-baseLocale;        // "en"
-locales;           // ["en", "es", "id", "ja", "ko", "pt-BR"]
-```
-
-### Rich Text Pattern
-
-Paraglide returns plain strings. For embedding components within translations, parse tags into segments, then render per framework:
-
-```typescript
-// src/lib/i18n/rich-text.ts — framework-agnostic parser
-interface RichTextSegment {
-  type: "text" | "tag";
-  content: string;
-  tag?: string; // tag name for type === "tag"
-}
-
-export function parseRichText(text: string): RichTextSegment[] {
-  const segments: RichTextSegment[] = [];
-  let remaining = text;
-  while (remaining.length > 0) {
-    const match = remaining.match(/<(\w+)>(.*?)<\/\1>/);
-    if (!match || match.index === undefined) {
-      segments.push({ type: "text", content: remaining });
-      break;
-    }
-    const before = remaining.slice(0, match.index);
-    if (before) segments.push({ type: "text", content: before });
-    const [full, tag, content] = match;
-    segments.push({ type: "tag", content, tag });
-    remaining = remaining.slice(match.index + full.length);
-  }
-  return segments;
-}
-```
-
-```json
-{ "terms": "Agree to our <terms>Terms</terms> and <privacy>Privacy Policy</privacy>." }
-```
-
-```typescript
-// Usage — render segments per framework
-const segments = parseRichText(m.terms());
-// segments = [
-//   { type: "text", content: "Agree to our " },
-//   { type: "tag", content: "Terms", tag: "terms" },
-//   { type: "text", content: " and " },
-//   { type: "tag", content: "Privacy Policy", tag: "privacy" },
-//   { type: "text", content: "." },
-// ]
-
-// Vanilla JS / any framework: iterate segments, create DOM nodes or framework elements
-// React: map to JSX with <Fragment key={i}>
-// Solid: map to JSX
-// Svelte: use {#each} block
-```
-
----
-
-## SSR Middleware (v2)
-
-`paraglideMiddleware()` uses `AsyncLocalStorage` to isolate locale per request. Without it, `getLocale()` on the server returns the default locale. Import from the generated `server.js` module.
-
-```typescript
-// SvelteKit — src/hooks.server.ts
-// Mutate event.request, then inject %lang%/%dir% (placeholders in app.html) via transformPageChunk.
-import { getLocale } from "./paraglide/runtime";
-const RTL = new Set(["ar", "he", "fa", "ur"]);
 export const handle: Handle = ({ event, resolve }) =>
-  paraglideMiddleware(event.request, ({ request }) => {
+  paraglideMiddleware(event.request, ({ request, locale }) => {
     event.request = request;
     return resolve(event, {
-      transformPageChunk: ({ html }) => {
-        const locale = getLocale(); // valid inside the middleware's AsyncLocalStorage scope
-        const dir = RTL.has(new Intl.Locale(locale).language) ? "rtl" : "ltr";
-        return html.replace("%lang%", locale).replace("%dir%", dir);
-      },
+      transformPageChunk: ({ html }) =>
+        html.replace('%lang%', locale).replace('%dir%', getTextDirection(locale)),
     });
   });
 
-// TanStack Start — server.ts (pass original req to handler, NOT the modified one)
-export default {
-  fetch(req: Request) {
-    return paraglideMiddleware(req, () => handler.fetch(req));
-  },
-};
+// SvelteKit: src/hooks.ts (not .server.ts); without it /de/about is a 404
+import type { Reroute } from '@sveltejs/kit';
+import { deLocalizeUrl } from '$lib/paraglide/runtime';
+export const reroute: Reroute = (request) => deLocalizeUrl(request.url).pathname;
 
-// Astro — src/middleware.ts
+// TanStack Start: src/server.ts. Pass the ORIGINAL request: the router de-localizes URLs
+// itself (rewrite.input/output with deLocalizeUrl/localizeUrl), so the modified one loops.
+import handler from '@tanstack/react-start/server-entry';
+import { paraglideMiddleware } from './paraglide/server.js';
+export default { fetch: (req: Request) => paraglideMiddleware(req, () => handler.fetch(req)) };
+
+// Astro (output: 'server'): src/middleware.ts
+import { defineMiddleware } from 'astro:middleware';
+import { paraglideMiddleware } from './paraglide/server.js';
 export const onRequest = defineMiddleware((context, next) =>
-  paraglideMiddleware(context.request, ({ request }) => next(request))
-);
+  paraglideMiddleware(context.request, ({ request }) => next(request)));
 ```
-
-Client-only SPAs need no middleware — use `["cookie", "globalVariable", "baseLocale"]` strategy.
-
----
-
-## Strategy Configuration
-
-Evaluated in order — first match wins.
-
-| Strategy | How it works | Best for |
-|---|---|---|
-| `url` | Locale from URL path (`/ko/about`) | SEO, shareable links |
-| `cookie` | Reads/writes cookie | Returning users |
-| `baseLocale` | Falls back to base locale | Default fallback |
-| `preferredLanguage` | `Accept-Language` header | First-time visitors |
-| `globalVariable` | Global JS variable | SPAs without SSR |
-
-Recommended: SSR `["url", "cookie", "baseLocale"]`, SPA `["cookie", "globalVariable", "baseLocale"]`.
-Subdomains: set `cookieDomain: "example.com"` in plugin config.
-
----
-
-## Language Switcher
-
-```typescript
-import { setLocale, getLocale, locales } from "./paraglide/runtime.js";
-
-const LOCALE_NAMES: Record<string, string> = {
-  en: "English",
-  es: "Español",
-  id: "Bahasa Indonesia",
-  ja: "日本語",
-  ko: "한국어",
-  "pt-BR": "Português (Brasil)",
-};
-
-// Vanilla JS — create a <select> element
-function createLocaleSwitcher(container: HTMLElement) {
-  const select = document.createElement("select");
-  for (const locale of locales) {
-    const option = document.createElement("option");
-    option.value = locale;
-    option.textContent = LOCALE_NAMES[locale] ?? locale;
-    option.selected = locale === getLocale();
-    select.appendChild(option);
-  }
-  select.addEventListener("change", () => setLocale(select.value));
-  container.appendChild(select);
-}
-```
-
-```html
-<!-- Or declarative HTML — wire up with any framework -->
-<select id="locale-switcher">
-  <option value="en">English</option>
-  <option value="es">Español</option>
-  <option value="ko">한국어</option>
-  <!-- ... -->
-</select>
-<script>
-  document.getElementById("locale-switcher")
-    .addEventListener("change", (e) => setLocale(e.target.value));
-</script>
-```
-
----
 
 ## SEO
 
-```html
-<!-- Set lang on <html> element -->
-<html lang="en"> <!-- dynamically set to getLocale() value -->
+Set `<html lang dir>` from `getLocale()` and `getTextDirection()` on every page. Through the framework's head API, render one absolute `<link rel="alternate" hreflang>` per entry of `locales`, its `href` from `localizeHref(path, { locale })`, plus `x-default` on the unprefixed path.
 
-<!-- Alternate links (hreflang) — generate for all locales -->
-<link rel="alternate" hrefLang="en" href="https://example.com/about" />
-<link rel="alternate" hrefLang="es" href="https://example.com/es/about" />
-<link rel="alternate" hrefLang="ko" href="https://example.com/ko/about" />
-<link rel="alternate" hrefLang="x-default" href="https://example.com/about" />
-<!-- ... one per locale, plus x-default; every page must emit the full reciprocal set (including itself) or engines ignore the cluster -->
-```
+This reference owns the implementation mechanics only. Which locales to target, hreflang correctness (reciprocity, codes, the `x-default` target) and localized keyword strategy belong to a search-visibility capability (the `search-visibility` skill, if available).
 
-```typescript
-// Generate hreflang links programmatically (any framework/SSR)
-import { getLocale, locales, localizeHref } from "./paraglide/runtime.js";
+## Gates
 
-const path = "/about";
-const hreflangs = locales.map((loc) => ({
-  hrefLang: loc,
-  href: `https://example.com${localizeHref(path, { locale: loc })}`,
-}));
-// Inject into <head> using your framework's head management
-```
+The inlang CLI v3 removed `lint`, and the Sherlock extension checks only in the editor, so CI needs its own:
+- **Parity:** compare each `messages/{locale}.json`'s keys, `{inputs}` and `{#markup}` tags with the base file's; fail on a missing or empty value.
+- **Plurals:** each locale's plural `match` lists every category a count reaches in that locale (the ordinal set under `type=ordinal`) and ends with `*` (standing in for `other`); a variant for a category the locale lacks never renders, so flag it.
+- **ICU catalogs** (via `@inlang/plugin-icu1`): the gate script in `next-i18n.md` covers parity, parsing and plural forms.
 
-This section owns the implementation mechanics only. Site-level international *search* strategy — which locales to target, hreflang correctness rules, localized keyword/content strategy — belongs to a search-visibility capability (the `search-visibility` skill, if available).
-
----
-
-## Type Safety
-
-Fully automatic — the compiler generates typed functions:
-
-- Autocomplete for `m.` (all message keys) and parameters (`m.greeting({` → `name: string`)
-- Compile error on typos (`m.typo()`) and missing params (`m.greeting()`)
-- Typed locale: `import type { Locale } from "./paraglide/runtime.js"`
-
-**VS Code:** Install [Sherlock](https://marketplace.visualstudio.com/items?itemName=inlang.vs-code-extension) for inline translation previews, hover variants, and one-click string extraction.
-
----
-
-## Common Pitfalls
-
-| Pitfall | Solution |
-|---|---|
-| Editing `src/paraglide/` | Generated output — never edit, overwritten on compile |
-| `getLocale()` wrong on server | Must run inside `paraglideMiddleware()` callback |
-| `setLocale()` doesn't update UI | Default reloads page. `{ reload: false }` requires manual re-render |
-| Redirect loops with URL strategy | Pass **original** request to framework handler |
-| Strategy order wrong for SEO | URL first: `["url", "cookie", "baseLocale"]` |
-| `AsyncLocalStorage` unavailable | Edge runtimes: `disableAsyncLocalStorage: true` |
-| Forgetting `--watch` in dev | Without Vite plugin, add `--watch` to compiler script |
-| Rich text needs components | Parse tags with `parseRichText()`, render segments per framework (see Rich Text Pattern) |
-| Keys missing in a locale | Paraglide falls back to `baseLocale`; catch per-locale gaps with inlang lint / Sherlock, not the compiler |
-| Cookie not scoped for subdomains | Set `cookieDomain` in plugin config |
+Prove each red on a seeded defect and green on a known-good catalog.

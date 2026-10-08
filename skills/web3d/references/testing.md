@@ -1,57 +1,40 @@
-# Testing Web3D / XR Code
+# Testing Web 3D and XR
 
-The hard truth of this domain: **you cannot unit-test a draw call.** Rendering, shaders, and frame loops need a real GPU context; everything else (simulation, math, data) is ordinary testable code. Split your testing along that line and test the testable layer *first*.
+You cannot unit-test a draw call. Rendering, shaders and frame pacing need a real GPU; simulation, math and data are ordinary code. Split along that line and test the testable layer first.
 
-## What to test where
+## Tiers
 
-| Layer | How | Notes |
-|---|---|---|
-| Koota systems | Vitest, plain functions | Systems are `(world, delta) => void` — spawn entities, run the system, assert trait values. No renderer needed. |
-| Rapier physics | Vitest, deterministic | Rapier stepping is deterministic for a fixed timestep + seed. Snapshot/restore via `world.takeSnapshot()` / `World.restoreSnapshot()` to assert reproducible state. |
-| Rust WASM exports | `wasm-bindgen-test` (Rust) or Vitest against the built pkg | Test the pure compute (terrain heights, particle integration) at the boundary. |
-| TSL node graphs | Assert on the built node tree / compiled output | You can build a material's node and assert structure, or compile and snapshot the generated WGSL/GLSL string — catches accidental graph changes without a GPU. |
-| Pure math/util | Vitest | Vectors, quaternions, layout offsets, NDC conversion. |
-| Render output (shaders, materials, scene) | Playwright/Puppeteer + headless Chrome with `--enable-unsafe-webgpu`, or Deno's native WebGPU | Capture a frame, compare against a reference image (pixel-diff with a tolerance). This is **visual regression**, not unit testing. |
-| R3F components | `@react-three/test-renderer` | Renders the R3F tree to a mock scene graph (no real GPU) so you can assert on objects/props and fire events. |
+- **Simulation (write first).** ECS systems, game rules, WASM kernels and math (buffer offsets, NDC, interpolation) are plain functions: Vitest with a fixed delta, spawn, run, assert. Test WASM with `wasm-bindgen-test` or Vitest against the built package.
+- **Physics.** Step at a fixed timestep from snapshot states; results compared across machines need the deterministic build (`physics.md`, Determinism).
+- **Scene graph (R3F).** `@react-three/test-renderer` asserts objects, props and events without a GPU.
+- **GPU visual.** Playwright against a pinned adapter (same GPU, driver and browser build on every run), with a pixel diff and a tolerance. `forceWebGL: true` is the cheapest stable context; also run the WebGPU backend wherever CI has a GPU, since the two backends differ.
+- **Mode parity.** An added mode gets one reference view captured in and out of it (XR through the emulator, then once on the headset) and compared for scale, color and overlays; the existing path's visual baseline must not move.
+- **Leak.** 10 mount/unmount cycles; `renderer.info.memory` returns to baseline.
+- **Soak.** 5 minutes at the heaviest interaction on the floor device, measured with the frame probe (`performance.md` § Budget).
+- **XR.** An emulator for session logic, plus one pass on the headset before release; setup in `web-xr.md` § Device testing.
 
-## Koota system test (write this first)
+## GPU in CI
 
-```typescript
-import { createWorld, trait } from 'koota'
-import { expect, test } from 'vitest'
+- Use Chrome's documented headless-GPU flags for the runner's OS (on Linux, Vulkan ANGLE plus `--enable-unsafe-webgpu` where WebGPU is not on by default), and confirm hardware acceleration on `chrome://gpu` inside the runner.
+- Since Chrome 139, WebGL no longer falls back to SwiftShader automatically. On GPU-less runners pass `--enable-unsafe-swiftshader`, or gate GPU tests behind a capability probe and skip them with a stated reason.
+- Expose a rendered-frame counter on `window`, wait for a few frames after load, then screenshot the canvas element only.
 
-const Position = trait({ x: 0, y: 0, z: 0 })
-const Velocity = trait({ x: 0, y: 0, z: 0 })
+## Guards
 
-function movementSystem(world, delta) {
-  world.query(Position, Velocity).updateEach(([pos, vel]) => {
-    pos.x += vel.x * delta
-  })
-}
+A diagnosed bug ships with the test that would have caught it:
+- A look or color fault: a visual baseline of a reference view, plus an assertion on the settings at fault (`toneMapping`, `outputColorSpace`, color-map `colorSpace` after load).
+- A performance regression: the frame probe's on-time % and p95 against the budget in a device or lab run, failing on a drop.
+- A leak: the Leak tier.
+- A version-gated API: a startup check that `THREE.REVISION` meets the gate, so a downgrade fails loudly.
 
-test('movement integrates velocity', () => {
-  const world = createWorld()
-  const e = world.spawn(Position({ x: 0 }), Velocity({ x: 2 }))
-  movementSystem(world, 0.5)
-  expect(e.get(Position).x).toBe(1)
+```ts
+test('reference view keeps its look', async ({ page }) => {
+  await page.goto('/viewer?view=reference')                                  // fixed camera, no animation
+  await page.waitForFunction(() => (window as any).__frames > 3)              // the rendered-frame counter
+  await expect(page.locator('canvas')).toHaveScreenshot('reference.png', { maxDiffPixelRatio: 0.01 })
 })
 ```
 
-## Visual regression for shaders (the GPU path)
+## Tests first, here
 
-```typescript
-// playwright.config: launch chromium with --enable-unsafe-webgpu --use-gl=angle
-import { test, expect } from '@playwright/test'
-
-test('fresnel material renders', async ({ page }) => {
-  await page.goto('/scenes/fresnel')
-  await page.waitForFunction(() => (window as any).__renderedFrames > 2) // wait for init + a few frames
-  expect(await page.locator('canvas').screenshot()).toMatchSnapshot('fresnel.png', { maxDiffPixelRatio: 0.02 })
-})
-```
-
-Headless WebGPU is still flaky across CI images and driver versions — gate visual tests behind a capability check and keep the simulation-layer unit tests as your fast, reliable signal.
-
-## TDD reality check
-
-"Tests first" here means: write the Koota/physics/WASM/math tests before the implementation. It does **not** mean writing a failing test for "the sphere looks right" — that's a visual-regression baseline you capture once the look is approved, then guard against drift.
+"Tests first" means the simulation, physics, WASM and math tests come before the implementation. It does not mean a failing test for "the sphere looks right": that is a visual baseline captured once the look is approved, then guarded against drift.

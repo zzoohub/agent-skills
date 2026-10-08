@@ -1,59 +1,37 @@
 ---
-title: Use useDeferredValue for Expensive Derived Renders
-impact: MEDIUM
-impactDescription: keeps input responsive during heavy computation
-tags: rerender, useDeferredValue, optimization, concurrent
+title: Keep Typing Responsive with useDeferredValue
+tags: rerender, useDeferredValue, concurrent, inp, react-compiler
 ---
 
-## Use useDeferredValue for Expensive Derived Renders
+`useDeferredValue` makes each keystroke render twice: an urgent render with the old deferred value, which commits the input, then a background render with the new one, which starts at once and restarts if more input arrives. Typing stays responsive only if the urgent render skips the slow work, so make the skip explicit, compiler on or off:
 
-When user input triggers expensive computations or renders, use `useDeferredValue` to keep the input responsive. The deferred value lags behind, allowing React to prioritize the input update and render the expensive result when idle.
+- the slow derivation in a `useMemo` keyed on the deferred value and other slow inputs, never the live one;
+- the slow subtree in a `memo` child whose props all keep their identity in the urgent render: the deferred value (for highlighting too), memoized data, stable callbacks.
 
-**Incorrect (input feels laggy while filtering):**
-
-```tsx
-function Search({ items }: { items: Item[] }) {
-  const [query, setQuery] = useState('')
-  const filtered = items.filter(item => fuzzyMatch(item, query))
-
-  return (
-    <>
-      <input value={query} onChange={e => setQuery(e.target.value)} />
-      <ResultsList results={filtered} />
-    </>
-  )
-}
-```
-
-**Correct (input stays snappy, results render when ready):**
+The compiler chooses its own memo scopes and can key the derivation on the live value; then the urgent render redoes it and the deferral buys nothing. Before claiming the fix, confirm in the React Profiler that the list is absent from the urgent commit, or read the compiled output.
 
 ```tsx
-function Search({ items }: { items: Item[] }) {
+const ResultsList = memo(SlowResultsList)
+
+function Search({ items }: { items: Item[] }) {   // items must keep its identity between keystrokes
   const [query, setQuery] = useState('')
   const deferredQuery = useDeferredValue(query)
-  const filtered = useMemo(
-    () => items.filter(item => fuzzyMatch(item, deferredQuery)),
-    [items, deferredQuery]
-  )
-  const isStale = query !== deferredQuery
-
+  const results = useMemo(() => filterItems(items, deferredQuery), [items, deferredQuery])
   return (
     <>
       <input value={query} onChange={e => setQuery(e.target.value)} />
-      <div style={{ opacity: isStale ? 0.7 : 1 }}>
-        <ResultsList results={filtered} />
+      <div style={{ opacity: query !== deferredQuery ? 0.7 : 1 }}>
+        <ResultsList results={results} query={deferredQuery} />
       </div>
     </>
   )
 }
 ```
 
-**When to use:**
+State the preconditions in your notes: `items` is stable (a parent passing `list.filter(...)` inline creates a new array each render and defeats both memos), and the child gets no live prop.
 
-- Filtering/searching large lists
-- Expensive visualizations (charts, graphs) reacting to input
-- Any derived state that causes noticeable render delays
+Use it for typed input, or a value that arrives as a prop you don't own; for a discrete update you own, use a Transition ([rerender-transitions](./rerender-transitions.md)).
 
-**Note:** Wrap the expensive computation in `useMemo` with the deferred value as a dependency, otherwise it still runs on every render.
+*Break:* the background render yields only between components, so one slow computation (a 200 ms filter) still blocks: make it cheap first ([js-hot-paths](./js-hot-paths.md)), or move it to a Worker or the server.
 
-Reference: [React useDeferredValue](https://react.dev/reference/react/useDeferredValue)
+Sources: https://react.dev/reference/react/useDeferredValue · https://react.dev/learn/react-compiler/introduction

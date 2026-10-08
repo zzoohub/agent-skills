@@ -11,35 +11,8 @@ Structure complex components as compound components with a shared context. Each
 subcomponent accesses shared state via context, not props. Consumers compose the
 pieces they need.
 
-**Incorrect (monolithic component with render props):**
-
-```tsx
-function Composer({
-  renderHeader,
-  renderFooter,
-  renderActions,
-  showAttachments,
-  showFormatting,
-  showEmojis,
-}: Props) {
-  return (
-    <form>
-      {renderHeader?.()}
-      <Input />
-      {showAttachments && <Attachments />}
-      {renderFooter ? (
-        renderFooter()
-      ) : (
-        <Footer>
-          {showFormatting && <Formatting />}
-          {showEmojis && <Emojis />}
-          {renderActions?.()}
-        </Footer>
-      )}
-    </form>
-  )
-}
-```
+**Incorrect:** one monolithic `Composer` whose layout is steered by `renderHeader`-style
+slots and `showAttachments`-style flags, so every new layout adds a prop.
 
 **Correct (compound components with shared context):**
 
@@ -81,17 +54,18 @@ function ComposerSubmit() {
   return <Button onPress={submit}>Send</Button>
 }
 
-// Export as compound component
-const Composer = {
-  Provider: ComposerProvider,
-  Frame: ComposerFrame,
-  Input: ComposerInput,
-  Submit: ComposerSubmit,
-  Header: ComposerHeader,
-  Footer: ComposerFooter,
-  Attachments: ComposerAttachments,
-  Formatting: ComposerFormatting,
-  Emojis: ComposerEmojis,
+// Export each part by name; consumers write `import * as Composer from './composer'`.
+// A `const Composer = {…}` object throws when a Server Component dots into it.
+export {
+  ComposerProvider as Provider,
+  ComposerFrame as Frame,
+  ComposerInput as Input,
+  ComposerSubmit as Submit,
+  ComposerHeader as Header,
+  ComposerFooter as Footer,
+  ComposerAttachments as Attachments,
+  ComposerFormatting as Formatting,
+  ComposerEmojis as Emojis,
 }
 ```
 
@@ -110,4 +84,4 @@ const Composer = {
 </Composer.Provider>
 ```
 
-Consumers explicitly compose exactly what they need. No hidden conditionals. And the state, actions and meta are dependency-injected by a parent provider, allowing multiple usages of the same component structure.
+Consumers compose exactly the parts they need, with no hidden conditionals.

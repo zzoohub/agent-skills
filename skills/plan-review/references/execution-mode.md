@@ -1,86 +1,43 @@
-# Execution Mode — eng-manager lens (locked-scope execution rigor)
+# Execution mode: eng-manager lens
 
-Loaded by `plan-review` when a design/architecture doc has locked scope. The shared skeleton — mode choice, plan discovery (Step -1), pre-review audit, engineering preferences, documentation and diagrams, section gate, question protocol, proposed follow-ups, formatting — lives in `SKILL.md`; this file holds what is specific to execution mode.
+**Add the decision record to the evidence** (SKILL.md step 2): the ADRs, `context.md`, `risks.md`, and `database.md` if data changes (defaults under `docs/arch/`; caller may redirect). Spikes owed and unknown assumptions are readiness inputs, not new findings.
 
-Review this plan thoroughly before any code is written. Scope is fixed: no premise challenge, dream-state mapping or temporal interrogation. Raise scope concerns once, in Step 0; afterward optimize within the chosen scope. For a genuine scope rethink or a 10x-ambition pass, switch to scope mode (`references/scope-mode.md`) explicitly.
+**Depth.** Light runs checks 6 and 7. Standard adds what its fired triggers name: data, a contract or a global push → 3; money, an irreversible action or a must-not-lose write → 4; who can do what, personal data or a regulated domain → 5; a new dependency → 1 and 4, plus 5 for an LLM or agent. Deep runs all eight. At any depth: a build past about a month → 1 and 8; parallel streams or a second team → 2; a hard date → 8; a hotfix or incident follow-up → 3, with the incident's failure as a registry row.
 
-## Priority hierarchy
-If you are low on context or asked to compress: Step 0 > Test diagram > Failure modes > Security checks (§1) > Opinionated recommendations > Everything else. Never skip Step 0 or the test diagram; security may be compressed but never dropped.
+## Checks
 
-## Step 0: Scope Challenge
-Answer these before reviewing:
-1. **What existing code already partially or fully solves each sub-problem?** Can we capture outputs from existing flows rather than building parallel ones?
-2. **What is the minimum set of changes that achieves the stated goal?** Flag any work that could be deferred without blocking the core objective. Be ruthless about scope creep.
-3. **Complexity check:** >8 files touched or >2 new classes/services is a smell — challenge whether the same goal can be achieved with fewer moving parts. (Distinct from scope mode's >15-file REDUCTION trigger.)
-4. **Deferred-work check:** If the caller supplied known deferred or in-flight work, is any of it blocking this plan? Can any be bundled in without expanding scope? Does this plan create new work to propose as a follow-up?
+1. **Slices.** Slice 1 is a walking skeleton: the primary end-to-end path, linking the main components and the riskiest integration, deployed behind a flag where users could see it. The riskiest unknown is retired in slice 1 or 2, by a spike with a pass/fail threshold for any vendor, model or performance fact the plan assumes. *Break:* a single-component change, or an order imposed from outside.
 
-Then ask which sub-mode (one decision — see "How to ask questions" in `SKILL.md`):
-1. **TRIM:** Trim *clearly redundant* work from the fixed plan, then review the trimmed version. This removes obvious dead weight only — it does NOT re-open scope or rethink premises. (Distinct from scope mode's SCOPE REDUCTION, which genuinely cuts scope.) For a genuine scope rethink or a 10x-ambition pass, switch to scope mode.
-2. **BIG CHANGE:** Work through interactively, one section at a time (Architecture → Code Quality → Tests → Performance), at most 8 top issues per section.
-3. **SMALL CHANGE:** Compressed review — Step 0 + one combined pass covering all 4 sections, picking the single most important issue per section (think hard — this forces prioritization). Present as one numbered list at the end, then ask the issues as a short sequence of decisions (one per section's top issue — never a single fused mega-question).
+2. **Contracts and dependencies.** Interfaces between parallel streams freeze before they start; each write path has one owner. Each dependency on another team, a vendor, an approval or work in flight on the same paths has an owner and a date, or the slice that needs it moves later.
 
-Context-dependent defaults (recommend first): clear redundancy already spotted
-in Step 0 → TRIM; plan touches ≲8 files or a single component → SMALL CHANGE;
-multi-component design doc → BIG CHANGE. Non-interactive runs don't stall here:
-apply the default, record `UNRESOLVED-AUTO (mode defaulted)` in Unresolved
-Decisions, and continue.
+3. **One-way doors and rollout.** For each change to persisted data, messages or a public contract: what is valid while old and new code run side by side, and after a rollback? Expand → migrate → contract, with batched, resumable backfills. Name the rollout signal, the abort condition, and rollback or forward-fix with how long it takes. No answer → Blocker. Replacing what computes money, access or stored data: run new beside old on real inputs, diffing outputs; the diff rate gates cutover. Config, prompts, model versions and generated data ship like code: validated as untrusted input, staged, with a kill switch; fail-open or fail-closed is chosen per dependency.
 
-**If the user does not pick TRIM, respect that fully.** Your job becomes making the chosen plan succeed, not lobbying for a smaller one. Raise scope concerns once here; afterward optimize within the chosen scope. Do not silently reduce scope, skip planned components, or re-argue for less work in later sections.
+4. **Failure registry** (columns in SKILL.md § 5): one row per boundary the plan adds or changes.
+   - **Policy**: retry, compensate, surface, alert or accept. Retry only idempotent or idempotency-keyed operations, at one layer, with capped, jittered backoff and a retry budget. Compensate and alert name the tool or runbook the owner acts with (re-drive, refund, unlock).
+   - **Probe each boundary for**: duplicate or reordered delivery; concurrent writes; partial failure mid-sequence; a slow (not down) dependency; the backlog after an outage; for an LLM call, refusal, truncation, schema-valid but wrong output, and retirement of the pinned model.
+   - **Gates**: a silent row is a Blocker on a critical path (SKILL.md § 4), Major elsewhere; an untested critical-path row is Major.
 
-## Review Sections (after scope is agreed)
-Each section ends with the section gate (`SKILL.md`).
+5. **Trust boundaries.** Which boundary moves: a new input, principal, data access, outbound call or credential? Can user or tenant A reach B's data by changing an id? Money, permission and deletion actions leave an audit record that outlives them. § 4's LLM or agent Blocker: drop one leg or require a person's approval. Cap tokens and cost per request and tenant.
 
-### 1. Architecture review
-Evaluate:
-* Overall system design and component boundaries.
-* Dependency graph and coupling concerns.
-* Data flow patterns and potential bottlenecks. For every new data flow, trace all four paths: happy path, nil/missing input, empty/zero-length input, and upstream-error.
-* Scaling characteristics and single points of failure.
-* Security — locked scope still ships vulnerabilities, so check the four
-  highest-leverage items: attack-surface delta (new endpoints, params, jobs);
-  input validation on every new user input (nil, empty, over-length, injection —
-  incl. LLM prompt injection); authorization scoping on every new data access
-  (can user A reach user B's data by manipulating IDs?); secrets in env vars,
-  never hardcoded. For a dedicated threat-model pass — or the full 10-section
-  review with security, observability, deployment, and trajectory as their own
-  gates — switch to scope mode's HOLD SCOPE (`references/review-sections.md`);
-  post-code, the security pass of a review-checklists capability, if available.
-* Observability of each new flow: which log line or metric proves it works in
-  production, and which one tells you it broke? Observability is scope, not
-  afterthought.
-* Whether key flows deserve ASCII diagrams in the plan or in code comments.
-* For each new codepath or integration point, describe one realistic production failure (timeout, cascade, nil ref, auth failure) and whether the plan accounts for it.
+6. **Verification.** Each invariant the plan relies on (one charge per order; tenant A never reads B's rows) gets a failure-path test at the cheapest boundary that catches it, plus a production signal that it broke, routed to an owner; for money and stored state, a reconciliation against the source of truth, not error logs. Each new flow gets a signal that it works, and each legal duty (accessibility, say) a release check. An LLM change needs an eval set with a baseline and pass threshold before rollout; it also qualifies a replacement model.
 
-**STOP — apply the section gate.**
+7. **Implementer's pass.** Walk the build order as the implementer, human or coding agent. At each step: what must they decide that the plan doesn't settle, and what check proves the step done? Undecided items that touch data, a contract or user-visible behavior → unresolved decisions; the rest → defaults you state.
 
-### 2. Code quality review
-Evaluate:
-* Code organization and module structure.
-* DRY violations — be aggressive; cite `file:line`.
-* Error handling patterns and missing edge cases (call these out explicitly).
-* Technical debt hotspots.
-* Areas over-engineered or under-engineered relative to the engineering preferences.
-* Existing ASCII diagrams in touched files — still accurate after this change?
+8. **Capacity.** Calibrate the estimate, in S/M/L, against how long the last comparable change here took. Size or split out hidden projects: one-line steps that are plans of their own ("migrate existing users", "support SSO"). A data migration or a technology new to the team gets its own buffer. No slack and no cut line → Major.
 
-**STOP — apply the section gate.**
+**An implementation plan adds, checked against the code** (the first at every depth, the rest at standard and deep):
+- each path, symbol, endpoint, flag and table the plan names exists as named (cite `path:line`); a phantom one is Major, a Blocker when later steps build on it;
+- each sub-problem mapped to existing code; a rebuild needs a reason;
+- duplicated knowledge (one rule in two places), not similar-looking code: a follow-up, except money and security rules, which are unified now;
+- each new dependency exists under the intended name and publisher, is pinned, and is worth its transitive surface;
+- at the larger of 10× measured load or the 12-month target, which query, loop, payload or bill grows with it?
 
-### 3. Test review
-Make a diagram of all new UX, new data flow, new codepaths, and new branches/outcomes. For each, note what is new in this plan. Then ensure each new item has a test (vitest, nextest, pytest, or the project's test runner). For each, name the happy-path test, the failure-path test (which specific failure), and the edge-case test (nil, empty, boundary, concurrent).
+## Verdict
 
-For LLM/prompt changes: check project conventions for prompt-related file patterns. If this plan touches any of them, state which eval suites must run, which cases to add, and what baselines to compare against. Then confirm the eval scope with the user — phrased as concrete options (e.g. "Run suite X only" / "Run X + add cases Y" / "Skip evals"), not a yes/no — via the question protocol.
+The first that applies wins.
 
-**STOP — apply the section gate.**
+- **Not ready**: a Blocker needs design rework (software-architecture or arch-decision, if available) or a scope change (scope mode).
+- **Ready after fixes**: each Blocker has a known fix, or an owner decision, that keeps scope and design.
+- **Ready**: no Blockers.
 
-### 4. Performance review
-Evaluate:
-* N+1 queries and database access patterns.
-* Memory-usage concerns.
-* Caching opportunities.
-* Slow or high-complexity code paths.
-
-**STOP — apply the section gate.**
-
-## Required outputs (execution mode)
-Per **`references/required-outputs.md`**: "NOT in scope", "What already exists", Diagrams, Failure modes (one realistic failure per codepath in the test-review diagram), Proposed follow-ups (`SKILL.md`), the execution-mode completion summary, and Unresolved decisions. BIG CHANGE and TRIM produce all of them.
-
-In SMALL CHANGE mode, the required outputs reduce to: test diagram + failure modes + completion summary + a single follow-ups round (still one question per proposed follow-up — the "never batch" rule holds).
+Then write per SKILL.md § 5 and run its Self-Review.

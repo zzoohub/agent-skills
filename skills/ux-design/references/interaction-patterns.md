@@ -1,344 +1,78 @@
 # Interaction Patterns
 
-How screens respond to user actions. Interaction design is the bridge between static layouts and living interfaces.
+App-wide choices from this file go into the UX doc's conventions (§5) once; screens cite them.
 
-## Table of Contents
+## The 7 Universal Screen States
 
-1. [Core Principle](#core-principle)
-2. [State Machine Design](#state-machine-design)
-3. [System Feedback Patterns](#system-feedback-patterns)
-4. [Gesture Patterns](#gesture-patterns)
-5. [Optimistic UI](#optimistic-ui)
-6. [Loading Patterns](#loading-patterns)
-7. [Undo / Redo Patterns](#undo--redo-patterns)
-8. [Transitions and Navigation Animation](#transitions-and-navigation-animation)
-9. [Micro-Interactions](#micro-interactions)
+Loading resolves to Loaded, Empty or Error. From Loaded, a screen enters and leaves Refreshing, Partial and Offline independently; Empty is an outcome of loading, never a step before it.
 
----
+| State | What the user sees | Rules |
+|---|---|---|
+| **Empty** | Loading finished with nothing to show | Say which kind: first use, no results, or cleared (copy: `ux-writing.md` § Empty states). Never blank |
+| **Loading** | First load, nothing to show yet | A skeleton matching the layout, only for waits of a second or more; none for cached content |
+| **Loaded** | The content | The primary action is available |
+| **Error** | The load failed | What failed in plain words, and the recovery: retry, change the input, or who to contact |
+| **Partial** | Some parts loaded, some failed | Show what succeeded; an inline error with retry where it failed |
+| **Refreshing** | Updating content already on screen | Keep the content and show a small indicator; never fall back to a skeleton |
+| **Offline** | No connection | What stays readable and editable follows the architecture's offline contract per object; queue writes only where it syncs them, else disable writes and say why |
 
-## Core Principle
+States compose: Refreshing while Partial (retrying the failed pane), an Error over Loaded (a background sync fails after the content rendered), Offline over Partial. Design the composites the data makes likely; one rule resolves them: **never blank content the user already has.** A state that can't occur on a screen is written `N/A — reason`, never skipped silently.
 
-> Every user action must produce a visible, immediate, and proportionate response. Silence is the enemy of confidence.
+## Beyond the base seven
 
-If the user does something and nothing happens, they will either repeat the action (creating errors) or abandon the flow (creating drop-off).
+List the domain states once, while mapping flows; each screen specs the ones its data makes likely:
+- **Volume:** zero, one, many, too many (pagination, truncation, "N new" for live inserts instead of shifting the list).
+- **Access:** no access, read-only, waiting for approval.
+- **Lifecycle:** archived, deleted or moved, reached by a deep link.
+- **Limits:** a plan or quota reached: what still works and how to lift it.
+- **Background jobs:** running, failed, finished while the user was away.
+- **Conflict:** edited elsewhere: show both versions; reload or merge.
 
----
+## Containers
 
-## State Machine Design
+Choose once per object (§5), so every list opens its items the same way: a dialog for one short decision that returns here (never long input), a side panel to inspect or edit beside the list, a page for long work or anything worth a URL. Never stack dialogs: a dialog that grows a second step becomes a page.
 
-Every interactive element and every screen exists in one of a finite set of states. Design ALL states before designing the "happy" state.
+## Unavailable actions
 
-### The 7 Universal Screen States
+Hide what a role can never do. Show what a request or an upgrade could unlock as disabled but focusable, with the reason and who grants it or which plan does ("Ask a workspace admin for export access"). Check access before a form's first field, never at submit.
 
-```
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│  Empty  │────▶│ Loading │────▶│ Loaded  │
-└─────────┘     └────┬────┘     └────┬────┘
-                     │ fail          │
-                     ▼               │
-                ┌─────────┐          │
-                │  Error  │          │
-                └─────────┘          │
-                                     │
-  Loaded is the hub — from it the screen can independently enter, and
-  return from, each of these (this is not a linear chain):
-   • Refreshing — re-fetching; keep existing content visible, don't blank it
-   • Partial    — some content loaded, some failed; show what succeeded
-   • Offline    — no network; show cached content + queue actions for sync
-```
+## Destructive actions
 
-| State | What User Sees | Design Requirements |
-|-------|---------------|---------------------|
-| **Empty** | No content yet | Explain why empty + clear CTA to create/add first item. Never blank. |
-| **Loading** | Content is being fetched | Skeleton shimmer for <3s. Progress bar for >3s. Context: what's loading. |
-| **Loaded** | Content is displayed | Primary content visible. Actions available. |
-| **Error** | Something failed | What went wrong + what to do (retry, change input, contact support). Never blame user. |
-| **Partial** | Some content loaded, some failed | Show what succeeded. Inline error for what failed. Don't block everything. |
-| **Refreshing** | Content is being updated | Subtle indicator (pull-to-refresh spinner). Don't replace visible content with skeleton. |
-| **Offline** | No network connection | Show cached content if available. Queue actions for sync. Banner: "You're offline — changes will sync when connected." |
+Decide by reversibility and by who else is affected, and prefer making an action reversible to adding a dialog:
 
-The 7 states are primitives that **compose**: real screens hit combinations —
-Refreshing while Partial (retrying just the failed pane), an Error surfaced
-over Loaded (a background sync fails after content rendered), Offline on top
-of Partial. Design the two or three composites your data shape makes likely;
-the rule that resolves them: never blank content the user already has.
+| Action | Pattern |
+|---|---|
+| Reversible (archive, remove from a list) | Act at once, no dialog; Undo in the feedback plus a durable way back (trash, history, ⌘Z/Ctrl+Z) |
+| Deletes the user's own content | Soft delete to a trash with a restore window |
+| Irreversible, or affects other people (publish, charge, send to a list, delete shared data) | A dialog naming the object, count and consequence (copy: `ux-writing.md` § Confirmations), focus on the safe choice; Enter never confirms destruction |
+| Catastrophic (a workspace, an account) | Type the name to confirm; say what else goes and what can't come back |
 
-### State Checklist
-Before finalizing any screen:
-- [ ] Designed all 7 states (or explicitly documented why a state is impossible)
-- [ ] Likely composite states identified (e.g. Refreshing-while-Partial) and the existing-content rule holds
-- [ ] Empty state has actionable guidance
-- [ ] Error state has recovery path
-- [ ] Loading state matches expected wait time
-- [ ] Transitions between states are smooth (no layout shifts)
-
----
-
-## System Feedback Patterns
-
-### Feedback Selection Guide
-
-| Scenario | Pattern | Duration | Blocks UI? |
-|----------|---------|----------|-----------|
-| Action succeeded (non-critical) | Toast / Snackbar | 3-5s auto-dismiss | No |
-| Action succeeded (important) | Inline confirmation | Persistent until next action | No |
-| Action requires undo window | Snackbar with undo | 5-8s | No |
-| Destructive action confirmation | Dialog / Alert | Until user responds | Yes |
-| Validation error | Inline error | Until fixed | No |
-| System-level issue | Banner | Until resolved | No |
-| Background process complete | Push notification / Badge | Until acknowledged | No |
-
-### Toast / Snackbar
-
-```
-┌─────────────────────────────────┐
-│                                 │
-│         Screen Content          │
-│                                 │
-│                                 │
-├─────────────────────────────────┤
-│ ✓ Item saved              [Undo]│  ← Snackbar
-└─────────────────────────────────┘
-```
-
-Rules:
-- Position: bottom of screen, above tab bar (mobile) or bottom-left (web)
-- Auto-dismiss: 3-5 seconds
-- One at a time (queue if multiple)
-- Include undo action for reversible operations
-- Never use for errors (errors need persistent visibility)
-
-### Inline Feedback
-
-```
-┌─────────────────────────────────┐
-│ Email                           │
-│ ┌─────────────────────────────┐ │
-│ │ notanemail                  │ │
-│ └─────────────────────────────┘ │
-│ ⚠ Enter a valid email address   │  ← Inline error
-│                                 │
-│ Name                            │
-│ ┌─────────────────────────────┐ │
-│ │ Jane Doe              ✓    │ │  ← Inline success
-│ └─────────────────────────────┘ │
-└─────────────────────────────────┘
-```
-
-Rules:
-- Show below the input field, not in a separate area
-- Validate on blur for the first pass (not on every keystroke — reduces anxiety). Once a field is already in an error state, re-validate on input so the error clears live as the user fixes it.
-- Error: red text + icon. Success: green checkmark (optional)
-- Error message format: what's wrong + how to fix it
-- Never clear user's input on error
-
-### Confirmation Dialog (Destructive Actions Only)
-
-```
-┌─────────────────────────────────┐
-│                                 │
-│  Delete this project?           │
-│                                 │
-│  This will permanently remove   │
-│  "My Project" and all its       │
-│  contents. This cannot be       │
-│  undone.                        │
-│                                 │
-│  [Cancel]          [Delete]     │
-│                                 │
-└─────────────────────────────────┘
-```
-
-Rules:
-- ONLY for destructive + irreversible actions
-- Title: specific action being taken (not "Are you sure?")
-- Body: what will happen + consequences
-- Primary button: the destructive action (red), labeled with specific verb ("Delete", not "OK")
-- Secondary button: cancel (always an escape route)
-- Never use for: saving, closing (without data loss), navigation
-
----
-
-## Gesture Patterns
-
-### Standard Gesture Vocabulary
-
-| Gesture | Standard Meaning | Platform Notes |
-|---------|-----------------|----------------|
-| Tap | Select / activate | Universal |
-| Long press | Context menu / secondary actions | iOS: peek. Android: context menu |
-| Swipe left/right | Delete, archive, actions on list item | Reveal action buttons beneath |
-| Swipe down | Pull-to-refresh (on scrollable lists) | Spring animation on release |
-| Edge swipe (left edge →) | Navigate back | iOS system gesture. Do not override. |
-| Pinch | Zoom in/out | Maps, images, documents |
-| Two-finger scroll | Scroll content | Standard scroll behavior |
-| Double tap | Zoom to fit / Like (social) | Context-dependent |
-
-### Gesture Design Rules
-
-1. **Never invent new gestures** — use established vocabulary
-2. **Never override system gestures** — iOS edge swipe back is sacred
-3. **Always provide a visible alternative** — gestures are invisible, buttons are not. Every gesture action must also be available via a visible control
-4. **Provide haptic feedback** — light haptic on swipe threshold, medium on action commit
-5. **Swipe actions must be discoverable** — show hint on first encounter or onboarding
-
-### Swipe-to-Action Pattern
-
-```
-Normal state:
-┌─────────────────────────────────┐
-│ 📧 Email from Alice             │
-│    Meeting tomorrow at 3pm      │
-└─────────────────────────────────┘
-
-Swiped left (partial):
-┌──────────────────────┬──────────┐
-│ 📧 Email from Alice  │ 🗑 Delete│
-│    Meeting tomorrow   │          │
-└──────────────────────┴──────────┘
-
-Swiped left (full — destructive):
-┌─────────────────────────────────┐
-│ 🗑 Deleted              [Undo]  │
-└─────────────────────────────────┘
-```
-
-Rules:
-- Partial swipe: reveal actions (archive, delete, flag)
-- Full swipe: commit the primary action
-- Always offer undo for destructive swipe actions
-- Color coding: red = destructive, green/blue = constructive
-- Maximum 3 actions per side (left and right)
-
----
+*Break when* a destructive action is frequent in an expert tool (deleting rows or tasks in a shared workspace): make it undoable and drop the dialog, because confirmations people see all day get clicked through. Destructive controls sit apart from frequent ones, never in Save's size and place.
 
 ## Optimistic UI
 
-Update the UI immediately as if the action succeeded, then reconcile with the server response.
+Show the result at once when success is likely and a failure can be shown in place: a like, marking as read, a reorder, a chat message shown as "sending" until it turns sent, or failed with Retry. Never show a terminal state the server hasn't confirmed: paid, booked, emailed to others, filed. *Break when* other people see the result at once and retracting it is costly (posting to a public feed): wait for confirmation, showing progress.
 
-### When to Use
-- Action has >95% success rate
-- Action is reversible
-- Failure doesn't cause data corruption
-- Examples: liking a post, marking as read, toggling settings
+## Feedback channels
 
-### When NOT to Use
-- Payment processing
-- Sending messages to others
-- Destructive actions (delete, remove)
-- Actions with side effects visible to other users
+One channel per kind of news, app-wide:
+- **Field errors:** inline at the field, input kept; long forms add a summary at the top that links to each field.
+- **Item state** (saved, failed, syncing): in place, on the item.
+- **System state** (offline, degraded, plan limit, maintenance): a banner that stays until the state changes.
+- **Minor success:** a toast or snackbar, one at a time. A toast with an action (Undo) stays until dismissed or follows the OS accessibility timeout, and its action also exists somewhere durable.
+- **Notifications** (background completion, hand-offs, mentions): only to people who must act or would be hurt to miss it; the rest goes to an activity feed or a digest. Urgency picks the channel (badge, in-app, email, push); each names the actor and the object and opens it in the state it describes. One a flow depends on is designed as a step of that flow (`design-process.md` § Mapping a flow).
+- **Errors never dismiss themselves.**
 
-### Pattern
+## Response time
 
-```
-1. User taps "Like"
-2. UI immediately shows: heart filled, count +1
-3. API call fires in background
-4. If success: done (UI already correct)
-5. If failure: revert UI + show subtle error toast
-```
+Every press shows its pressed state at once. Under a second, no spinner, and the current content stays; past about 10 s, progress with Cancel, or move the work to the background and notify.
 
----
+## Forms
 
-## Loading Patterns
+Validate a field when the user leaves it, then as they type once it shows an error, never while untouched; never clear input (on an error, on back, or on session expiry: sign in again and keep it); unsaved changes autosave or get a leave guard that covers system back.
 
-### Pattern Selection by Wait Time
+## Gestures and motion
 
-This is the canonical response-time ladder, shared with `ergonomics.md`
-(§Response Time) — keep the two in sync.
-
-| Expected Wait | Pattern | Example |
-|--------------|---------|---------|
-| <300ms | No indicator | Button state change |
-| 300ms-1s | Skeleton optional | Quick fetch |
-| 1-3s | Skeleton screen + shimmer | Content placeholders matching layout |
-| 3-10s | Progress bar + context | "Uploading photo..." with % |
-| >10s | Background process + notification | "We'll notify you when ready" |
-
-### Skeleton Screen
-
-```
-┌─────────────────────────────────┐
-│ ████████████                    │  ← Title placeholder
-│ ██████████████████████████      │  ← Subtitle placeholder
-│                                 │
-│ ┌────┐ ████████████████████     │  ← Avatar + text
-│ └────┘ ██████████████           │
-│                                 │
-│ ┌────┐ ████████████████████     │
-│ └────┘ ██████████████           │
-└─────────────────────────────────┘
-```
-
-Rules:
-- Match the actual content layout (not a generic spinner)
-- Animate with shimmer (left-to-right pulse)
-- Transition to real content without layout shift
-- Never show skeleton for content already in cache
-
----
-
-## Undo / Redo Patterns
-
-### Undo Strategy Selection
-
-| Action Type | Strategy | Example |
-|------------|----------|---------|
-| Reversible, low-stakes | Undo via snackbar (5-8s window) | Archive email, remove from list |
-| Reversible, medium-stakes | Undo via "Recently Deleted" (30 days) | Delete photo, delete note |
-| Irreversible, high-stakes | Confirmation dialog before action | Delete account, send payment |
-| Continuous editing | Cmd+Z / Ctrl+Z unlimited undo stack | Text editing, drawing, design |
-
-### Soft Delete Pattern
-```
-User "deletes" item
-→ Item moves to "Recently Deleted" (hidden from main view)
-→ 30-day retention before permanent deletion
-→ User can restore anytime within window
-→ After 30 days: permanent delete (no confirmation needed — user had 30 days)
-```
-
----
-
-## Transitions and Navigation Animation
-
-### Transition Selection
-
-| Navigation Action | Animation | Duration |
-|------------------|-----------|----------|
-| Push to detail | Slide in from right | 300ms |
-| Pop back to list | Slide out to right | 250ms |
-| Open modal | Slide up from bottom | 300ms |
-| Close modal | Slide down | 250ms |
-| Tab switch | Cross-fade (no slide) | 200ms |
-| Expand/collapse | Height animation + fade | 200-300ms |
-
-### Rules
-- Direction indicates hierarchy: right = deeper, left = back, up = overlay, down = dismiss
-- Matching transitions: open and close should be inverse of each other
-- Respect `prefers-reduced-motion`: replace animations with instant cuts
-- Never use bouncy/spring animations for navigation (only for delight moments)
-- Shared element transitions for visual continuity (list thumbnail → detail hero image)
-
----
-
-## Micro-Interactions
-
-Small, contained animations that provide feedback and delight.
-
-### Essential Micro-Interactions
-
-| Trigger | Response | Purpose |
-|---------|----------|---------|
-| Button press | Scale down 95% → release to 100% | Confirms touch registration |
-| Toggle switch | Slide + color change | State change is visible |
-| Pull-to-refresh | Spinner appears, content shifts down | Action is being processed |
-| Form submission | Button → spinner → checkmark | Progress → completion |
-| Error | Shake animation (2-3 cycles, 4px amplitude) | Draws attention without alarm |
-| Like/favorite | Heart fill + scale pop (110% → 100%) | Delight moment |
-
-### Rules
-- Micro-interactions should be <300ms
-- Never block user input during animation
-- Consistent across the entire app
-- Haptic feedback paired with visual (where supported)
+- Standard gestures for standard actions; never override system gestures (back, home, notification pull); back-swipe conflicts: `ergonomics.md` § Platform conventions.
+- Every gesture action also has a visible control (for a drag, "Move to…": `ergonomics.md` § Requirements that change structure), and destructive swipe actions offer Undo.
+- Each motion in a spec names its purpose and its reduced-motion variant: remove the movement, keep fades and progress. The platform owns navigation transitions; design-system owns durations, easing and the reduced-motion policy.

@@ -1,370 +1,144 @@
-# Retention & Cohort Analysis
+# Retention, Funnels & PMF
 
-## Table of Contents
+The calculations behind the product frame; the verdict rubric lives in SKILL.md § Verdicts.
 
-1. [Why Retention Is the Only Metric That Matters](#why-retention-is-the-only-metric-that-matters)
-2. [Cohort Types](#cohort-types)
-3. [Retention Intervals](#retention-intervals)
-4. [PMF Assessment via Retention Curves](#pmf-assessment-via-retention-curves)
-5. [Building Cohort Tables](#building-cohort-tables)
-6. [Common Retention Patterns & Diagnoses](#common-retention-patterns--diagnoses)
-7. [Segmented Analysis](#segmented-analysis)
-8. [Implementation in PostHog](#implementation-in-posthog)
-9. [Revenue Retention (GRR/NRR) via HogQL](#revenue-retention-grrnrr-via-hogql)
-10. [LTV Estimation from Cohorts](#ltv-estimation-from-cohorts)
+## Define Retention
 
-## Why Retention Is the Only Metric That Matters
+- **Retained** = did the core value action in period k, with periods equal to the natural usage interval (SKILL.md § First). A login is not value.
+- **One retention type per comparison.** Default: period (bracket) retention — active in period k, so returning users count. Never compare it with rolling or unbounded retention.
+- **Cohort** by signup period (first payment, for revenue questions). Read activated users separately from all signups: activated-user retention judges the product; signup retention mixes in activation. No validated Aha yet: activated = a provisional activation event (the first completion of the core job), and any call built on it is labeled provisional.
+- **Split** billing intervals (monthly vs annual) and plans when they behave differently.
+- **Denominator** = every cohort member, including those who never came back.
 
-Acquisition can be bought. Revenue can be inflated. But retention is the unmanipulable signal of whether your product delivers value. A product with 80% D30 retention and 100 users beats one with 10% D30 retention and 10,000 users on every horizon that matters: the first can buy growth and keep it; the second leaks whatever it buys.
+Build the cohort from signups, never from activity rows: signups who never acted would vanish and inflate retention. The shape to adapt (tested on PostgreSQL; translate date and series functions for your engine):
 
----
-
-## Cohort Types
-
-### Time-Based Cohorts (Acquisition Cohorts)
-Group users by signup date (week or month). The standard for tracking retention over time.
-
-```
-             Month 0  Month 1  Month 2  Month 3  Month 4
-Jan 2025     100%     45%      32%      28%      27%
-Feb 2025     100%     48%      35%      30%      29%
-Mar 2025     100%     52%      40%      35%      —
-```
-
-**How to read:**
-- Each row = one cohort (all users who signed up in that month)
-- Each column = months since signup
-- **Read diagonally** (top-left to bottom-right) = same calendar month across cohorts
-- **Read columns** = same lifecycle stage across cohorts (are newer cohorts retaining better?)
-- **Read rows** = one cohort's lifecycle
-
-### Behavioral Cohorts
-Group users by actions taken (or not taken). Critical for Aha Moment validation.
-
-Examples:
-- Users who completed onboarding vs. skipped
-- Users who invited a teammate vs. solo users
-- Users who used feature X in first week vs. didn't
-
-### Segment-Based Cohorts
-Group by user properties. Reveals which segments have fundamentally different retention.
-
-Examples:
-- By acquisition channel (organic vs. paid vs. referral)
-- By company size (1-10 vs. 11-50 vs. 50+ employees)
-- By plan tier (free vs. paid)
-- By geography or persona
-
----
-
-## Retention Intervals
-
-| Interval | Measures | When to Use |
-|----------|----------|-------------|
-| **D1** | First return after signup | Onboarding quality |
-| **D7** | Weekly return | Early habit formation |
-| **D14** | Second week | Habit stability |
-| **D30** | Monthly return | Core retention |
-| **D60** | Two-month | PMF signal |
-| **D90** | Quarterly | Long-term viability |
-
-**For SaaS specifically:**
-- **Weekly products** (project management, communication): D7 is the key early signal
-- **Monthly products** (analytics, invoicing): D30 is the first meaningful signal
-- **Usage frequency < 1x/month**: Retention plateau is nearly impossible — reconsider the product
-
----
-
-## PMF Assessment via Retention Curves
-
-### The Plateau Test
-
-Plot cohort retention curves. The shape tells you everything:
-
-**Shape 1: Continuous decline (no plateau)**
-```
-100% ─╲
-      ╲
-       ╲
-        ╲
-         ╲─── → 0%
-```
-**Diagnosis**: No PMF. Stop all acquisition spending. Fix the product.
-
-**Shape 2: Decline then flatten (plateau exists)**
-```
-100% ─╲
-      ╲
-       ╲___________  → plateau at X%
-```
-**Diagnosis**: PMF exists. Plateau height determines business ceiling.
-
-**Shape 3: Smile curve (decline, flatten, then rise)**
-```
-100% ─╲
-      ╲
-       ╲_____╱─── → expanding
-```
-**Diagnosis**: Strong PMF with network effects or expanding use cases. Rare and very valuable.
-
-### Plateau Height Benchmarks (B2B SaaS, directional — re-verify before citing)
-
-| Plateau Height | Assessment | Action |
-|---------------|------------|--------|
-| < 5% | No PMF | Kill or pivot |
-| 5-10% | Weak signal | Focus entirely on retention |
-| 10-20% | Early PMF | Optimize activation, cautious acquisition |
-| 20-40% | Solid PMF | Scale activation and acquisition |
-| > 40% | Strong PMF | Scale aggressively |
-
-**Consumer products** typically need higher plateaus (>20%) due to lower monetization per user.
-
-### Revenue Retention Benchmarks (directional — re-verify before citing)
-
-| Metric | Median | Top Quartile | Elite |
-|--------|--------|--------------|-------|
-| GRR (Gross Revenue Retention) | ~84% (2025 actuals; down from ~88% earlier) | 95%+ | 97%+ |
-| NRR (Net Revenue Retention) | ~102% (2025 actuals; survey-dependent — medians have compressed since 2022). By pricing model: usage-based ~108%, seat-based ~98% | 115%+ | 120%+ |
-
-**Warning**: High NRR can mask poor GRR. NRR of 130% with GRR of 70% = losing 30% of customers but making it up with upsells. That's fragile.
-
-By company scale (earlier survey cut, before the 2025 compression — directional; the pattern of NRR/GRR rising with scale matters more than the exact figures):
-- **$1M-$10M ARR**: Median NRR ~98%, GRR ~85%
-- **$10M-$100M ARR**: Median NRR ~106%, GRR ~90%
-- **$100M+ ARR**: Median NRR ~115%, GRR ~94%
-
----
-
-## Building Cohort Tables
-
-### Step 1: Define the cohort
-- What groups users together? (signup date, plan start, first action)
-- What's the time interval? (daily, weekly, monthly)
-- **Don't mix annual and monthly subscriptions** — analyze separately
-
-### Step 2: Define retention
-- What counts as "retained"? (logged in, performed core action, paid)
-- Be precise: "logged in" ≠ "got value"
-- Best practice: define retention as performing the **core value action**, not just any activity
-
-### Step 3: Build the table
 ```sql
--- Basic cohort retention query
-WITH cohorts AS (
-  SELECT
-    user_id,
-    DATE_TRUNC('month', signup_date) AS cohort_month,
-    DATE_TRUNC('month', activity_date) AS activity_month
-  FROM user_activity
+-- Period retention by signup cohort. Rerun: set as_of (any date; only periods complete
+-- before it are read) and unit, the natural usage interval: day, week or month.
+WITH params AS (
+  SELECT *, ('1 ' || unit)::interval AS step
+  FROM (SELECT date '2026-10-01' AS as_of, 'month' AS unit) v
 ),
-cohort_sizes AS (
-  SELECT cohort_month, COUNT(DISTINCT user_id) AS cohort_size
-  FROM cohorts
-  GROUP BY 1
+cohort AS (  -- from signups: members who never return stay in the denominator
+  SELECT s.user_id, date_trunc(p.unit, s.signed_up_at)::date AS cohort_start
+  FROM signups s, params p
+  WHERE s.signed_up_at < p.as_of AND NOT s.is_internal
 ),
-retention AS (
-  SELECT
-    cohort_month,
-    DATE_DIFF('month', cohort_month, activity_month) AS months_since,
-    COUNT(DISTINCT user_id) AS active_users
-  FROM cohorts
-  GROUP BY 1, 2
+active AS (  -- the core value action, never a login or any event
+  SELECT DISTINCT e.user_id, date_trunc(p.unit, e.occurred_at)::date AS period_start, 1 AS hit
+  FROM events e, params p
+  WHERE e.event = 'core_action' AND e.occurred_at < p.as_of
+),
+grid AS (    -- complete periods only: immature cells stay blank, never 0
+  SELECT c.user_id, c.cohort_start, gs.period_start::date AS period_start,
+         gs.n - 1 AS period  -- counts steps, so it holds for any unit
+  FROM cohort c, params p,
+       generate_series(c.cohort_start, p.as_of - p.step, p.step)
+         WITH ORDINALITY AS gs(period_start, n)
 )
-SELECT
-  r.cohort_month,
-  r.months_since,
-  r.active_users,
-  ROUND(r.active_users * 100.0 / cs.cohort_size, 1) AS retention_pct
-FROM retention r
-JOIN cohort_sizes cs ON r.cohort_month = cs.cohort_month
+SELECT g.cohort_start, g.period,
+       count(*) AS members,
+       coalesce(sum(a.hit), 0) AS retained,  -- sum(hit): some engines fill misses with 0, not NULL
+       round(100.0 * coalesce(sum(a.hit), 0) / count(*), 1) AS retention_pct
+FROM grid g
+LEFT JOIN active a ON a.user_id = g.user_id AND a.period_start = g.period_start
+GROUP BY 1, 2
 ORDER BY 1, 2;
 ```
 
-### Step 4: Read the table
+## Read the Cohort Table
 
-**Diagonal reading** (left-aligned table): Sum values moving from Month 0 up and to the right = total active users in a given calendar month.
+A drop at the same age in every cohort is a lifecycle stage (trial end, first renewal). Newer cohorts higher at the same age: a product change or a channel-mix shift; check the mix before crediting the product. A dip along one calendar diagonal is a calendar event: read the changelog first. Active users per calendar period: sum counts, never percentages.
 
-**Column comparison**: Are newer cohorts retaining better at the same lifecycle stage? If yes, product improvements are working.
+## PMF Evidence
 
-**Row analysis**: Where does each cohort's biggest drop happen? That's your highest-leverage fix.
+- **Flattens** = the per-interval loss rate (the share of last interval's retained users lost) drops well below its early level and holds low and steady over the last 3 mature intervals, or the curve turns up (expansion, network effects). A loss rate that stays near its early level is decay toward zero, even where a linear chart looks flat near the bottom. Report the plateau with n and CI.
+- **Late decay (d)** = the mean per-interval loss rate over those intervals. Carrying Capacity uses it; LTV takes the same measure on revenue.
+- **Newer vs older:** compare activated cohorts at the same age.
+- **Height:** compare with your own earlier cohorts. An external bar needs source, date, denominator and horizon: Lenny Rachitsky's benchmarks (June 2020) put "good" 6-month retention near 25% for consumer social, measured on registered users, and near 60% for SMB SaaS, measured on paying companies. Different denominators: never hold a consumer product's signups to a B2B bar.
+- **Sean Ellis survey** (supporting only): ask users who recently experienced the core (Superhuman asked those who had used it at least twice in the last two weeks); results turn directional around 40 responses (First Round Review). Read only the 40% "very disappointed" line, then profile those respondents by segment (persona, use case, plan, channel) and check they reached the Aha action: where they concentrate is who the product fits. To learn why, ask what main benefit they get and read the answers against the product's core bet; the somewhat-disappointed who name that benefit are the next segment to win: fix what holds them back. Re-run it in waves on the same qualifying rule and compare waves, never mixed rules. Before launch, or without qualified users, it is not PMF evidence.
 
----
+Record the current read in `funnels.md` § Retention (default `biz/analytics/funnels.md`; caller may redirect; ≤150 words plus a table; a menu: omit what doesn't apply): plateau, d and n per pre-specified segment, activated vs all, with its as-of date.
 
-## Common Retention Patterns & Diagnoses
+## Revenue Retention (GRR/NRR)
 
-### Massive D1 Drop (>70% lost on Day 1)
-**Problem**: Onboarding failure. Users don't understand what to do or can't get first value.
-**Fix**: Simplify onboarding, reduce time-to-first-value.
-
-### Steady Decline Through D30 (Never Flattens)
-**Problem**: Product doesn't create a habit. No retention plateau = no PMF.
-**Fix**: Find or strengthen the Aha Moment. Consult `aha-moment-discovery.md`.
-
-### D7 Plateau Then D30 Drop
-**Problem**: Initial novelty wears off. Product solves a one-time problem, not an ongoing need.
-**Fix**: Create recurring value (regular reports, ongoing workflows, fresh content).
-
-### Newer Cohorts Retaining Worse
-**Problem**: Quality of acquisition is declining (bad channels, broad targeting) or recent product changes hurt.
-**Fix**: Segment by acquisition channel. Check if product changes correlate.
-
-### Newer Cohorts Retaining Better
-**Signal**: Product improvements are working. Keep going.
-
----
-
-## Segmented Analysis
-
-**Always segment.** The average hides the insight.
-
-Priority segments:
-1. **By acquisition channel** — Organic users almost always retain better than paid. Quantify the gap.
-2. **By Aha Moment completion** — Compare users who reached vs. didn't reach the Aha Moment. The gap should be dramatic (2-5x).
-3. **By plan/tier** — Free vs. paid retention tells you about activation and value perception.
-4. **By company size/persona** — Different segments may have fundamentally different retention profiles.
-5. **By feature usage** — Which features correlate with retention? This is Aha Moment discovery.
-
----
-
-## Implementation in PostHog
-
-Execute retention analysis via a PostHog capability (MCP tools or the UI), if available:
-
-| Analysis | PostHog Feature | How |
-|----------|----------------|-----|
-| Cohort retention curves | **Retention** insight | Set start event (signup), return event (core action). Period: day/week/month |
-| Lifecycle breakdown | **Lifecycle** view | New/returning/resurrecting/dormant per period. Rising "resurrecting" = win-back working |
-| Stickiness | **Stickiness** insight | Distribution of active days/weeks. Bimodal = healthy (casual + power users) |
-| User journey analysis | **Paths** | Compare paths of retained vs churned users |
-| Behavioral segments | **Cohorts** | Create cohorts by behavior, plan, channel for segmented retention |
-| Revenue retention (GRR/NRR) | **HogQL** | Custom SQL on revenue events. PostHog's built-in Revenue analytics (Stripe-synced MRR, in flux) has no cohort-level GRR/NRR — build those via HogQL |
-| Custom cohort tables | **HogQL** | Full SQL control for any analysis the UI doesn't support |
-
----
-
-## Revenue Retention (GRR/NRR) via HogQL
-
-PostHog's built-in Revenue analytics (Stripe-synced MRR dashboards — still in flux) does not produce cohort-level GRR/NRR. Use HogQL to build revenue retention cohorts from subscription/payment events.
-
-### Gross Revenue Retention (GRR)
-
-GRR measures revenue kept from existing customers, excluding expansion. It answers: "How much of last period's revenue did we lose?"
-
-**Event-schema assumption:** `subscription_renewed` carries the renewal amount in `properties.amount`. `subscription_cancelled` should carry `amount = 0` (or be filtered out). Adjust the WHERE clause to your schema.
+Source: per-account MRR snapshots from billing or its warehouse model, reconciled with finance. If only events exist, use event-derived MRR, labeled "unreconciled".
+- **NRR(T)** = current MRR of the accounts that had MRR at T−12 ÷ their MRR at T−12.
+- **GRR(T)** = the same, with each account capped at its T−12 MRR, so expansion can't hide churn.
+- Annual plans count ÷12 per month while active, never as churned between renewals. Exclude one-time charges. Complete months only.
+- GRR is revenue, not customers: GRR 70% means 30% of starting revenue lost, not 30% of customers.
+- Monthly figures are not annual ones: report trailing-12 and compare annual with annual.
+- AI products: inference cost belongs in gross margin.
+- **Concentration:** report the top expanders' share of expansion and NRR without them, and the largest losses' share of churn and contraction. NRR above 100% that falls below it without a handful of accounts is carried by them: name them, and rest any call on the rest.
 
 ```sql
--- GRR: Monthly revenue retention excluding expansion
--- Uses LEFT JOIN so churned users (no row in curr month) still contribute to
--- beginning_revenue, and contribute 0 to retained_revenue via COALESCE.
-WITH monthly_revenue AS (
-  SELECT
-    person_id,
-    DATE_TRUNC('month', timestamp) AS month,
-    SUM(toFloat64(properties.amount)) AS revenue
-  FROM events
-  WHERE event = 'subscription_renewed'
-    AND timestamp >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-  GROUP BY person_id, month
+-- Trailing-12 NRR and GRR with the influence check (PostgreSQL). mrr_snapshots: one row
+-- per paying account per month start; annual plans / 12; one-time charges excluded.
+WITH params AS (  -- any as-of date: T is its month start
+  SELECT date_trunc('month', date '2026-10-01')::date AS as_of
 ),
-cohort_revenue AS (
-  SELECT
-    prev.month + INTERVAL 1 MONTH AS month,
-    SUM(prev.revenue) AS beginning_revenue,
-    -- LEAST() caps retention at prev.revenue, excluding expansion.
-    -- COALESCE() treats churned users (no curr row) as 0 retained.
-    SUM(COALESCE(LEAST(curr.revenue, prev.revenue), 0)) AS retained_revenue
-  FROM monthly_revenue prev
-  LEFT JOIN monthly_revenue curr
-    ON curr.person_id = prev.person_id
-    AND curr.month = DATE_ADD(prev.month, INTERVAL 1 MONTH)
-  GROUP BY prev.month
-)
-SELECT
-  month,
-  ROUND(retained_revenue * 100.0 / beginning_revenue, 1) AS grr_pct
-FROM cohort_revenue
-ORDER BY month
-```
-
-> **Why LEFT JOIN matters:** with an INNER JOIN, users who churn (no `subscription_renewed` event in the next month) get dropped from BOTH `beginning_revenue` AND `retained_revenue` — making churn invisible and inflating GRR. LEFT JOIN keeps the churned user in the denominator with 0 retention.
-
-### Net Revenue Retention (NRR)
-
-NRR includes expansion (upgrades) and contraction (downgrades). It answers: "Is each cohort paying us more or less over time?"
-
-**Event-schema assumption:** each user's recurring charge lands as **one** amount-bearing event per
-month (`purchase_completed` or `subscription_renewed`). If `subscription_upgraded` /
-`subscription_downgraded` fire *in addition to* a same-month renewal carrying the full new amount,
-drop them from the `IN` list below — the next renewal already reflects the change, and summing both
-double-counts. (Their `revenue_delta` property is for plan-change reporting, not this sum.)
-
-```sql
--- NRR: Monthly revenue retention including expansion/contraction
-WITH monthly_revenue AS (
-  SELECT
-    person_id,
-    DATE_TRUNC('month', timestamp) AS month,
-    SUM(toFloat64(properties.amount)) AS revenue
-  FROM events
-  WHERE event IN ('purchase_completed', 'subscription_renewed',
-                   'subscription_upgraded', 'subscription_downgraded')
-    AND timestamp >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
-  GROUP BY person_id, month
+acct AS (    -- every account paying at T-12; churned ones stay in, at zero
+  SELECT b.account_id, b.mrr AS mrr_then, coalesce(c.mrr, 0) AS mrr_now
+  FROM params p
+  JOIN mrr_snapshots b ON b.month = p.as_of - interval '12 months' AND b.mrr > 0
+  LEFT JOIN mrr_snapshots c ON c.account_id = b.account_id AND c.month = p.as_of
 ),
-nrr AS (
-  -- LEFT JOIN keyed on prev (the base period) so customers who fully churned
-  -- (revenue last month, no events this month) stay in beginning_revenue and
-  -- contribute 0 to ending_revenue via COALESCE. An INNER JOIN would drop them
-  -- from both sides, hiding contraction-to-zero and inflating NRR.
-  SELECT
-    prev.month + INTERVAL 1 MONTH AS month,
-    SUM(prev.revenue) AS beginning_revenue,
-    SUM(COALESCE(curr.revenue, 0)) AS ending_revenue
-  FROM monthly_revenue prev
-  LEFT JOIN monthly_revenue curr
-    ON curr.person_id = prev.person_id
-    AND curr.month = DATE_ADD(prev.month, INTERVAL 1 MONTH)
-  GROUP BY prev.month
+flagged AS ( -- the 5 largest expanders and the 5 largest losses (churn or contraction)
+  SELECT *,
+    mrr_now > mrr_then AND row_number() OVER (ORDER BY mrr_now - mrr_then DESC) <= 5 AS top_gain,
+    mrr_now < mrr_then AND row_number() OVER (ORDER BY mrr_now - mrr_then) <= 5 AS top_loss
+  FROM acct
 )
-SELECT
-  month,
-  ROUND(ending_revenue * 100.0 / beginning_revenue, 1) AS nrr_pct
-FROM nrr
-ORDER BY month
+SELECT count(*) AS base_accounts,
+       round(sum(mrr_now) / sum(mrr_then), 3) AS nrr,
+       round(sum(least(mrr_now, mrr_then)) / sum(mrr_then), 3) AS grr,
+       round(sum(mrr_now) FILTER (WHERE NOT top_gain)
+             / sum(mrr_then) FILTER (WHERE NOT top_gain), 3) AS nrr_without_top5,
+       round(sum(mrr_now - mrr_then) FILTER (WHERE top_gain)
+             / nullif(sum(greatest(mrr_now - mrr_then, 0)), 0), 3) AS top5_share_of_expansion,
+       round(sum(mrr_then - mrr_now) FILTER (WHERE top_loss)
+             / nullif(sum(greatest(mrr_then - mrr_now, 0)), 0), 3) AS top5_share_of_losses
+FROM flagged;
 ```
 
-### Reading GRR vs NRR Together
+Reading, annual (diagnostic cut lines, not targets):
+- NRR above 100% with GRR below 90%: expansion masks churn; fix churn first, in the segment where it happens.
+- GRR 90% or more with NRR below 100%: accounts stay but shrink or never grow; check seat and plan contraction, and whether an expansion path exists.
+- Both low: find the churning segment (plan, contract size, cohort) before blaming price.
 
-| GRR | NRR | Diagnosis |
-|-----|-----|-----------|
-| ≥95% | >110% | Healthy — low churn, good expansion |
-| 90-95% | 100-110% | The median zone — solid retention, modest expansion; pricing/packaging upside |
-| ≥90% | <100% | Keeping customers but shrinking accounts — contraction problem, check packaging/seat counts |
-| <90% | >110% | Masking churn with upsells — fragile, fix retention |
-| <90% | <100% | Revenue shrinking — urgent, fix product or pricing |
+Benchmark against your own trailing four quarters, or one dated survey banded by contract size (SaaS Capital's private-SaaS retention survey bands by ACV because retention rises with contract value).
 
-Adapt these queries to your event schema. The load-bearing events are `purchase_completed` and
-`subscription_renewed`, each carrying the recurring `amount`; plan changes flow through the next
-renewal's amount (or ride `subscription_upgraded`/`downgraded` events — see the NRR schema note
-above); cancellation is the *absence* of the next renewal, which the LEFT JOIN already handles.
+## LTV and Payback
 
----
+- LTV = Σ over months ≤36 of the cohort's gross-margin revenue per acquired customer (expansion and contraction included), observed, with the tail extended at its late decay. Logo retention × ARPA fits only flat-priced plans: it misses expansion and contraction. Never 1 ÷ churn on a flat plateau: it implies an infinite lifetime.
+- No plateau yet: report cumulative gross margin per acquired customer against CAC, month by month, instead of an LTV.
+- Payback = months until cumulative gross margin per customer covers CAC. David Skok's bars (LTV:CAC above 3, payback within 12 months) assume an uncapped LTV: the 36-month cap makes 3× stricter.
+- Compute both per channel, CAC = that channel's spend ÷ the customers it acquired: a blended CAC hides the channel that loses money.
+- **Spend gate**, the leading check on any spend call: max cost per activated unit = cumulative gross margin per activated unit through the payback bar (P months), read off the activated cohort's observed curve, expansion included. Per channel, max cost per signup = the gate × that channel's activation rate. Example: activated accounts earn $420 gross margin over their first 12 months, so with a 12-month bar the gate is $420; a channel activating 25% of signups can pay up to $105 a signup. Use the channel's own activated curve once mature; until then the organic one, which flatters paid cohorts, so payback stays the lagging check at the review date. Activated cohorts observed for fewer than P months: the gate is their cumulative margin through the last observed month, labeled a floor (it rises as they age), with the late-decay extension to P beside it, labeled a projection.
+- **Stop-loss:** size the fixed spend to buy ~30 activated units at the gate price (at 30, cost per activated unit still has a 95% range of about −30% to +50%); past it, a cost above the gate stops the channel until its fix (§ Channel Quality) is in.
 
-## LTV Estimation from Cohorts
+## Funnels
 
-If cohort retention stabilizes, estimate LTV:
+`funnels.md` holds, per funnel, ≤150 words plus a step table (a menu: omit what doesn't apply): the definition (unit, ordered steps, conversion window, order rule — strict or any order), baseline, noise band, owner and last diagnosis. UX top tasks (step completion, drop-off) are funnels too.
+- Report step conversion, cumulative conversion and time to convert (median and p90) per step.
+- Fix the largest absolute loss × downstream value, not the lowest step rate.
+- Locate the leak with ≤5 cuts (source, device, new vs returning first).
+- A sudden step drop is tracking until the data-trust gate clears it.
+- Fixing the page or flow goes to the cro capability, if available.
 
-```
-Estimated Lifetime (months) = 1 / Monthly Churn Rate at Plateau
+## Channel Quality
 
-LTV = ARPU × Gross Margin % × Estimated Lifetime
+Judge channels and campaigns by the cohorts they bring, not by platform-reported conversions: each ad platform credits itself within its own attribution window, so platform totals overlap. Per channel: signups, activation rate, same-age retention, revenue per acquired user, and payback against that channel's CAC. Join ad and creative names through `utm_campaign` and `utm_content` so creative tests read through to cohort quality. Without a holdout or geo test, write "attributed", not "caused".
 
-LTV:CAC Ratio Target: ≥ 3:1
-CAC Payback Period Target: ≤ 12 months
-```
+Weak cohorts from a channel (activation or same-age retention below organic's): before cutting it, check what it optimizes for and seeds from. A platform bidding on signups or installs finds the cheapest of those, who often never activate; lookalikes seeded from all signups copy them. Fix: optimize toward the activation event, or a value-weighted one, once it fires often enough for the platform to learn (check its current minimum); seed from activated or paying users; exclude existing customers. Then judge the channel on cost per activated unit, not cost per signup.
 
-The canonical 3:1 target (David Skok's SaaS metrics) assumes **margin-adjusted** LTV. Skipping the
-gross-margin term overstates LTV by ~25% at typical 80% SaaS margins — and by 2x+ for low-margin
-AI products — passing products that fail the real test.
+## Health Score: Backtest and Scoring
 
-If the plateau hasn't formed yet, use the most recent cohort's decay rate as a conservative estimate. Do not extrapolate from early, unstable cohorts.
+The model — outcome and horizon, signals, red flags, weights, bands and the pass bar — comes from churn-prevention (if available; otherwise state the model you assumed). This skill runs it:
+1. Take the outcome and horizon H from the model (default: churn or major contraction within 90 days).
+2. Pick a scoring date S at least H before the latest complete data. Score the accounts active at S on data dated ≤ S only, and read the outcome over (S, S + H]. Any signal dated after S leaks the outcome and inflates precision and recall. Few churn events: pool several scoring dates.
+3. Compare each band's churn with the base rate in the same plan or contract-size segment. For the at-risk band report precision (share that churned), recall (share of churners caught) and lift (precision ÷ base rate), with n, at the model's capacity cutoff (the accounts the team can work per cycle). Report the same for the simple comparator (the red-flag count, or the best single signal such as the 30-day active-seat trend): a composite that doesn't beat it adds nothing.
+4. A band drives action only after the backtest clears the model's pass bar.
+5. Score live on the same code and windows; recalibrate when lift decays and after pricing or packaging changes.
+
+`health-score.md` (default `biz/analytics/health-score.md`; caller may redirect; ≤300 words plus tables; a menu: omit what doesn't apply) records the model version and source, thresholds, the backtest (date, n, base rate, churn by band, precision, recall, lift) and the next refresh date.

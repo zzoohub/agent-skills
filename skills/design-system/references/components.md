@@ -1,163 +1,161 @@
-# Component Patterns
+# Components
 
-## Table of Contents
+SKILL.md's API table in React, Tailwind and `class-variance-authority`; the shapes carry to any framework. Utilities come from `platform-web.md`'s bridge; a shadcn project keeps its generated components and vocabulary (`shadcn.md`); React Native: `react-native/platform.md`.
 
-1. [Pattern 1: Flat API (Simple Components)](#pattern-1-flat-api-simple-components)
-2. [Pattern 2: Explicit Variant Components](#pattern-2-explicit-variant-components)
-3. [Pattern 3: Compound API (Flexible Layout)](#pattern-3-compound-api-flexible-layout)
-4. [Pattern 4: Headless (Reusable Behavior)](#pattern-4-headless-reusable-behavior)
-5. [When to Upgrade](#when-to-upgrade)
-6. [States Checklist](#states-checklist)
+**No headless library yet?** Adopt one before the first widget that needs it: React Aria when RTL, many locales, date widgets or screen-reader parity are core; else Base UI (shadcn's default) or Radix. Keep one polymorphism mechanism per system, the library's (`render` or `asChild`, below). Break: canvas and other non-DOM 2D renderers have no library, so ship the APG keyboard map as tests.
 
-## Pattern 1: Flat API (Simple Components)
+## One Look Union, Separate Contracts
 
-Best for components with few visual variations and no behavioral differences between variants. Use constrained props for appearance (size, colorScheme), but never boolean props for modes.
+Every color pair below is in `tokens.md`'s table.
 
-```typescript
-// Button — flat with constrained visual props.
-interface ButtonProps {
-  size?: 'sm' | 'md' | 'lg';
-  colorScheme?: 'primary' | 'secondary' | 'danger';
-  disabled?: boolean;
-  children: unknown; // framework-specific child type
+```tsx
+'use client';
+import { useState } from 'react';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '@/shared/ui/lib/cn';
+
+export const buttonVariants = cva(
+  'inline-flex items-center justify-center gap-2 rounded-md font-medium transition-colors ' +
+    'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus ' +
+    'disabled:pointer-events-none disabled:opacity-(--ds-opacity-disabled)',
+  {
+    variants: {
+      variant: {
+        primary: 'bg-accent text-on-accent hover:bg-accent-hover',
+        secondary: 'border border-line bg-raised text-fg hover:bg-subtle',
+        ghost: 'text-fg hover:bg-subtle',
+        danger: 'bg-danger text-on-danger hover:bg-danger-hover',
+      },
+      size: { sm: 'h-8 px-3 text-body-sm', md: 'h-10 px-4 text-body-md' },
+    },
+    defaultVariants: { variant: 'primary', size: 'md' },
+  },
+);
+
+type ButtonProps = React.ComponentProps<'button'> & VariantProps<typeof buttonVariants>;
+
+// type="button" by default: a bare <button> submits its enclosing form. Changing an existing
+// Button's default is a call-site delta (SKILL.md § Guards and Change Management).
+export function Button({ variant, size, className, type = 'button', ...props }: ButtonProps) {
+  return <button type={type} className={cn(buttonVariants({ variant, size }), className)} {...props} />;
+}
+
+// A different contract: an accessible name is required and text children are not accepted.
+export function IconButton({ label, icon, ...props }: Omit<ButtonProps, 'children' | 'aria-label'> & { label: string; icon: React.ReactNode }) {
+  return (
+    <Button aria-label={label} {...props}>
+      <span aria-hidden="true">{icon}</span>
+    </Button>
+  );
+}
+
+// A different contract: it owns the pressed state and renders aria-pressed after the spread, so a
+// call site cannot override it; the on look follows that attribute and adds a border, a cue beyond color at ≥3:1.
+type ToggleButtonProps = Omit<ButtonProps, 'variant' | 'onClick' | 'aria-pressed'> & {
+  pressed?: boolean;
+  defaultPressed?: boolean;
+  onPressedChange?: (pressed: boolean) => void;
+};
+
+export function ToggleButton({ pressed, defaultPressed = false, onPressedChange, className, ...props }: ToggleButtonProps) {
+  const [uncontrolled, setUncontrolled] = useState(defaultPressed);
+  const isPressed = pressed ?? uncontrolled;
+  const toggle = () => {
+    if (pressed === undefined) setUncontrolled(!isPressed);
+    onPressedChange?.(!isPressed);
+  };
+  return (
+    <Button variant="ghost" {...props} aria-pressed={isPressed} onClick={toggle}
+      className={cn('border border-transparent aria-pressed:border-input aria-pressed:bg-subtle', className)} />
+  );
 }
 ```
 
-```
-// Pseudo-code usage (any framework)
-Button(size="lg", colorScheme="primary") → "Save"
-```
+- **Split axes only when the grid is designed.** Two axes (`tone` × `emphasis`) earn their place when most cells are designed and call sites choose each independently. Then every cell gets a `compoundVariants` entry with gated pairs, or the type admits only the designed cells (`{ tone: 'danger'; emphasis: 'solid' } | …`): a value added without its entries renders unstyled. Otherwise each designed look is one `variant` value.
+- **Names:** keep the repo's prop and value names. A new component calls its look union `variant` and names values by designed look (`primary`, `ghost`); never `colorScheme`, which collides with CSS `color-scheme` and React Native's `useColorScheme`.
+- **Wrap the library's toggle when there is one** (Base UI and Radix `Toggle`, React Aria `ToggleButton`) and style its state attribute. One choice among several is its toggle group or a radio group, never independent toggles kept in sync by the caller.
+- **A link that looks like a button stays a link:** `<a href="/pricing" className={buttonVariants({ variant: 'ghost' })}>`, or the router's Link; never a navigating `<button>`, nor a button primitive rendered as `<a>` (Base UI forbids it).
+- **`render` and `asChild` merge library behavior onto your element:** `<Dialog.Trigger render={<Button />}>` (Base UI), `<Dialog.Trigger asChild><Button /></Dialog.Trigger>` (Radix). React Aria's `render` is a function of DOM props that must return the same element type: `render={(domProps) => <motion.button {...domProps} />}`. Your component must spread props and pass `ref` through, as `React.ComponentProps<'button'>` does in React 19.
+- **Logical properties, content sizing:** primitives use `ps-`, `ms-`, `inset-s-` (`start-` before Tailwind 4.2) and size to content, because translation flips direction and grows short labels 2–3× (i18n's length bands, if available).
 
-Good candidates for flat: Button, Badge, Avatar, Input, Chip, Tag, Switch, Spinner.
+## Compound Parts
 
-## Pattern 2: Explicit Variant Components
+The root supports the controlled trio, memoizes its context value and exports parts by name: a static `Card.Header` throws when a Server Component dots into it; `import * as Card` works. Per-item identity (`value`, `id`) is a part's prop and shared state comes from context; content is `children`, and a render function only passes computed data down.
 
-When a prop changes **behavior** — not just appearance — split into a separate component. Don't add a boolean or mode prop to an existing component.
+```tsx
+'use client';
+import { createContext, use, useId, useMemo, useState } from 'react';
 
-```
-// ❌ Boolean mode prop — changes behavior inside one component
-Button(icon=Trash, iconOnly=true)
-Button(href="/about")
-Button(type="submit", loading=true)
+type CardContextValue = {
+  state: { expanded: boolean };
+  actions: { setExpanded: (expanded: boolean) => void };
+  meta: { contentId: string };
+};
+const CardContext = createContext<CardContextValue | null>(null);
 
-// ✅ Explicit variant components — each owns its behavior
-IconButton(icon=Trash, label="Delete")
-LinkButton(href="/about") → "About"
-SubmitButton(loading=true) → "Save"
-```
+function useCard() {
+  const ctx = use(CardContext);
+  if (!ctx) throw new Error('Card parts must render inside <Card>');
+  return ctx;
+}
 
-Why separate components: Each variant has different ARIA needs, event handling, and rendered elements. `LinkButton` renders `<a>`, `SubmitButton` renders `<button type="submit">`, `IconButton` needs `aria-label`. Cramming these into one component with booleans creates untestable branching logic.
+export function Card({ expanded, defaultExpanded = false, onExpandedChange, children }: {
+  expanded?: boolean;
+  defaultExpanded?: boolean;
+  onExpandedChange?: (expanded: boolean) => void;
+  children: React.ReactNode;
+}) {
+  const [uncontrolled, setUncontrolled] = useState(defaultExpanded);
+  const isExpanded = expanded ?? uncontrolled;
+  const contentId = useId();
+  const value = useMemo<CardContextValue>(() => ({
+    state: { expanded: isExpanded },
+    actions: {
+      setExpanded: (next) => {
+        if (expanded === undefined) setUncontrolled(next);
+        onExpandedChange?.(next);
+      },
+    },
+    meta: { contentId },
+  }), [isExpanded, expanded, onExpandedChange, contentId]);
+  return (
+    <CardContext value={value}>
+      <div className="rounded-lg bg-raised shadow-card">{children}</div>
+    </CardContext>
+  );
+}
 
-### Implementation: Share a base, diverge on behavior
+// A real <button>: keyboard-reachable, and it announces its state.
+export function CardHeader({ children }: { children: React.ReactNode }) {
+  const { state, actions, meta } = useCard();
+  return (
+    <button type="button" aria-expanded={state.expanded} aria-controls={meta.contentId}
+      onClick={() => actions.setExpanded(!state.expanded)}>
+      {children}
+    </button>
+  );
+}
 
-Create a shared base component that resolves tokens (size, colorScheme → styles), then each variant wraps it with the appropriate element and behavior.
-
-When to split: A prop changes the rendered element, ARIA role, event handling, or required children. If the difference is purely visual (color, size), keep it as a prop on the same component.
-
-## Pattern 3: Compound API (Flexible Layout)
-
-Best when internal structure varies between uses. Sub-components share state via a **structured context interface** with `{ state, actions, meta }`.
-
-```typescript
-// Structured context — state, actions, and meta are always separate.
-// The provider is the ONLY place that knows how state is managed.
-interface CardContextValue {
-  state: {
-    variant: 'elevated' | 'outlined';
-    expanded: boolean;
-  };
-  actions: {
-    toggleExpand: () => void;
-  };
-  meta: {
-    id: string;
-  };
+export function CardContent({ children }: { children: React.ReactNode }) {
+  const { state, meta } = useCard();
+  return <div id={meta.contentId} hidden={!state.expanded}>{children}</div>;
 }
 ```
 
-The root component creates and provides this context. Sub-components (Header, Content, Footer) consume it through the framework's context mechanism.
-
-### Why structured context `{ state, actions, meta }`
-
-The provider is the **only** place that knows how state is managed. Sub-components and consumers interact through the context interface — they never know if state comes from a hook, store, or URL param. This makes the state implementation swappable without changing any consumers.
-
-- `state` — read-only current values
-- `actions` — functions to mutate state (the "how" is hidden); keep the set small and generic (`update`, `submit`, optional `cancel`) rather than per-feature actions
-- `meta` — derived/stable values like IDs, computed labels, refs (React 19: typed `RefObject<T | null>`)
-
-### Children over render props
-
-Always compose via children. Avoid render-function props. Render props are only acceptable when the parent must pass **computed data** to the child (e.g., a virtualizer passing item + index).
-
-Good candidates for compound: Card, Dialog, Dropdown, Accordion, Tabs, Form, NavigationMenu.
-
-## Pattern 4: Headless (Reusable Behavior)
-
-Separates behavior from appearance entirely. The behavior module handles a11y, keyboard, and state. The styled component applies tokens.
-
-```typescript
-// headless/toggle.ts — framework-agnostic behavior
-interface ToggleOptions {
-  defaultValue?: boolean;
-  value?: boolean;           // controlled mode
-  onChange?: (value: boolean) => void;
-  disabled?: boolean;
-}
-
-interface ToggleResult {
-  toggleProps: {
-    role: 'switch';
-    'aria-checked': boolean;
-    'aria-disabled': boolean | undefined;
-    onClick: () => void;
-    onKeyDown: (e: KeyboardEvent) => void;   // framework-specific event type
-    tabIndex: number;
-  };
-  state: { isOn: boolean; isDisabled: boolean };
-  toggle: () => void;
-}
-
-// Implement as a function, class, or framework-specific hook
-// The interface is the same regardless of framework
-```
-
-Every headless module must support:
-- **Controlled + uncontrolled**: `value` (controlled) and `defaultValue` (uncontrolled)
-- **ARIA attributes**: role, aria-checked/aria-expanded/etc
-- **Keyboard**: Enter/Space for actions, Escape for dismiss, Tab for navigation
-- **Disabled state**: No interaction, removed from tab order
-
-Good candidates for headless: Toggle, Dialog, Dropdown, Accordion, Tooltip, Combobox — anything with complex keyboard/focus patterns.
-
-> For React-specific implementations (JSX, hooks, Context API): `references/react/components.md` (also linked directly from SKILL.md)
-
-## When to Upgrade
-
-A flat component should split into **explicit variant components** when:
-- A prop changes the rendered element (`<a>` vs `<button>`)
-- A prop changes ARIA roles or required attributes
-- A prop changes event handling or interaction model
-- You're adding boolean modes like `iconOnly`, `asLink`, `isSubmit`
-
-A flat component should become **compound** when:
-- It has 5+ configuration props for layout control
-- Consumers need different internal arrangements
-- You're adding `showHeader`, `headerTitle`, `showFooter` type props
-
-A standalone component should get a **headless module** when:
-- The same behavior appears in multiple visual forms
-- Keyboard/focus logic is complex enough to be buggy if duplicated
-- You need the behavior without any specific UI (e.g., form validation state)
+`hidden` keeps the `aria-controls` target in the DOM.
 
 ## States Checklist
 
-Every interactive component covers these states:
-
 | State | Visual | Behavior |
-|-------|--------|----------|
-| Default | Base appearance | Responds to interaction |
-| Hover | Subtle highlight | Cursor pointer |
-| Focus | Visible outline (2px+) | Keyboard reachable |
-| Active/Pressed | Depressed appearance | Action fires |
-| Disabled | Reduced opacity (0.5) | No interaction, no tab |
-| Loading | Spinner or skeleton | No interaction during |
+|---|---|---|
+| Hover | hover token (never an opacity change) | pointer only; never the only affordance |
+| Focus-visible | 2px outline in `border.focus` | in the tab order; inside a composite widget (menu, tabs, listbox), one tab stop and arrow keys (APG) |
+| Active (pointer down) | the hover token, or an admitted `…Pressed` token with its pairs | fires on release |
+| Pressed or selected (toggles, options, current page) | a cue beyond color (border, check, weight) at ≥3:1 against its surroundings | the owning component's `aria-pressed`, `aria-selected`, `aria-checked` or `aria-current`, never added at call sites |
+| Disabled | `opacity.disabled` | native `disabled`, or focusable `aria-disabled` (SKILL.md) |
+| Invalid | `fg.dangerStrong` message with an icon | `aria-invalid`; message tied by `aria-describedby` |
+| Loading | label kept, spinner overlaid, width unchanged | `aria-busy`; repeat presses ignored |
+
+## React Versions
+
+The examples use React 19 (`ref` as a prop, `<Context value>`, `use(Context)`); on React 18, use `forwardRef`, `<Context.Provider>` and `useContext`. Without the React Compiler, memoize context values. Form and action wiring (`useActionState`, `useOptimistic`) belongs to the react-best-practices capability, if available; form parts here stay presentational.

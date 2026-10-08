@@ -1,167 +1,56 @@
-# Sequence Templates
+# Email Programs
 
-Detailed templates for common email sequence types, including behavioral branching.
+Pick the program by who enters it and which event ends it. The number of emails follows from the milestones people stall on, never from a template's day count. Every program uses the Default Output Format in `references/email/guide.md`, the single definition of the spec.
 
----
+| Program | Who enters | Goal event (exit) | Shape |
+|---|---|---|---|
+| Welcome | A newsletter or list signup with no product account | First click on what was promised | One email now: deliver it and say what comes next and how often; add more only if each has its own job |
+| Onboarding | A new product account | Activation | One email per milestone people stall on (below) |
+| Trial | A trial account | Paid conversion | Onboarding until activated; three days before the end, a plan if activated, help or an extension if not. Card on file: that email states the amount, the charge date and how to cancel, timed to churn-prevention's notice window, if available |
+| Lapsed trial | A trial that ended unpaid: never a customer | Paid conversion or return | One account-status notice to all; then 1-2 marketing emails keyed to how far they got, only to groups whose consent covers them (below) |
+| Checkout recovery | Started a checkout or cart, didn't pay | Purchase | 1-2 emails while intent is fresh: a deep link back to the exact cart and the top hesitation answered; an incentive only where the cro capability's recovery rule allows, if available (default: none), never escalating; judged against a no-message holdout. Marketing class: consent, unsubscribe and suppression apply, as for win-back |
+| Nurture | A lead without an account (demo request, download) | A sales-qualified action (demo booked, pricing visit) | One email per open question or objection heard in sales calls, tickets or lost deals |
+| Re-engagement | A subscribed user gone quiet in the product | Return to the product | Diagnose first (below); 1-2 emails, then the sunset rule |
+| Win-back | A cancelled customer | Reactivation | Keyed to the cancel reason (below) |
+| Newsletter | Subscribers | Clicks that lead to the goal event | A cadence you can keep; sunset per `references/email/deliverability.md` |
 
-## Table of Contents
+## Onboarding and trial
 
-1. [Behavioral Branching](#behavioral-branching)
-2. [Welcome Sequence (Post-Signup)](#welcome-sequence-post-signup)
-3. [Lead Nurture Sequence (Pre-Sale)](#lead-nurture-sequence-pre-sale)
-4. [Onboarding Sequence (Product Users)](#onboarding-sequence-product-users)
-5. [Re-Engagement Sequence](#re-engagement-sequence)
-6. [Win-Back Sequence (Post-Cancel)](#win-back-sequence-post-cancel)
-7. [Output Format](#output-format)
+Send one email for each milestone a user can stall on, fired when that milestone is missed past its typical completion time (your median; default 24 hours for setup, 72 for first value). Its content is the most common blocker at that step and the shortest way past it. Everything exits on the goal event. Add a story or proof email only to answer a named objection from sales calls, tickets or cancel reasons. Break: with no event data, send by day, with a skip condition on every email.
 
+Example, a 14-day B2B trial. E1, now: the first step. E2, no data source connected by 24h: the top blocker plus one-click import. E3, connected but no first report by 72h: the report template most customers start from. E4, on the first report: invite a teammate. E5, three days before the end: choose a plan if activated, help or an extension if not. Everyone exits on payment.
 
-## Behavioral Branching
+## Branching
 
-Linear sequences treat every subscriber the same. Real sequences branch based on what users do (or don't do). This matters because a user who activated on day 1 doesn't need the same email as someone who hasn't logged in.
+Branch only where the next need depends on what the user did, and key every branch on a product event or a click, never an open. Each branch's copy states only what is true for the people in it.
 
-### Branch Points
+| After | If the recipient… | Next |
+|---|---|---|
+| A setup or milestone email | finished the step | Skip ahead to the next milestone, or exit on the goal |
+| | clicked but didn't finish | The blocker at that step: a fix, a template, or a person offering to help |
+| | did nothing for ~48h | A new angle or channel (in-app, a person); never the same email under a new subject |
+| A value or proof email | reached the goal event | Exit; expansion or a plan only where they qualify |
+| A pricing or offer email | visited pricing, didn't buy | The top objection for that plan; a person for high-value accounts |
+| | bought | Exit; receipt and the first step only |
+| Any email | unsubscribed, complained, or entered billing or a sales-owned flow | Exit |
 
-Add a branch after any email where the user's action changes what they need next:
+Exit early on the goal, on an unsubscribe, or when the person enters a higher-priority program (billing, a sales-owned account).
 
-```
-Email 2: Quick Win
-  ├── [Completed action] → Email 3a: "Nice work! Here's what's next"
-  └── [No action after 48h] → Email 3b: "Need help getting started?"
-```
+## Re-engagement
 
-### Common Branch Triggers
+Find out why they went quiet before writing. Never activated → send onboarding's blocker email instead. A periodic job → remind them at the next natural moment, such as month-end close. Switched tools → treat it like win-back. Lead with what changed or what they left unfinished. Offer an incentive only when the reason is price: routine discounts teach people to wait for the next one. No return after 1-2 emails → apply the sunset rule in `references/email/deliverability.md`.
 
-| Trigger | Branch to |
-|---------|-----------|
-| Completed setup | Skip setup reminders, advance to feature discovery |
-| Opened but didn't click | Resend with different subject/angle (opens are directional only — MPP) |
-| Clicked but didn't convert | Follow up on specific interest |
-| No click or product activity after 48h | Try different subject line, check deliverability (don't branch on missing opens — MPP makes them unreliable) |
-| Hit Aha Moment | Skip education, move to conversion |
-| Upgraded to paid | Exit sequence or move to expansion |
+## Lapsed trial
 
-### When to Branch vs. Stay Linear
+Never-customers, so not win-back: no "we miss you", no returning-customer offer. One account-status notice may go to everyone: the trial ended, what is kept and until when, no pitch. Everything else is marketing and goes only to groups whose consent covers it (`references/email/guide.md`, Frame 4), keyed to how far they got. Never activated → the step they stalled on and the shortest way past it, or a fresh trial if the owner allows one. Activated → what they built and whether it is still there ("Your 3 reports are saved until 30 June" only where retention is real and they have reports). Price was the blocker → a plan that fits, inside pricing's terms; any discount is the owner's call (`references/email/guide.md`, Frame 8).
 
-- **Branch** when the user's next need depends on their action (onboarding, trial conversion)
-- **Stay linear** when the content is time-based and universal (newsletter, content nurture)
-- **Exit early** when the goal is achieved (user activated, converted, or explicitly disengaged)
+## Win-back
 
----
+Win-back starts after churn-prevention's cancellation confirmation (`churn-prevention/references/cancel-flow-patterns.md`), never asks the cancel reason again, and branches on the reason already captured:
 
-## Welcome Sequence (Post-Signup)
+- Missing feature or a bug → "what you left over is fixed", sent when the fix ships and only then.
+- Price → an offer inside pricing's terms, with no invented deadline.
+- Switched to a competitor, or no longer needed → one email when a major release changes the comparison, then stop.
+- No reason data → at most 2 emails by day 90, then suppress.
 
-**Length**: 5-7 emails over 12-14 days (enterprise/long-cycle: extend to 8-12 by adding proof stages — case study, ROI/security review, stakeholder-share — on the same skeleton)
-**Goal**: Activate, build trust, convert
-
-| # | Email | Timing | Purpose | Branch |
-|---|-------|--------|---------|--------|
-| 1 | Welcome + deliver value | Immediate | Set expectations, deliver promised content | — |
-| 2 | Quick win | Day 1-2 | Drive to first successful action | If completed → skip to #4 |
-| 3 | Story/Why | Day 3-4 | Build connection, share origin story | — |
-| 4 | Social proof | Day 5-6 | Build trust with testimonials/results | — |
-| 5 | Overcome objection | Day 7-8 | Address top objection proactively | — |
-| 6 | Core feature highlight | Day 9-11 | Expand awareness of value | — |
-| 7 | Conversion | Day 12-14 | Clear CTA to upgrade/buy | — |
-
-**Branch detail for Email 2:**
-```
-Email 2: Quick Win
-  ├── [User completed first action]
-  │   → Skip Email 3, send Email 4 (social proof) on Day 3
-  │   → They already trust you enough to act; reinforce with proof
-  └── [No action after 48h]
-      → Send "Need help?" variant of Email 3 instead of story
-      → They're stuck, not uninterested — remove friction
-```
-
----
-
-## Lead Nurture Sequence (Pre-Sale)
-
-**Length**: 6-8 emails over 2-3 weeks
-**Goal**: Build trust, demonstrate expertise, convert
-
-| # | Email | Timing | Purpose |
-|---|-------|--------|---------|
-| 1 | Deliver lead magnet + intro | Immediate | Fulfill promise, introduce yourself |
-| 2 | Expand on topic | Day 2-3 | Deep-dive on related concept |
-| 3 | Problem deep-dive | Day 4-5 | Articulate their pain clearly |
-| 4 | Solution framework | Day 6-8 | Show how to solve (product-agnostic) |
-| 5 | Case study | Day 9-11 | Proof it works |
-| 6 | Differentiation | Day 12-14 | Why your approach is different |
-| 7 | Objection handler | Day 15-18 | Address top concerns |
-| 8 | Direct offer | Day 19-21 | Clear CTA with urgency |
-
-**Branch:** If the lead clicks the offer link in any email before #8, exit the nurture sequence and enter a shorter conversion sequence focused on their specific interest.
-
----
-
-## Onboarding Sequence (Product Users)
-
-**Length**: 5-7 emails over 14 days
-**Goal**: Activate, drive to Aha Moment, upgrade
-**Note**: Coordinate with in-app onboarding — email supports, doesn't duplicate
-
-| # | Email | Timing | Purpose | Branch |
-|---|-------|--------|---------|--------|
-| 1 | Welcome + first step | Immediate | Guide to first action | — |
-| 2 | Getting started help | Day 1 | Overcome setup friction | If setup complete → skip to #3 |
-| 3 | Feature highlight | Day 2-3 | Expand usage | — |
-| 4 | Success story | Day 4-5 | Show what's possible | — |
-| 5 | Check-in | Day 7 | Personal touch, offer help | If inactive → re-engagement branch |
-| 6 | Advanced tip | Day 10-12 | Deepen engagement | — |
-| 7 | Upgrade/expand | Day 14+ | Convert to paid/higher tier | — |
-
-**Branch detail for Email 5:**
-```
-Email 5: Check-in (Day 7)
-  ├── [Active user — used product 3+ times this week]
-  │   → Send Email 6: Advanced tip (they're ready)
-  ├── [Low activity — logged in but hasn't hit Aha Moment]
-  │   → Send targeted email about the specific feature closest to their Aha Moment
-  └── [Inactive — no login in 5+ days]
-      → Enter re-engagement mini-sequence (3 emails)
-      → "We noticed you haven't had a chance to try X yet..."
-```
-
----
-
-## Re-Engagement Sequence
-
-**Length**: 3-4 emails over 2 weeks
-**Trigger**: 30-60 days of **product** inactivity (no logins/usage); list-fatigue variant triggers at ~60 days of no email clicks or replies (not opens — see `references/email/deliverability.md` — List Hygiene)
-**Goal**: Win back or clean list
-**Audience**: still-subscribed but disengaged users — *not* cancelled customers (those go to the Win-Back Sequence below)
-
-| # | Email | Timing | Purpose |
-|---|-------|--------|---------|
-| 1 | Check-in | Day 0 | Genuine concern, "still interested?" |
-| 2 | Value reminder | Day 3-4 | What's new, what they're missing |
-| 3 | Incentive | Day 7-8 | Special offer to re-engage |
-| 4 | Last chance | Day 14 | Stay or unsubscribe (clean list) |
-
-**Exit rule:** If the user re-engages at any point (clicks or replies), exit this sequence and route them back to the appropriate active sequence based on their lifecycle stage.
-
----
-
-## Win-Back Sequence (Post-Cancel)
-
-**Length**: 4 emails over ~90 days
-**Trigger**: Subscription cancelled / churned customer (distinct from the inactivity-triggered Re-Engagement Sequence above — different consent and lifecycle context)
-**Goal**: Reactivate
-
-| # | Email | Timing | Purpose | Branch |
-|---|-------|--------|---------|--------|
-| 1 | Cancellation acknowledgment | Immediate | Confirm, leave the door open, capture reason | — |
-| 2 | "We miss you" | Day 30 | Re-establish the relationship, remind of value | — |
-| 3 | What's new | Day 60 | Show improvements / what they've missed | — |
-| 4 | Special offer | Day 90 | Final re-engagement incentive | — |
-
-**Exit rule:** Reactivated → exit and route to onboarding/expansion. No response by Day 90 → suppress/sunset.
-**Boundary:** Dunning / payment-failure recovery is owned by the **churn-prevention** skill (`references/dunning-playbook.md`), not here.
-
----
-
-## Output Format
-
-Use the **Default Output Format** in `references/email/guide.md` for all sequence deliverables — it is the single source of truth (Sequence Overview + Per-Email blocks). Don't redefine the structure here.
+Win-back is marketing mail: consent, unsubscribe and suppression rules apply. Failed-payment recovery is dunning, not win-back (`churn-prevention/references/dunning-playbook.md`).

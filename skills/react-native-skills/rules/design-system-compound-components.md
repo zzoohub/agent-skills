@@ -1,66 +1,7 @@
----
-title: Use Compound Components Over Polymorphic Children
-impact: MEDIUM
-impactDescription: flexible composition, clearer API
-tags: design-system, components, composition
----
+# Text-bearing components
 
-## Use Compound Components Over Polymorphic Children
+React Native's constraint on components that mix a container with text (buttons, chips, rows). Component APIs and a complete `Button` come from the design-system capability, if available.
 
-Don't create components that can accept a string if they aren't a text node. If
-a component can receive a string child, it must be a dedicated `*Text`
-component. For components like buttons, which can have both a View (or
-Pressable) together with text, use compound components, such a `Button`,
-`ButtonText`, and `ButtonIcon`.
-
-**Incorrect (polymorphic children):**
-
-```tsx
-import { Pressable, Text } from 'react-native'
-
-type ButtonProps = {
-  children: string | React.ReactNode
-  icon?: React.ReactNode
-}
-
-function Button({ children, icon }: ButtonProps) {
-  return (
-    <Pressable>
-      {icon}
-      {typeof children === 'string' ? <Text>{children}</Text> : children}
-    </Pressable>
-  )
-}
-
-// Usage is ambiguous
-<Button icon={<Icon />}>Save</Button>
-<Button><CustomText>Save</CustomText></Button>
-```
-
-**Correct (compound components):**
-
-```tsx
-import { Pressable, Text } from 'react-native'
-
-function Button({ children }: { children: React.ReactNode }) {
-  return <Pressable>{children}</Pressable>
-}
-
-function ButtonText({ children }: { children: React.ReactNode }) {
-  return <Text>{children}</Text>
-}
-
-function ButtonIcon({ children }: { children: React.ReactNode }) {
-  return <>{children}</>
-}
-
-// Usage is explicit and composable
-<Button>
-  <ButtonIcon><SaveIcon /></ButtonIcon>
-  <ButtonText>Save</ButtonText>
-</Button>
-
-<Button>
-  <ButtonText>Cancel</ButtonText>
-</Button>
-```
+**Default.** Only a text component (a `*Text` part that renders `<Text>`) accepts string children. A container holding text and other content takes parts, not polymorphic children: `<Button onPress={save}><ButtonIcon><SaveIcon /></ButtonIcon><ButtonText>Save</ButtonText></Button>`.
+**Why.** React Native renders strings only inside `<Text>`. A `typeof children === 'string'` switch hides that from callers and breaks on mixed children such as `{count} items`.
+**Break:** a single-purpose component may take a `label: string` prop and render the `<Text>` itself.

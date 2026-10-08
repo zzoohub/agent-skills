@@ -1,142 +1,147 @@
-# Marketing Psychology & Mental Models
+# Persuasion Psychology
 
-~70 mental models organized for marketing application (the reference's `###` headers count slightly higher because Social Proof and Mental Accounting (Pricing) are explicit aliases and the AIDA/PAS/BAB/4Ps/SSS group are copywriting frameworks, not standalone models). Use these to understand why people buy, influence behavior ethically, and make better marketing decisions.
+Read this to choose a lever for one decision moment, audit a funnel's levers or judge a tactic. It is the one home for the triggers (the lever cards: mechanism, evidence grade, truth condition, phrasing); the five structures live in `references/persuasion-frameworks.md`.
 
-**Scope:** this reference picks which principle to apply and explains the behavioral why. Writing the copy goes to the copywriting core (`SKILL.md`); page-level CRO and flow design/testing to the cro skill; pricing tier design and what to charge to the pricing skill; loop/referral mechanics and K-factor modeling to the growth-loops skill; churn intervention, cancel flows, save offers and health scoring to the churn-prevention skill; retention cohorts and analytics to the product-analytics skill.
+Requests arrive as tactics ("add urgency"); the real question is why this reader isn't acting now. Persuasion amplifies a clear, true offer. It can't rescue an unclear one, and before the reader reaches value it only speeds up the no. Assume a situational barrier (unclear, hard, risky, forgotten) before a dispositional one ("they're not serious").
 
-**Product context**: read the product brief (default `docs/prd/product-brief.md`) and the marketing strategy doc (`biz/marketing/strategy.md`) first if they exist, to tailor recommendations to the specific product and audience. Treat them as read-only context — never author the product brief from here; if absent, ask the caller or proceed on stated assumptions.
+**Read first**, read-only (defaults; caller may redirect): `docs/prd/product-brief.md`, `biz/marketing/strategy.md` (positioning, Brand Voice), `biz/marketing/pricing.md`, `biz/analytics/funnels.md` (step drop-off) and the current copy. If one is missing, ask the caller, or state the assumption and continue.
 
----
+## Frame the request
 
-## How to Apply
+Ask at most three questions, in one batch, only where the answer changes the lever; default the rest under Assumptions.
 
-1. **Diagnose the barrier** — What behavior are you trying to influence, and what's preventing it?
-2. **Match models** — Which mental models explain the barrier? Use the Quick Reference table below.
-3. **Select 2-3 models** — Don't overload; pick the most applicable.
-4. **Design within guardrails** — Apply the models within the Ethical Guardrails below.
-5. **Implement** — Use the copywriting core (`SKILL.md`, `references/persuasion-frameworks.md`) for messaging, the cro skill for flow changes.
-6. **Measure** — Validate with cro experiments; track impact via product-analytics.
+| Question | Default when unanswered |
+|---|---|
+| Which action, at which moment, by whom? | The primary CTA; a first-time visitor |
+| What evidence explains the gap (drop-off, tickets, objections, reviews, cancel reasons)? | None: variants that separate the top two barrier hypotheses |
+| What is provably true (sourced numbers, named customers, guarantees, deadlines)? | Nothing: no numbers, counts, deadlines, scarcity or "was" prices |
+| How expert and skeptical is the reader? | A B2B buyer |
+| Which markets? Regulated category or vulnerable reader? | EU, UK, US and Korean rules together; not vulnerable unless the product suggests it |
+| Metric and guardrails? | Completion per exposed visitor; the gate's guardrails |
 
----
+**Classify; the method changes:**
+- **Judge a tactic** ("is this a dark pattern?", "can we say X?"): the gate and the anti-catalog only.
+- **One moment** ("add urgency to the trial-ending email"): barrier, lever, gate, test.
+- **Funnel audit**: a barrier per step from drop-off data; structure before words.
+- **A lever didn't work**: start at the diagnosis table.
+- **Vulnerable or regulated readers** (credit, insurance, investment, health, gambling, minors, people in distress): the gate's last rule applies.
 
-## Ethical Guardrails
+**Done**: the Self-Review at the end passes.
 
-These models are for influence, not manipulation. The line:
+## Barrier to lever
 
-- **Never fabricate scarcity** — Fake countdown timers, invented "only 3 left" claims, or artificial urgency erode trust and may violate consumer protection laws.
-- **Never exploit vulnerability** — Don't target people in distress, financial hardship, or emotional states to push decisions they'd regret.
-- **Disclose honestly** — If something is sponsored, paid, or an ad, say so. If a "sale" price is the permanent price, it's not a sale.
-- **Preserve autonomy** — Dark patterns (hiding unsubscribe, pre-checked boxes for charges, confusing opt-out flows) are manipulation, not persuasion.
-- **The regret test** — If a customer understood exactly what you did and why, would they feel respected or deceived?
+One lever per evidenced barrier, at most two per decision moment. Change structure (defaults, steps, timing, what is shown) before wording, except where you control only the words (an email, an ad). The more expert and skeptical the reader, the more persuasion must look like evidence: specifics with denominators, a stated limitation, no timers, badges or "Act now". Break: low-stakes consumer choices, where ratings and a recommended default help.
 
-**Specific dark patterns to avoid (with regulatory hooks):** see `references/psychology/mental-models-reference.md` § Dark Pattern Anti-Catalog for the 10 most-enforced patterns (pre-ticked opt-in, roach motel, confirmshaming, fake countdown, hidden subscription, friend spam, disguised ads, forced continuity, sneak into basket, misdirection) — each with its regulatory hooks (GDPR consent rules, EU UCPD and Consumer Rights Directive, FTC Act / ROSCA, CA AB 2863, UK DMCC Act; the EU DSA only where the seller is an online platform).
+| Barrier (evidence) | Levers (graded in the cards) | Break when |
+|---|---|---|
+| Doesn't get it or need it: fails a 5-second test, "what does it do?", wrong-audience traffic | None: rewrite the value proposition or fix the audience | Never: persuasion amplifies an unclear offer |
+| Doesn't believe it: "will this work for us?", reads proof or pricing, then leaves | Social proof; a two-sided message; risk reversal | Existing customers already trust you: check effort or timing |
+| Wants it, defers: returns, "later", reached value but hasn't paid | Owned loss; a real deadline; present bias | Value not reached: fix activation first |
+| Too hard or risky: drop-off at a form, install or payment; "how long?", "can I cancel?" | Fewer steps (cro designs the flow); defaults; an effort estimate; a true risk reducer beside the CTA ("Cancel anytime", "30-day refund"), full terms where payment is taken | Keep protective friction on consent and irreversible or high-value actions |
+| Can't choose: long dwell on plans, toggling, "which plan?" | Recommend before trimming | Experts comparing specs want the full table |
+| Forgot or stalled: intent, then silence; abandoned mid-setup | A resume prompt at the next natural moment | Two reminders with nothing new is nagging: stop |
 
----
+## Lever cards
 
-## Mental Model Categories
+**Grades.** *Strong*: replicated, direction reliable. *Mixed*: small, conditional or inconsistent; test it. *Fragile*: often fails outside the lab; never promise it.
 
-### Foundational Thinking Models
-Strategy and problem-solving frameworks:
-- **First Principles** — Break problems to basic truths, build up
-- **Jobs to Be Done** — People hire products for outcomes, not features
-- **Circle of Competence** — Stay where you have genuine advantage
-- **Inversion** — Ask "what would guarantee failure?" and avoid those
-- **Occam's Razor** — Simplest explanation is usually correct
-- **Pareto Principle** — 80% of results from 20% of efforts
-- **Theory of Constraints** — Find and fix the ONE bottleneck
-- **Second-Order Thinking** — Consider effects of effects
-- **Barbell Strategy** — 80% proven + 20% experimental
+**Belief**
+- **Social proof (Strong when similar and sizable).** One named customer like the reader beats a big generic count; numbers carry denominators ("41 of 47 restaurants renewed"). Backfires: small counts read as unpopular; "most people don't back up" normalizes not backing up. Live counters only if measured live.
+- **Two-sided message (Strong when it refutes).** Name one true, minor limitation and bound it ("Built for teams under 500"). Never concede the core job; answer the specific objection, not the worldview. Break: readers new to the category; stay one-sided.
+- **Risk reversal (Mixed).** A guarantee, trial or refund the owner confirms, named in a few words beside the CTA; its full terms where payment is taken.
+- **Authority (Mixed).** Only credentials relevant to the claim; a paid placement shown as "Featured in" is a disguised ad.
 
-Also in reference: Opportunity Cost, Law of Diminishing Returns, Local vs Global Optima, Map ≠ Territory, Probabilistic Thinking
+**Deferral**
+- **Owned loss (loss aversion; Mixed).** Losses outweigh equal gains in choices (about 2× on average, varying; Brown et al. 2024), yet loss- and gain-framed messages persuade about equally (O'Keefe & Jensen meta-analyses). Frame as a loss only what the reader has or has earned: their data, saved work, a locked price, a credit. Break: security and backup messages, where loss is the honest frame.
+- **Deadline or scarcity (urgency; Mixed).** Real, with its reason, and it holds; never per-visitor or resetting: "Price rises on 1 June", "12 seats left in the March cohort".
+- **Present bias (Strong).** Lead with what the user gets this week; give the economic buyer the payback period.
+- **Small first step (Mixed).** One useful step ("Import one invoice") eases the next; foot-in-the-door is real but small, not a ladder.
 
-### Understanding Buyers & Psychology
-How customers think and decide:
-- **Mere Exposure Effect** — Familiarity breeds preference
-- **Confirmation Bias** — People seek info confirming beliefs
-- **Mimetic Desire** — People want what others want
-- **Endowment Effect** — People value what they already own more
-- **IKEA Effect** — People value what they helped create
-- **Zero-Price Effect** — "Free" is psychologically different from cheap
-- **Status-Quo Bias** — Change feels risky; defaults are powerful
-- **Paradox of Choice** — Fewer options lead to more decisions
-- **Peak-End Rule** — Experiences judged by peak moment and ending
-- **Sunk Cost Fallacy** — Past investment shouldn't justify future spend
+**Effort**
+- **Fewer steps (Strong); effort estimate (Mixed).** Cutting a step beats any wording; then say what remains ("8 fields, 2 minutes").
+- **Defaults (Strong).** Default only what most users would choose fully informed. A display default (pricing toggle on annual) is fine when monthly is one tap away and the billed total sits beside the price, with renewal and cancel terms at checkout; never default a pricier tier, an add-on, a post-trial charge or consent.
+- **Progress (Strong in loyalty programs; bars Mixed).** Start the count at a step genuinely done; bars that crawl early raise drop-off (Villar et al. 2013), so drop them on long paths.
+- **Customization (IKEA effect; Mixed).** Valued only once finished (Norton et al. 2012): offer it after first value, never before.
 
-Also in reference: Fundamental Attribution Error, Availability Heuristic, Lindy Effect, Hyperbolic Discounting, Default Effect, Goal-Gradient Effect, Zeigarnik Effect, Pratfall Effect, Curse of Knowledge, Regret Aversion, Mental Accounting, Bandwagon Effect
+**Choice and memory**
+- **Recommend before trimming (Mixed).** Choice overload averages about zero (Scheibehenne et al. 2010); it bites when options are hard to compare or preferences are unformed. Recommend one option for a named situation ("For teams of 5–50") before removing any.
+- **Decoy (Fragile).** A packaging hypothesis for pricing to test, never a promised lift.
+- **Resume prompt (Strong).** Interrupted tasks tend to get resumed: "Pick up where you left off: 2 steps left", one tap to the step. Not an urgency lever.
 
-### Influencing Behavior & Persuasion
-Ethical influence techniques:
-- **Reciprocity** — Give first, people feel obligated to return
-- **Commitment & Consistency** — Small commitments lead to larger ones
-- **Authority Bias** — People defer to experts and credentials
-- **Social Proof** — People follow what others do
-- **Scarcity/Urgency** — Limited availability increases perceived value
-- **Loss Aversion** — Losses tend to feel more painful than equivalent gains (~2x in lab tasks; varies by context)
-- **Anchoring** — First number seen influences all subsequent judgments
-- **Decoy Effect** — Third option makes preferred choice look better
-- **Framing Effect** — Same facts, different presentation, different perception
-- **Foot-in-the-Door** — Small request → larger request compliance
+**Attention**
+- **Curiosity gap, novelty (Mixed).** Pay a curiosity gap off in the first line; "new" earns a tap only from a trusted sender, when the tap costs nothing.
+- **Identity (Mixed).** "For X who Y" works when readers self-identify; never shame the decline.
+- **Reciprocity (Strong when unconditional).** A useful gift before any ask; a gated asset is a trade.
 
-Also in reference: Liking/Similarity Bias, Unity Principle, Door-in-the-Face, Contrast Effect
+**Price presentation** (pricing owns tiers and levels)
+- **Anchoring (Mixed; arbitrary anchors are weak with real money at stake, Maniadis et al. 2014).** Anchor with the alternative's cost (a hire, an agency, hours; sourced), a real higher tier, or a price actually charged.
+- **Price shape and discount format (Mixed).** A 9-ending can lift demand when the left digit changes, and can signal "cheap"; round prices suit feeling-driven buys, precise ones analytical buys (Wadhwa & Zhang 2015). Discounts: the format with the bigger number (percent on small prices, currency on large), then test.
 
-### Pricing Psychology
-- **Charm Pricing** — $99 can feel cheaper than $100 (a modest, context-dependent effect)
-- **Rounded-Price Effect** — Round numbers signal premium ($100 vs $99)
-- **Rule of 100** — Under $100: use %; over $100: use absolute discount
-- **Price Relativity** — Middle tier seems reasonable between cheap and expensive
-- **Mental Accounting** — "$1/day" feels cheaper than "$30/month"
+**Never cite as a mechanism:** the Zeigarnik memory effect (it failed a 2025 meta-analysis; Ghibellini & Meier 2025); Hick's law for conversion or form length (it models reaction time); 7±2 for menus; the Rule of 7; "the brain processes one concept at a time"; decision fatigue; money or elderly priming.
 
-### Design & Delivery Models
-- **Hick's Law** — More choices = slower decisions = more abandonment
-- **AIDA** — Attention → Interest → Desire → Action
-- **BJ Fogg Model** — Behavior = Motivation × Ability × Prompt
-- **EAST Framework** — Easy, Attractive, Social, Timely
-- **Activation Energy** — Reduce starting friction for action
+## The persuasion gate
 
-Also in reference: Rule of 7, Nudge Theory/Choice Architecture, COM-B Model, North Star Metric, Cobra Effect
+Ship a lever, or approve a tactic, only if all four hold.
+- **True.** Every number, count, deadline, stock level, rating, endorsement and "was" price is verifiable today; proof is real, attributable and representative. No provable claims means no numbers, deadlines, scarcity or reference prices. Gaps stay visible as `[SOURCE NEEDED: what]`, or `[VERIFY: claim]` for what the owner must confirm; never a plausible stand-in.
+- **Survives disclosure.** It would still work, and you would still use it, if the page explained it.
+- **Symmetric.** Declining, cancelling or undoing is as easy and as neutrally worded as accepting.
+- **No regret.** Guardrails (refunds or cancels within 30 days, chargebacks, complaints, unsubscribes) don't get worse. Conversion up with regret up is manipulation, and a net loss.
 
-### Growth & Scaling Models
-- **Feedback Loops** — Output becomes input, creating cycles
-- **Network Effects** — Product value increases with more users
-- **Flywheel Effect** — Sustained effort creates self-maintaining momentum
-- **Switching Costs** — High switching costs create retention
-- **Critical Mass** — Threshold where growth becomes self-sustaining
+**Vulnerable or regulated readers** (see Frame): no urgency, loss framing or social pressure; state risks plainly; flag the sector's advertising rules to the caller.
 
-Also in reference: Compounding, Exploration vs Exploitation, Survivorship Bias
+## Dark Pattern Anti-Catalog
 
-Full descriptions with marketing applications: `references/psychology/mental-models-reference.md`
+Last verified: 2026-10. Not legal advice; confirm a rule is in force in the caller's markets before citing it. Beyond the hooks below: the EU UCPD is the general rule for any seller (DSA Art. 25 binds only online platforms, and only where the UCPD and GDPR don't apply); the UK DMCC Act 2024 is CMA-enforced since April 2025; Korea's E-Commerce Act (since 2025-02-14) regulates hidden renewal, drip pricing, pre-selection, false hierarchy, obstructed cancellation and nagging.
 
----
+| Pattern | Use instead | Hooks |
+|---|---|---|
+| Fake or unrepresentative proof: invented, AI-written or composite testimonials; undisclosed staff, paid or gifted reviews; cherry-picked ratings; bought followers | Real, representative proof used with permission; material connections disclosed in the endorsement | US 16 CFR 465, 255; UCPD Annex I 23b-c; DMCC Sch. 20 para 13; KFTC endorsement guidelines |
+| Fake urgency or scarcity: resetting or per-visitor timers; "only 2 left" with unlimited stock | A real deadline with its reason, which holds; else none | False time limits banned outright (UCPD Annex I 7; DMCC Sch. 20 para 7); FTC Act §5 |
+| Fake reference price: "was $199" never charged; "worth $499" bonus stacks | A price actually charged; in the EU, the lowest of the prior 30 days, with the percent computed from it | EU Price Indication Directive Art. 6a (CJEU C-330/23); UK DMCC misleading actions (CMA207); US 16 CFR 233 |
+| Pressured choice: "Most popular" on an arbitrary tier; a grey, tiny decline; confirmshaming; re-asking after a no | "Most popular" only if most chosen, else "Recommended for [situation]"; equal weight and neutral words ("No thanks"); a no respected for a stated period | UCPD (Art. 9 on persistence); DMCC; FTC Act §5; Korea |
+| Disguised ads: paid content styled as editorial, or unlabelled | "Ad", "Sponsored" or "광고" up front | UCPD Annex I 11; DMCC Sch. 20 para 12; 16 CFR 255; KFTC |
+| Pre-ticked boxes: marketing or data-sharing consent; insurance, donations or paid extras added by default (sneak into basket) | Unticked, separate consent per purpose; paid extras opt-in, default off | GDPR Art. 4(11), 7, Recital 32; EU Consumer Rights Directive Art. 22; UK CCR reg. 40; Korea |
+| Drip pricing: fees revealed at checkout; "$1/day" with no billed amount | The billed total, mandatory fees included, from the first price mention | Display rules: pricing (UK: CMA209) |
+| Subscription traps (roach motel, forced continuity): hidden renewal, a trial that silently converts, cancelling harder than signing up | The amount, when billing starts, that it renews and how to cancel, beside the button that takes payment, before the customer commits; elsewhere, reassurance, not fine print | ROSCA (terms before billing information is taken); EU CRD Art. 8(2) (directly before the order); state and national laws (the FTC's 2024 click-to-cancel rule was vacated in July 2025; for any newer federal rule, see churn-prevention's compliance reference) |
 
-## Quick Reference
+If available: checkout and paywall design → cro (`cro/references/checkout-cro.md`, `cro/references/paywall-upgrade-cro.md`); cancel flows and subscription law → churn-prevention (its `SKILL.md` § Compliance & Click-to-Cancel); invite flows (user-initiated, never an uploaded address book) → growth-loops.
 
-| Marketing Challenge | Models to Apply |
-|---------------------|----------------|
-| Low conversions | Hick's Law, Activation Energy, BJ Fogg, EAST Framework |
-| Price objections | Anchoring, Framing, Mental Accounting, Loss Aversion |
-| Building trust | Authority, Social Proof, Reciprocity, Pratfall Effect |
-| Increasing urgency | Scarcity, Loss Aversion, Zeigarnik Effect |
-| Retention/churn | Endowment Effect, Switching Costs, Status-Quo Bias |
-| Growth stalling | Theory of Constraints, Local vs Global Optima, Compounding |
-| Decision paralysis | Paradox of Choice, Default Effect, Nudge Theory |
-| Onboarding | Goal-Gradient, IKEA Effect, Commitment & Consistency |
-| Pricing feels wrong | Charm Pricing, Decoy Effect, Price Relativity, Rule of 100 |
-| Users not activating | IKEA Effect, Endowment Effect, Foot-in-the-Door |
-| High churn | Sunk Cost awareness, Switching Costs, Status-Quo Bias |
+## Test or ship
 
----
+- **Expect small effects.** Nudge-unit trials averaged +1.4 percentage points (8% relative) against +8.7 in published studies, mostly from publication bias (DellaVigna & Linos 2022). Expect a point or two from wording; structure moves more.
+- **No traffic, no test.** Detecting 3% → 3.6% (20% relative) takes about 14,000 visitors per variant (80% power, α 0.05). Short of that within about 4 weeks, ship the best-graded truthful option and watch the guardrails; test wording where volume is high (email, ads). Break: irreversible or high-risk changes still get a staged rollout.
+- **Record a real test** as a cro test card in the experiment log (default `biz/growth/experiments.md`; caller may redirect), via cro if available; size it there.
 
-## Worked Example: Improving Onboarding Activation
+## When a lever didn't work
 
-**Challenge**: Users sign up for a project management tool but 60% never create their first project.
+| Symptom | Likely cause | Check |
+|---|---|---|
+| No lift | Wrong barrier, or too little traffic for a small effect | The barrier evidence; sample size against the detectable effect |
+| Lift fades within 2–3 weeks | Novelty | Week 1 against week 3 |
+| Lift, plus more refunds or early cancels | Pressure converted poor-fit buyers | Guardrails by cohort |
+| Proof block lowered conversion | Small or dissimilar numbers | One similar, named customer instead |
+| Helps new visitors, hurts returning ones | Readers spotted the tactic | Segment by visit count and source |
+| Clicks up, completions flat | Curiosity, not intent | Completion per exposed visitor |
 
-**Models selected**: Foot-in-the-Door + Goal-Gradient Effect + IKEA Effect
+## Output
 
-**How they combine**:
-1. **Foot-in-the-Door**: Don't ask users to set up their whole workspace. Start with one tiny ask: "Name your first project." This small commitment makes the next step feel natural.
-2. **Goal-Gradient Effect**: Show a progress bar — "3 of 5 steps complete." As users approach the finish, they accelerate. The bar creates pull toward completion.
-3. **IKEA Effect**: Let users customize their project (choose a color, add a description, invite one teammate). The effort they invest makes the project feel like *theirs*, increasing reluctance to abandon it.
+**Budget:** ≤300 words per decision moment; a funnel audit is one table of ≤700 words; a judged tactic ≤120 words (verdict, the gate test it fails, the lawful alternative). The fields are a menu: omit any that doesn't apply, heading included.
 
-**Result framing**: Instead of "Set up your workspace" (high activation energy, vague), the flow becomes a series of small, visible, personally invested steps that compound into commitment.
+- **Barrier:** class and evidence, or "Hypothesis: …".
+- **Lever:** grade and the exact copy or structural change.
+- **Truth condition:** what must be true and who confirms it; gaps tagged.
+- **Test:** primary metric, guardrail, expected size, or "ship and monitor".
+- **Rejected:** the tempting tactic not used, and why (untrue, folklore, backfires, unlawful).
 
----
+Annotate copy with the objection it answers, never a bias name; no theory unless asked.
+
+**Example** ("add urgency to the trial-ending email"). 70% of expiring trials never built a report: value unreached, so urgency only speeds the no. For them, a one-click report template, with the trial extended once they finish one. For the 30% who did: "Your trial ends Friday. Your 3 reports stay when you pick a plan" (owned loss). Truth: the date is real and lapsed workspaces lose reports (owner confirms). Test: paid conversion per expiring trial; guardrail: refunds within 30 days. Rejected: a countdown timer and "Don't miss out" (pressure, nothing owned).
+
+## Self-Review
+
+Fix before returning; don't report the checklist.
+- Each lever names its barrier (evidenced, or a labelled hypothesis) and its grade; one per barrier, at most two per moment; "doesn't get it" got a rewrite, not a lever.
+- Every number, count, deadline, rating, endorsement and "was" price is in the proof inventory (`SKILL.md` §1) or tagged.
+- No never-cite mechanism; every lever passes the gate; vulnerable readers get no urgency, loss framing or social pressure.
+- Every test names a guardrail or says "ship and monitor"; "Rejected:" is present.
+- Footprint: ≤300 words per moment, ≤700 per audit, ≤120 per verdict; no bias explainers nobody asked for.

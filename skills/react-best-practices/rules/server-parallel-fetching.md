@@ -1,83 +1,48 @@
 ---
-title: Parallel Data Fetching with Component Composition
-impact: CRITICAL
-impactDescription: eliminates server-side waterfalls
-tags: server, rsc, parallel-fetching, composition
+title: Avoid Server Waterfalls and Hidden N+1 Queries
+tags: server, rsc, waterfalls, n-plus-one, data-loading
 ---
 
-## Parallel Data Fetching with Component Composition
+A component that awaits delays its children; sibling components, and a route's layouts and page, render in parallel. So a parent that awaits before rendering its children turns their fetches into a waterfall.
 
-React Server Components execute sequentially within a tree. Restructure with composition to parallelize data fetching.
-
-**Incorrect (Sidebar waits for Page's fetch to complete):**
+**Incorrect (Sidebar can't start until Page's fetch finishes):**
 
 ```tsx
 export default async function Page() {
   const header = await fetchHeader()
-  return (
-    <div>
-      <div>{header}</div>
-      <Sidebar />
-    </div>
-  )
-}
-
-async function Sidebar() {
-  const items = await fetchSidebarItems()
-  return <nav>{items.map(renderItem)}</nav>
+  return <div><div>{header}</div><Sidebar /></div>
 }
 ```
 
-**Correct (both fetch simultaneously):**
+**Correct (siblings fetch at the same time):**
 
 ```tsx
-async function Header() {
-  const data = await fetchHeader()
-  return <div>{data}</div>
-}
-
-async function Sidebar() {
-  const items = await fetchSidebarItems()
-  return <nav>{items.map(renderItem)}</nav>
-}
-
 export default function Page() {
-  return (
-    <div>
-      <Header />
-      <Sidebar />
-    </div>
-  )
+  return <div><Header /><Sidebar /></div>
+}
+
+async function Header() {
+  return <div>{await fetchHeader()}</div>
 }
 ```
 
-**Alternative with children prop:**
+TanStack Router runs `beforeLoad` serially from parent to child and route `loader`s in parallel, so keep data loading out of `beforeLoad`.
 
-```tsx
-async function Header() {
-  const data = await fetchHeader()
-  return <div>{data}</div>
-}
+**Lists:** `Promise.all` over per-item queries is an N+1 that queues on the connection pool and starves other requests (100 chats with an author lookup each is 200 queries). Batch first: one `IN` query, a join, or a per-request DataLoader. Otherwise bound the concurrency. Chain per item only when batching is impossible, such as a third-party API with no batch endpoint.
 
-async function Sidebar() {
-  const items = await fetchSidebarItems()
-  return <nav>{items.map(renderItem)}</nav>
-}
+**Incorrect:**
 
-function Layout({ children }: { children: ReactNode }) {
-  return (
-    <div>
-      <Header />
-      {children}
-    </div>
-  )
-}
-
-export default function Page() {
-  return (
-    <Layout>
-      <Sidebar />
-    </Layout>
-  )
-}
+```ts
+const authors = await Promise.all(chatIds.map(id => getChat(id).then(c => getUser(c.authorId))))
 ```
+
+**Correct:**
+
+```ts
+const chats = await db.chat.findMany({
+  where: { id: { in: chatIds }, orgId: session.orgId },
+  include: { author: true },
+})
+```
+
+Source: https://nextjs.org/docs/app/getting-started/fetching-data

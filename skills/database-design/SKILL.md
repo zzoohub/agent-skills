@@ -1,440 +1,226 @@
 ---
 name: database-design
 description: |
-  PostgreSQL database guide in two parts. Design (WHAT to build): table
-  design, schema modeling, index strategy, normalization/denormalization,
-  ACID transaction design, partitioning, multi-tenancy/RLS, isolation levels,
-  migration planning, schema review. PostgreSQL operations (HOW to run it):
-  writing and EXPLAIN-tuning queries (pagination, UPSERT, window functions,
-  full-text search), lock-safe migration execution against live traffic
-  (lock_timeout, CONCURRENTLY, NOT VALID/VALIDATE, batched backfills,
-  expand-contract under load), connection pooling, VACUUM, pg_stat_statements.
-  Use when user asks to "design a database", "create tables", "model data",
-  "add indexes", "normalize", "partition", "multi-tenant/RLS",
-  "isolation level", "plan migration", "review schema", "design ERD",
-  "optimize this query", "read this EXPLAIN", "run this migration safely",
-  "backfill a column", or discusses data modeling or PostgreSQL performance.
-  Do NOT use for basic SQL syntax lookups or non-database application logic.
+  PostgreSQL data modeling and operations. Design: tables, keys,
+  invariants and constraints, indexes from access paths, tenancy and RLS,
+  isolation and locking, partition layout, migration plans, schema review;
+  writes docs/arch/database.md and migrations. Operations: slow-query and
+  load triage, lock-safe migrations and backfills on live tables, pooling,
+  VACUUM, wraparound, incidents. Use for "design a database", "review
+  this schema", "add an index", "the database is slow", "run this migration
+  safely", "upgrade Postgres". Do NOT use for: choosing the store or
+  tenancy model (software-architecture); ORM, repository or migration-tool
+  wiring (hexagonal-backend); PR diff review (review-checklists).
 ---
 
-# PostgreSQL Database Design & Operations Skill
+# PostgreSQL Database Design & Operations
 
-PostgreSQL-specific database design skill. Provides systematic guidance from schema design through performance optimization.
+The schema is the system's longest-lived contract: code rolls back in seconds, a dropped column does not. Part 1 designs it from invariants and access paths (WHAT); Part 2 changes and runs it under live traffic without stalling it (HOW).
 
-**Two parts, one skill.** Part 1 — **Design** (the workflow below) decides WHAT schema change to make and how to structure the migration files. Part 2 — **PostgreSQL Operations** (its own section below) decides HOW to query the result and run each change safely against live traffic.
+**Ownership.** Writes the database design doc (default `docs/arch/database.md`; caller may redirect) and migrations in the project's tool format. Reads the PRD, feature specs and architecture docs without editing them; a missing input becomes a question in the report. The architecture docs own the store, the tenancy model, any architecture-level partition key and the retention policy: realize them and state any deviation inline. One-way data decisions that change the architecture surface (key strategy, partition key, tenancy model) are reported as `ADR owed: <decision>, <door type>` and recorded via the arch-decision capability, if available; this skill writes no ADRs.
 
-Owns schema, index, and migration design on a new or existing system. When the same request also needs a full system design, run that first (the `software-architecture` skill, if available) — the schema follows its data architecture. Writes only its own outputs (see Output); reads the PRD and other architecture docs but never edits them — a missing input becomes a gap in your summary.
+**Engine.** On another engine (SQLite/D1, MySQL) apply the modeling method (Modeling for Change, Stages 1–2) and flag each PostgreSQL-only mechanism (RLS, EXCLUDE, `CONCURRENTLY`, `uuidv7()`) instead of emitting it.
 
-## Core Principles
+## Stage 0 — Classify & Calibrate
 
-### 1. Think First, Design Later
-Database design must be completed before writing code. Always follow this sequence:
+**Classify the request; depth follows the class.**
 
-1. **Requirements analysis**: What data, who uses it, how is it accessed?
-2. **Conceptual → Logical → Physical**: name entities, relationships, and business rules *before* columns and types. The conceptual/logical pass (on paper, platform-neutral) is where the expensive mistakes — wrong entity boundaries, a missed many-to-many, a mis-identified business key — are still cheap to fix; descend to physical DDL/ERD only once they hold.
-3. **Explicit trade-offs**: Every design decision has a reason and a cost — and the cost includes future *change* cost, not just storage and latency (see **Modeling for Change**)
-
-### 2. PostgreSQL First
-- All examples and DDL use PostgreSQL syntax
-- Actively leverage PostgreSQL-specific features: JSONB, Array, Enum, Partial Index, CTE, Window Functions, Range Types, Row-Level Security
-- Consult `references/` files for detailed guidance as needed
-
-### 3. Naming Convention
-
-Pick one and apply consistently — the value is uniformity, not the specific choice.
-
-```
-Schemas:      snake_case, abbreviated (fin, hr, mkt)
-Tables:       snake_case, plural (`user_accounts`, `orders`). Plural is the industry default and avoids reserved-word collisions (`order` → `orders`). FK columns stay singular: `user_account_id REFERENCES user_accounts(id)`.
-Columns:      snake_case, no table prefix (name, NOT user_name in user table)
-PK:           id (surrogate) or meaningful natural key
-FK:           referenced_table_id (e.g., user_id, order_id)
-Indexes:      idx_{table}_{columns} (e.g., idx_orders_created_at)
-Constraints:  {type}_{table}_{columns} (e.g., uq_user_email, chk_orders_amount)
-Enums:        snake_case (order_status, NOT OrderStatus)
-```
-
-## Modeling for Change: Core vs Supporting, Stable vs Volatile
-
-The most consequential schema decision is not a data type — it's deciding **what to model rigidly and what to model loosely**. Two axes settle it:
-
-- **Position** — is this the *core* subdomain where the business differentiates, or a *supporting/generic* one (settings, integrations, metadata)? Spend your scarcest modeling effort on the core (DDD). "Model core differently" does **not** mean "softer at the core" — the opposite: the core is exactly where you most want `NOT NULL` / `FK` / `CHECK` / `UNIQUE`, because the core's invariants *are* the business.
-- **Rate of change** — is the shape stable, or does it churn with every requirement?
-
-|              | **Core / differentiating** | **Supporting / generic** |
+| Request | Path | Deliverable |
 |---|---|---|
-| **Stable**   | Fully normalized, rich constraints, explicit aggregate boundaries, deliberate transaction design. Invest here. | Simple relational + lookup tables. Don't over-model. |
-| **Volatile** | Keep the shape relational and constrained; absorb change through the **migration machinery**, not by softening the model. | The one quadrant where JSONB-hybrid / config-driven / app-layer flexibility is the *default* — and even here keep a relational spine. |
+| New schema or domain | Stages 1–4 | database.md + migrations |
+| Change a live schema or its data | Existing system first, then Stages 1–4 for the touched tables only | migrations + runbook rows + database.md patch |
+| Review an existing schema | When Reviewing an Existing Schema | ranked findings; write nothing |
+| Slow query, endpoint or database; incident, maintenance, live partitioning, major upgrade | PostgreSQL Operations (Part 2) | that reference's report |
 
-This is the single rule that unifies the otherwise-scattered `ENUM`-vs-lookup, STI-vs-CTI, and JSONB-hybrid heuristics elsewhere in this skill.
+**Budgets size the record, never the analysis.** Run every check the class needs (the problem behind the request, the numbers, the traps, every party the change touches) before deciding what to write; a scope cut is stated with its reason and still leaves the end consumer a working result.
 
-### Two kinds of agility — keep them straight
+**Small requests: short answers, full checks.** One column, index or constraint: ask only for the version, the runner's transaction scope, the table's size and write rate, and the stall budget, and skip Modeling for Change, sizing and the ERD. Still run what changes the answer: an index passes the Index gate (Stage 3), every variant of its endpoint and the table's existing indexes included; a constraint starts with the violation query on existing rows; a rename, retype or drop inventories its consumers (Stage 4). Deliver the migration, its down step and runbook rows, then each material finding in one line (another variant still slow, a redundant index to drop, a trade-off the owner must decide); patch database.md only if a decision changed.
 
-"Agile schema" silently conflates two opposite things:
+**Find the problem behind the request.**
 
-- **Flexible *shape*** — a generic, parameterized model (EAV, JSONB-for-everything) that absorbs change without DDL. Almost always the wrong trade: it buys malleability by surrendering the integrity guarantees and query performance that are the database's reason to exist, and relocates every invariant into N application call sites that drift. Its named failure modes — **EAV / inner-platform effect**, the **JSONB swamp** (no planner statistics, no query-shaped indexes), and **speculative generality / YAGNI** (an abstraction tax paid every day for requirements that never arrive) — are the anti-patterns this section exists to prevent. None is a substitute for modeling.
-- **Flexible *process*** — evolutionary database design: version-controlled migrations, expand-contract, `NOT VALID`/`VALIDATE`, dual-write, strangler-fig, `CONCURRENTLY`, mandatory *tested* rollbacks. This is the right agility. `references/migration-patterns.md` is **not merely outage-avoidance — it is the engine that lets you keep a hard, fully-constrained schema and still change it weekly.** A team that runs those patterns routinely does not need a soft schema to move fast.
+| Asked for | Usually means | Ask first |
+|---|---|---|
+| "Partition this table" | retention, vacuum or index upkeep no longer fits | Which predicate or lifecycle operation would use the key? |
+| "Make it SERIALIZABLE", "add locking" | an invariant is breaking | Which "never X"? Can a constraint or one statement hold it? |
+| "Optimize this query", "add an index" | an endpoint or the whole database is slow; the named query may be one variant of several, or not what owns the load | One endpoint or everything? Every variant the endpoint issues, with frequency and plan, and the table's existing indexes (Index gate; Part 2) |
+| "Denormalize for speed" | a join or aggregate is slow | What does it cost at target volume? |
+| "JSONB so we can move fast" | the shape is unknown | Which keys will a query filter, sort or constrain? Those are columns. |
+| "Soft delete everything" | fear of losing data | Which rows must stay referenced or restorable? History goes to an audit table. |
+| "Raise `max_connections`" | slow or idle-in-transaction sessions hold the connections | Which state holds them? (`scripts/query_diagnostics.sql` §1, §3) |
+| "We need a bigger instance" | demand grew on a sound plan, a plan flipped, or the working set outgrew RAM | Which statements own the time in a window, and did their calls or their cost per call grow? (`query_diagnostics.sql` §6 window) |
 
-The schema is your **slowest-changing, highest-blast-radius, longest-lived layer** — code rolls back in seconds; a bad `DROP` on a 500M-row table does not. So **don't soften the model to dodge migration; make migration so routine that a rigid schema costs nothing in speed.** Rigid shape + fluid process are complements, not a trade-off.
+**Existing system first.** Read the migration tool and its latest migrations, the ORM models, and each touched table's size, write rate (`pg_stat_user_tables` deltas), constraints and consumers; run `scripts/schema_review.sql` when a database is reachable. Its conventions (key type, naming, time types, migration format) beat this skill's defaults: never graft UUID keys onto a BIGINT schema.
 
-### Where volatility actually belongs
+**Architecture docs** (default `docs/arch/`, read-only): `context.md` §2 Scale Envelope, §3 ASRs, §4 Domain Model; `system.md` §3 Stores, Data Inventory, Tenancy, Partitioning, §4 Scaling Ladder, §5 SLOs and Write-path Integrity (binding).
 
-Most "fast-changing requirements" are **behavior/policy** volatility — pricing rules, eligibility, workflow steps, feature gating — not data-model volatility. Model those as config rows or application logic so they change without DDL. (Double-edged: pushing *too much* policy into generic config rows re-creates the inner-platform effect one level up; three boring nullable columns are sometimes more testable and auditable than a homegrown rules engine. Judge per case — the question is "is this *shape* volatility or *value* volatility?")
+**Ask once, in one batch, only what the docs and code cannot answer**, each as: question *(default; what it gates)*. A subagent that cannot ask applies the defaults and lists them as assumptions.
+- Engine, major version, host *(from the compose image, CI or platform config, else the newest GA major; version-gated syntax, each with its fallback)*
+- Pooler *(transaction pooling; tenant context per transaction, migrations over a direct connection)*
+- Migration tool and its transaction scope: none, per file, per run, or one per multi-statement string *(detected from the tool; where strong-lock steps, `CONCURRENTLY` and backfills run)*
+- Tenancy *(system.md, else single-tenant; keys, uniqueness, RLS)*
+- What must never happen *(the PRD; always ask about money, capacity and identity; the invariants)*
+- History, deletion and erasure duties *(hard delete plus audit; lifecycle)*
+- Hot tables: rows/day, update or append, largest table today; other readers (BI, exports, search, CDC) and their freshness *(Scale Envelope, else none; sizing, migration path, replicas or summary tables, consumers)*
+- Deploy model *(rolling, old code live during the deploy; N-1 steps)*
+- Stall budget of the hottest query on each touched table *(its p99 latency target; `lock_timeout`)*
 
-### The one legitimate exception — flexible shape *as the product*
+**Done** when a reader can trace every "never X" to its mechanism, every index to the paths it serves, and every migration step to its lock, its N-1 safety and its undo, and the Self-Review passes.
 
-When user-defined structure **is** the differentiator — metadata platforms (Stripe `metadata`), custom fields (Shopify metafields, Salesforce), CMS / CRM / low-code, EHR / FHIR — a **controlled flexible core** is the correct core model, not an edge concession. Keep a relational spine, type what you can, index for the real queries (GIN / expression indexes), and write down which invariants you've chosen to enforce in the application instead of the DB. "Flexibility belongs at the edges" is a strong default *with this real, commercially important exception* — don't apply it as a law.
+## Modeling for Change
 
-### Design the spine up front, defer the speculation
+The consequential choice is what to model rigidly and what loosely.
 
-"Design for the full product vision" means the **relational spine + integrity invariants + key relationships** — the parts that are cheap to get right now and expensive to retrofit: the **one-way doors** (PK type, tenancy model, partition/distribution key, normalization boundaries). It does **not** mean every speculative column for features not yet being built. **YAGNI applies to *shape*; it does not apply to *invariants*.**
+| | Core (where the business differentiates) | Supporting (settings, integrations, metadata) |
+|---|---|---|
+| **Stable shape** | Fully normalized, rich constraints, deliberate transaction design. Invest here. | Plain and lookup tables; don't over-model. |
+| **Volatile shape** | Stay relational and constrained; absorb change through migrations, not by softening the model. | The one quadrant where JSONB or config-driven shape is the default, still on a relational spine. |
 
-## Workflow: When a Database Design Is Requested
+**Flexible shape vs flexible process.** A generic model (EAV, JSONB for everything) dodges DDL by giving up integrity, statistics and query-shaped indexes, and scatters invariants into application code that drifts. Make migrations routine instead (expand-contract, `NOT VALID` → `VALIDATE`, `CONCURRENTLY`, N-1 steps): a fully constrained schema stays changeable weekly.
 
-### Step 1: Gather Requirements
+- Most "fast-changing requirements" are policy (pricing rules, eligibility, workflow steps): config rows or code, not DDL; three boring nullable columns beat a homegrown rules engine.
+- When user-defined structure is the product (custom fields, CMS, CRM), a flexible core on a typed, indexed relational spine is correct; write down the invariants it leaves to the application.
+- Decide the spine, the invariants and the one-way doors (key type, tenancy model, distribution key) for the product vision; add columns only for features being built. YAGNI applies to shape, never to invariants.
 
-**If architecture docs exist** (`docs/arch/`), read them first and extract:
-- Domain entities and data flows (from `context.md` §1, §4 and `system.md` §2)
-- Storage strategy and database choice (from `system.md` §3)
-- Performance/scalability expectations (from `context.md` §3 and `system.md` §5)
-- Consistency model (from `system.md` §3)
-- Ingestion patterns and data volume (from `context.md` §2 scale envelope and §3)
+## Design (Part 1 — WHAT)
 
-For most decisions, follow the design doc as-is — it represents system-level decisions already made. However, **independently evaluate** decisions where database domain expertise is more appropriate:
+### Stage 1 — Model
 
-| DB-domain decisions (evaluate independently) | System-level decisions (follow design doc) |
-|---|---|
-| Normalization level per table | Database platform choice (e.g., Neon PostgreSQL) |
-| Partitioning strategy and partition key | System architecture pattern (e.g., event-driven) |
-| Index types and index design | Which data goes in which store |
-| Transaction isolation level per operation | Consistency model (strong vs eventual) |
-| Column ordering and physical layout | Data retention policies |
-| Materialized view refresh strategy | Read/write separation boundaries |
-| Locking strategy (optimistic vs pessimistic) | Multi-tenancy approach |
+Each answer becomes a constraint, a column or a table.
+1. **Grain.** One row = one what? If it takes more than five words, it is two tables.
+2. **Uniqueness scope.** Every business key states its scope (global, tenant, parent, live row, period) and declares exactly that: `UNIQUE (tenant_id, slug)`, a partial unique index `WHERE deleted_at IS NULL`, uniqueness on the normalized form (`lower(email)`), or EXCLUDE / PG18+ `WITHOUT OVERLAPS` for periods. *Break when* the identifier is truly global, such as an external system's id.
+3. **Snapshot or reference.** The same fact, or the fact as of an event? An order line copies price, tax rate, currency and address: a snapshot, not denormalization, and it needs no sync.
+4. **Source of truth.** Data owned elsewhere (payments provider, identity provider) gets a mirror keyed by the external id, ingested idempotently by event id and guarded against out-of-order events with the source's version.
+5. **Duplication.** Normalize until each fact has one home. A deliberate duplicate names its source, sync mechanism, staleness bound and drift query (`references/design-patterns.md` §1); a counter on a parent row serializes every child insert.
+6. **Lifecycle.** Take each data set's class, retention and erasure duty from system.md §3 Data Inventory (else ask). History goes in an audit table; event sourcing only when the events are the domain. Retention runs as a partition drop or batched deletes. Personal data has an erasure path that reaches its copies (audit, events, backups). Tag each column's class in `COMMENT ON COLUMN`: it decides redaction, encryption, erasure and grants.
+7. **Keys** (a one-way door). UUIDv7 by default (`uuidv7()` on PG18+, else an RFC 9562 v7 generator in the application); BIGINT IDENTITY for internal high-volume tables (8 bytes less per row: ≈8 GB per billion rows in every index and FK carrying it); never UUIDv4 on hot tables, whose random inserts spread writes across the whole index. A v7 identifies but never authorizes and reveals its creation time: share links and reset tokens are random tokens.
 
-If a DB-domain decision differs from what the design doc implies, **state the deviation and the reason explicitly**. Example: "Design doc specifies strong consistency for order processing. For the order listing query, we use a materialized view with eventual consistency (refreshed every 30s) because the read volume makes synchronous joins impractical at the expected scale."
+Patterns for subtypes, hierarchies, soft delete, audit, temporal data and derived data: `references/design-patterns.md`.
 
-**If no design doc exists**, confirm the following with the user (ask if unknown):
-- Domain and core entities
-- Read/write ratio (read-heavy vs write-heavy)
-- Expected data volume (thousands? millions? billions?)
-- Ingestion pattern (append-only, backfill, frequent updates)
-- Transaction requirements (ACID strictness)
-- Scaling plans (single server vs distributed)
+### Stage 2 — Invariants → enforcement
 
-**Size the schema (back-of-envelope)** — turn the scale numbers (from `context.md` §2's scale envelope if present, else the answers above) into per-table arithmetic before any DDL. The numbers gate decisions that are otherwise vibes:
+Write each invariant as "never X" (never two active subscriptions per org, never a double-booked seat, never refunded → paid) and enforce it with the first rung that can express it:
+1. **A constraint**: NOT NULL, CHECK, scoped UNIQUE, FK, EXCLUDE. A CHECK passes when its expression is NULL, so pair it with NOT NULL; UNIQUE treats NULLs as distinct unless `NULLS NOT DISTINCT` (PG15+).
+2. **One guarded statement**: `UPDATE stock SET qty = qty - $2 WHERE id = $1 AND qty >= $2`; for a state transition, `… SET status = 'shipped' WHERE id = $1 AND status = 'paid'`. Zero rows means rejected: a domain outcome, not a retry.
+3. **A lock on a guard row** that every writer touches (the parent, the slot), taken in a fixed order. At Repeatable Read a bare lock protects nothing: the guard must be an `UPDATE`.
+4. **SERIALIZABLE**, retrying the whole transaction on 40001 and 40P01.
 
-- **Per hot table**: rows/day × bytes/row (padded column widths + ~24B tuple header — see `references/performance-patterns.md` §1) → size at 1yr / 3yr; ×1.3-1.5 for indexes and bloat. Sum the hot tables against RAM — that's the working set.
-- **Partitioning gate**: compute months-to-~100M-rows from rows/day. Partition when the table crosses hundreds of millions *within the design horizon* or retention must be a partition drop — not because "logs feel big".
-- **PK economics, quantified**: UUID→BIGINT saves 8 bytes × rows × (PK index + every referencing FK column + every index carrying it). At 1B rows that's ~8GB in the PK index alone — that's when "measurably matters" starts. At 10M rows it's ~80MB — irrelevant; take UUID v7's external-safety instead.
-- **MV-vs-live-join**: estimate the join fan-out at target volume before reaching for a materialized view (denormalization needs measured cost — `references/normalization-guide.md`).
+An invariant left to the application names its owner and the reason. *Break when* a rung's measured cost on a write-hot table is unacceptable; record the step down. Read Committed stays the default (Repeatable Read stops lost updates on one row, not write skew). Map every system.md §5 Write-path Integrity row to a rung, taking its outbox, idempotency and inbox tables from `references/design-patterns.md` §7. Mechanics: `references/acid-transactions.md`.
 
-A ×3 error changes nothing here; a ×100 error changes the design. State the inputs so the arithmetic is checkable; record it in `docs/arch/database.md` under Requirements.
+### Stage 3 — Physical design
 
-**Feature-aware schema** (read before writing any DDL):
+**DDL defaults** (break conditions in `references/data-types-guide.md`):
+- Instants `timestamptz`; calendar dates `date`; future wall-clock events (appointments, opening hours, local deadlines) `timestamp` plus an IANA zone column, resolved at use time.
+- Money: `bigint` minor units or `numeric` at the currency's scale, beside a currency column; never float or `money`, and no default currency, unit or rate.
+- `text`, capped by a named CHECK where length matters; email unique on its normalized form, never validated by regex.
+- Closed sets: text plus CHECK; a lookup table keyed by its code when values carry attributes; ENUM only for frozen, ordered sets.
+- JSONB only for attributes no hot query constrains or filters; a key becomes a column at its first constraint, FK or hot predicate.
+- Every FK states ON DELETE (CASCADE only inside one aggregate, never into financial or audit records) and indexes its child columns unless parent rows are never deleted or re-keyed (say so in a comment).
+- snake_case, plural tables, `<singular>_id` FK columns; constraints named `{pk,fk,uq,chk,ex}_{table}[_{columns or role}]` (applications map errors by name); `updated_at` set by a trigger or the ORM, never both.
 
-Design the **full relational spine + integrity invariants + key relationships** for the product vision — the one-way doors (PK type, tenancy model, partition/distribution key, normalization boundaries) that are cheap to get right now and expensive to retrofit — **not** every speculative column for features not yet being built (see **Modeling for Change** → "Design the spine up front, defer the speculation"). Then split migrations by domain so features can ship independently.
-
-If the project tracks features in planning docs (e.g. `docs/prd/features/*.md` or any similar `features/` directory), read the relevant spec and **tag tables/indexes with the feature** in comments — e.g., `[auth]`, `[billing]`, `[workspace]`. The tags drive which migration file each table lives in, and the dev order in the PRD determines file numbering (`001_create_user_accounts.sql` → `002_create_workspaces.sql` → ...).
-
-If no such planning docs exist, ask the user which features ship in which order — that order determines numbering.
-
-Don't collapse all of MVP into one mega-migration. Don't over-split into per-table files either — one migration per **domain/bounded context**, holding related tables together.
-
-### Step 2: Schema Design
-1. Identify core entities and relationships
-2. Normalize to at least 3NF
-3. Evaluate denormalization needs → consult `references/normalization-guide.md`
-4. Choose appropriate data types → consult `references/data-types-guide.md`
-5. Define constraints (PK, FK, UNIQUE, CHECK, NOT NULL)
-6. **Classify sensitive columns** at design time (public / internal / PII / regulated) — record the tag in `COMMENT ON COLUMN`. One pass that then drives four decisions the skill otherwise makes ad hoc per column: audit/event-payload exclusion (Critical Rules + `design-patterns.md` §3), column-encryption choice (and its loss of B-tree indexability), erasure obligations (`design-patterns.md` "Erasure vs immutable history"), and GRANT scoping (Roles & Least Privilege)
-
-### Step 3: Transaction & Concurrency Design
-→ consult `references/acid-transactions.md`
-
-Identify operations that require explicit transaction design:
-- Financial or monetary operations (transfers, payments)
-- Inventory or capacity management (stock, seats, quotas)
-- Multi-step workflows that must be atomic
-- High-contention resources (counters, queues)
-
-For each, decide:
-- Isolation level (Read Committed, Repeatable Read, Serializable)
-- Locking strategy (optimistic vs pessimistic, advisory locks)
-- Retry and deadlock prevention approach
-
-### Step 4: Write DDL
 ```sql
--- Default skeleton — UUID v7 PK, TIMESTAMPTZ everywhere
--- New tables only; to add a PK/column to an existing table see references/migration-patterns.md
---   (a VOLATILE default like uuidv7() on a new NOT NULL column rewrites the whole table).
-CREATE TABLE schema_name.table_name (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),  -- PG18+; ≤17: generate at app layer
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- then INTEGER columns, then SMALLINT, BOOLEAN, etc.
+CREATE TABLE app.orders (
+    id          uuid DEFAULT uuidv7() CONSTRAINT pk_orders PRIMARY KEY,  -- PG18+; earlier: v7 from the app
+    tenant_id   uuid NOT NULL,
+    customer_id uuid NOT NULL,
+    total_minor bigint NOT NULL CONSTRAINT chk_orders_total_minor CHECK (total_minor >= 0),
+    currency    text NOT NULL CONSTRAINT chk_orders_currency CHECK (currency ~ '^[A-Z]{3}$'),  -- no default
+    created_at  timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT uq_orders_tenant_id_id UNIQUE (tenant_id, id),  -- target of child tables' composite FKs
+    CONSTRAINT fk_orders_customer FOREIGN KEY (tenant_id, customer_id)
+        REFERENCES app.customers (tenant_id, id) ON DELETE RESTRICT
 );
-
--- Indexes go in separate statements
-CREATE INDEX idx_table_column ON schema_name.table_name (column);
-
--- Document with comments
-COMMENT ON TABLE schema_name.table_name IS 'Table description';
-COMMENT ON COLUMN schema_name.table_name.column IS 'Column description';
+-- path: a customer's orders, newest first; also covers the FK
+CREATE INDEX idx_orders_customer ON app.orders (tenant_id, customer_id, created_at DESC);
 ```
 
-⚠️ The `updated_at DEFAULT now()` only fires on INSERT. To keep it accurate on UPDATE, attach a `BEFORE UPDATE` trigger or manage it at the application/ORM layer — pick one and apply consistently. See `references/design-patterns.md` §9 "Auto-Updated Timestamps".
+**Tenancy** (model from system.md §3; default single-tenant):
+- **Pooled tables**: `tenant_id NOT NULL` on every tenant-owned table, in every UNIQUE, and in composite FKs `(tenant_id, parent_id) → parent (tenant_id, id)`, so no row can point into another tenant; tenant-scoped indexes lead with it. Make the PK `(tenant_id, id)` when tenant sharding is on the Scaling Ladder.
+- **RLS** on every pooled table by default, backing up the `tenant_id` predicate every query carries: forced, the app on a non-owner role, the tenant set per transaction, never by a session `SET`. *Break when* its measured hot-path cost is unacceptable: record it in Decisions and aim the cross-tenant test at the query filter. Behind a generated API that queries as the caller's role (PostgREST, Supabase), RLS is the only gate: never off. Wiring: `references/design-patterns.md` §6.
+- **Schema-per-tenant** multiplies every migration and the catalog by N. **Database-per-tenant** only for contractual isolation, residency or per-tenant restore.
+- **Skew.** Check the largest tenant's share of each hot table (`most_common_freqs` on `tenant_id`, as a role that bypasses RLS). A dominant tenant gets plans fitted to the average one (give its sessions custom plans, `SET LOCAL plan_cache_mode = force_custom_plan`, or add statistics on `(tenant_id, <filter column>)`), and it draws on the CPU, I/O, connections and cache every tenant shares: when its demand drives a slowdown (Part 2 load attribution plus the app's per-tenant request rates), give it a budget (rate limit, its own pool or replica), cache its hot aggregates, or isolate it in its own partition or database. Record which in Decisions.
 
-### Step 5: Index Strategy
-→ consult `references/indexing-strategy.md`
-- **Every index cites an access path.** List the top access paths first (query shape | expected frequency | latency need), then derive each index from one; record the table in `docs/arch/database.md`. An index serving no listed path is a delete candidate; a hot path served by no index is a seq scan waiting for data volume.
-- Verify auto-indexes on PK; manually create indexes on FK columns (PostgreSQL does NOT auto-index FK)
-- Identify columns frequently used in WHERE, JOIN, ORDER BY
-- Calculate selectivity: distinct values / total rows
-- Consider Partial Index, Expression Index, Covering Index (INCLUDE), GIN/GiST/BRIN
+**Index gate.** Every index added, changed or dropped, in design or in tuning, passes these steps (method and examples: `references/indexing-strategy.md`):
+1. **Enumerate the paths.** Each hot path as query shape · frequency · latency need · rows returned, and for an endpoint every variant it issues: each filter and value (one, several, none), each sort, deep pages, and the queries that run beside it (the total count, facet counts). Sources: the query-building code, the table's `pg_stat_statements` entries, the feature spec. The caller names one variant; the index serves the endpoint.
+2. **Choose against the whole list.** Tabulate candidates × variants (seek and stop, seek then sort, walk and filter) and keep the set that serves the most traffic with the fewest indexes. Equality columns first, then the `ORDER BY … LIMIT` columns, else the range column. A status-like filter goes in front of the sort, `(tenant_id, status, created_at DESC)`, which serves every value; a partial index names the variants it leaves unserved; several values in one request need the per-value merge.
+3. **Reconcile the table's index set.** Show the table's indexes with scan counts and sizes, each marked keep, add or drop: drop what the new index makes a redundant prefix, flag zero-scan indexes for an owner check (counts are per node and restart on a reset), and ship each drop as a runbook row with its definition kept for restore (`scripts/schema_review.sql` §3). On write-hot tables every index taxes each insert and non-HOT update: count them.
+4. **Hot-path aggregates** (a count, sum or badge computed per request) are paths too: choose bounded, estimated, cached or index-only (`references/postgresql/query-tuning.md`, Demand on a sound plan) and tell the owner what the choice gives up.
 
-### Step 6: Performance Review
-→ consult `references/performance-patterns.md`
-- Verify execution plans with EXPLAIN ANALYZE (how to read them: `references/postgresql/explain-guide.md`)
-- Consider connection pooling (PgBouncer)
-- Evaluate partitioning needs (hundreds of millions of rows+)
-- Suggest PostgreSQL configuration tuning
-- Design around query patterns: ensure indexes support WHERE/JOIN, limit resultsets, cache computed data
+**Size it.** Per hot table, rows/day × bytes/row → size at 1 and 3 years with indexes; sum the hot tables against RAM for the working set. A ×3 error changes nothing; a ×100 error changes the design, so state the inputs. When a database is reachable, seed the hot tables with `generate_series` at realistic skew (≥1M rows), ANALYZE, then measure bytes per row (`scripts/schema_review.sql` §10) and run EXPLAIN on the seed: plans on empty tables prove nothing.
 
-### Step 7: Migration Plan
-→ consult `references/migration-patterns.md` — the **engine that lets a rigid schema stay agile** (see **Modeling for Change**), not just outage-avoidance.
-- Version-controlled migration scripts
-- Rollback scripts are mandatory — and **tested** (run forward → rollback → forward on a production-scale snapshot in CI), not merely written. An untested rollback fails at 3am, which is the only time you need it
-- Zero-downtime migration strategies
-- **Schema is a contract**: before any rename/retype/drop, inventory who else reads the table beyond the deploying app (read-replica→warehouse, CDC/ETL, sibling services, materialized views, API serializers) and expand-contract across that whole set
-- Executing each step against live traffic (session preamble, `CONCURRENTLY`, `NOT VALID` → `VALIDATE`, batched backfills) is Part 2 — see **PostgreSQL Operations**
+**Partitions.** Weigh partitioning from the month a hot table outgrows memory ("logs feel big" is not a reason); it pays only when a predicate or lifecycle operation uses the key, and every PK and UNIQUE must then include it. An architecture-level key comes from system.md §3 Partitioning; the method, interval and layout are yours: `references/performance-patterns.md`.
 
-### Step 8: Pre-Output Quality Gate
+### Stage 4 — Migration plan
 
-Before writing `docs/arch/database.md` or any migration file, **every Critical Rule (below) must hold** — money is `NUMERIC`, timestamps `TIMESTAMPTZ`, FKs indexed, `ON DELETE` explicit, `CONCURRENTLY` on live tables, destructive ops via expand-contract — plus every item here (these add what the Critical Rules don't cover). A failing item either blocks output or gets explicitly called out in the document with rationale.
-
-**Structural integrity**
-- [ ] Every table has a PRIMARY KEY
-- [ ] Every FK column used in JOIN or filter has an index (PG does not auto-create); FKs intentionally left unindexed are documented in a comment or ADR
-- [ ] Every entity table has `created_at` (and `updated_at` unless append-only). Pure association/pivot tables may omit both when no audit trail is needed
-- [ ] ENUMs used only where value set is stable; otherwise lookup table
-- [ ] Sensitive columns classified (PII/regulated tagged in `COMMENT ON COLUMN`); PII kept out of audit/event payloads
-
-**Constraints and safety**
-- [ ] NOT NULL on every column that logically cannot be null
-- [ ] CHECK constraints on domain values (email format, positive amounts, status whitelist)
-- [ ] UNIQUE constraints on every business-identity column (email, slug, external_id)
-
-> **NULL semantics:** a `CHECK` passes when its expression is NULL/UNKNOWN — `CHECK (amount > 0)` does *not* reject a NULL `amount`, so pair domain CHECKs with `NOT NULL` when null is invalid. Standard `UNIQUE` treats each NULL as distinct (multiple NULLs allowed); add `NOT NULL`, or use `UNIQUE NULLS NOT DISTINCT` (PG15+), when at most one null-or-distinct row is intended.
-
-**Multi-tenancy (if applicable)**
-- [ ] Every tenant-scoped table has `tenant_id` column AND RLS policy — or schema/database-per-tenant is chosen with ADR
-- [ ] Composite indexes lead with `tenant_id` where tenant-scoped queries dominate
-
-**Sizing**
-- [ ] Size envelope computed for hot tables (rows/day × bytes/row → 1yr/3yr); partitioning and PK-type choices cite its numbers, not vibes
-
-**Indexes**
-- [ ] Every index traces to a listed access path (Step 5); no index without a path, no hot path without an index
-- [ ] Partial indexes used for low-selectivity boolean/status columns (don't index `WHERE is_deleted = false` globally)
-- [ ] Composite index column order follows equality → range → sort rule
-- [ ] No obvious unused redundancy (e.g., `(a)` + `(a, b)` — drop `(a)`)
-
-**Migrations**
-- [ ] Every migration file has a matching `*.rollback.sql`, and the rollback is **tested** (forward→rollback→forward on a prod-scale snapshot), not just written
-- [ ] Files are split per-domain (no single `001_initial_schema.sql`)
-- [ ] Destructive/renaming migrations checked against **all** downstream consumers, not just the deploying app (CDC/ETL, replicas→warehouse, MVs, sibling services)
-
-**Deviations**
-- [ ] Any decision that deviates from the design doc (`docs/arch/system.md`) is noted inline with reason
-
-If any item fails and isn't justified in-document, revise before saving. Do not save substandard work.
+- **N-1 safe.** Every step works with both the deployed and the incoming code, so an app rollback never needs a schema rollback: expand steps ship tested down SQL; irreversible contract steps wait for a verification window, a PITR target and an archive (`references/migration-patterns.md`). *Break when* a maintenance window is acceptable.
+- **Schema is a contract.** Before any rename, retype or drop, inventory every consumer beyond the deploying app (logical-replication subscribers, which get no DDL: add columns there first, drop them there last; CDC/ETL; sibling services; materialized views; API serializers) and expand-contract across all of them.
+- **Label every statement** with its lock and work class from `references/migration-patterns.md`; an ACCESS EXCLUSIVE scan or rewrite on a live table takes that file's online path.
+- **Format.** SQL in the project tool's format and directory, split into files or runs that fit the runner's transaction scope (`references/migration-patterns.md`, Connection and tool); say where each step runs. With no tool: `<UTC timestamp>_<verb>_<domain>.sql` plus `.down.sql` for reversible steps, in the migrations directory (default `db/migrations/`; caller may redirect), one file per domain in the PRD's dev order, tables tagged with their feature (`-- [billing]`). Never edit an applied migration; no auto-DDL (`synchronize: true`) in deployed environments.
+- **Standing guards.** In CI, build a scratch database from the migration chain and diff its `pg_dump --schema-only` against each long-lived environment (drift), and run the previous release's tests against the new schema (N-1). Monthly and after launches, run `scripts/schema_review.sql` against production; keep `pg_stat_statements` enabled so `query_diagnostics.sql` §6 has history.
 
 ## When Reviewing an Existing Schema
 
-Use this checklist:
+Read-only by default; write only when asked.
+1. **Evidence**, in this order: `scripts/schema_review.sql` on the live catalog, else the migration chain, then the ORM models. Drift between them is itself a finding.
+2. **Violation queries** before ranking an unenforced invariant: duplicates on the normalized key, orphans, NULLs where none belong, int4 key headroom (`schema_review.sql` §4), and for each tenant gap (§11) child rows whose parent belongs to another tenant. Run them as a role that bypasses RLS: under a policy they count zero. Violating rows make it 🔴 and the fix starts with cleanup; none make it 🟠, except cross-tenant reachability, which is 🔴 regardless.
+3. **Order**: invariants → tenancy → keys and types → indexes vs access paths and each other (redundant prefixes, zero scans: `schema_review.sql` §3) → lifecycle → growth headroom (hot tables vs RAM at 1 and 3 years; the distribution key where sharding is on the Scaling Ladder) → pending migrations → access control → naming.
+4. **Rank** (compatible with software-architecture's rubric):
+   - 🔴 cross-tenant reachability (tenant missing from a UNIQUE or FK, RLS not forced, the app connecting as table owner, a table in an API-exposed schema without RLS); money in float; cascades into financial records; an int4 key past half its range; personal data with no erasure path (immutable payloads included).
+   - 🟠 a pooled table without RLS and no recorded break condition; an unindexed FK on a parent that gets deleted; a hot path with no index; retention that cannot execute; a hot table outgrowing memory with no partition or retention plan; a pending migration that is not N-1 safe or locks a hot table; UUIDv4 keys on hot tables; catalog drift.
+   - 🟡 redundant data or indexes; a model that drifted from the domain.
+   - 🟢 naming and consistency.
 
-1. **Naming**: Convention consistency
-2. **Data types**: Appropriate type and size for each column
-3. **Constraints**: PK, FK, NOT NULL, CHECK, UNIQUE
-4. **Indexes**: Missing indexes (especially on FK columns), unused indexes
-5. **Normalization**: Unnecessary data duplication
-6. **Transactions**: Appropriate isolation levels and locking for critical operations
-7. **Security**: Sensitive data encryption, access control
-8. **Scalability**: Partitioning, read replicas
-9. **Ingestion pattern**: Append-only vs backfill vs update-heavy implications
-10. **Storage**: Column ordering for alignment (large tables only) → `references/performance-patterns.md`
-11. **Lifecycle**: retention per large table is *executable* (partition drop, not mass DELETE); erasure obligations reconciled (crypto-shred / PII-free immutable payloads — `references/design-patterns.md` §2)
-
-For runnable diagnostic queries (unindexed FKs, unused indexes, oversized rows, missing constraints), see `scripts/schema_review.sql` — psql-ready queries you can execute directly against the target database. Its operations companion, `scripts/query_diagnostics.sql`, covers slow queries, HOT-update ratio, invalid indexes, per-table cache hit, column selectivity, and long-running queries.
-
-When invoked from an architecture review, rank findings with the caller's severity rubric (e.g. the software-architecture skill's 🔴/🟠/🟡/🟢) so the two audits merge cleanly.
-
-## Standing Guards (CI / cron)
-
-A schema review is a point-in-time audit; these keep it true continuously — the database-grain analogue of architecture fitness functions:
-
-1. **Migration round-trip in CI** — forward → rollback → forward against a production-scale snapshot on every migration PR (the Step 7 / Pre-Output Gate rule, automated). A chain that has only ever run forward has an untested rollback.
-2. **Drift check** — build a scratch database from the full migration chain, `pg_dump --schema-only` both it and each long-lived environment, and diff (or use a schema-diff tool such as `migra`). Any difference means schema was mutated outside migrations — this is the standing enforcement of "auto-DDL is forbidden".
-3. **Scheduled `scripts/schema_review.sql`** — monthly, and after every launch, against production: unindexed FKs, unused indexes, dead-tuple ratios, lock pile-ups. Keep `pg_stat_statements` enabled (Recommended Extensions) so query regressions between runs are attributable.
-
-Wire 1-2 into CI; 3 is a cron job plus a human reading the output.
+Report in ≤1,200 words, findings first; patch text only for 🔴 and 🟠; a finding past the budget shrinks to one line, never drops.
 
 ## PostgreSQL Operations (Part 2 — HOW)
 
-Design (Part 1) decides WHAT schema change to make; this part decides HOW to query the result and run each change safely in production. Load the reference that matches the task:
+Route by the first evidence; each reference holds the report format to write from.
 
-| Task | Reference |
-|---|---|
-| Write or tune a query — workflow, quick decision table, critical rules, recent PG versions | `references/postgresql/guide.md` |
-| Query recipes — keyset pagination, full-text search, N+1, `SKIP LOCKED` queues, UPSERT, window functions, `DISTINCT ON`, gap-filling | `references/postgresql/query-patterns.md` |
-| Read an `EXPLAIN (ANALYZE, BUFFERS)` plan; find lock blockers | `references/postgresql/explain-guide.md` |
-| Index ignored or used inefficiently | `references/postgresql/indexing-pitfalls.md` |
-| Run a migration against live traffic — session preamble (`lock_timeout`, `statement_timeout`, retry on `55P03`), `CONCURRENTLY` + invalid-index check, `NOT VALID` → `VALIDATE` (CHECK / FK / NOT NULL), batched backfills | `references/migration-patterns.md` |
-| VACUUM/ANALYZE strategy, `pg_stat_statements` + `auto_explain`, monitoring thresholds | `references/postgresql/production-ops.md` |
-| Live diagnostics, weekly and during incidents | `scripts/query_diagnostics.sql` |
+| Request | First evidence | Read | Deliver |
+|---|---|---|---|
+| DDL or backfill on a live table | lock and work class; size and write rate; oldest snapshot; replica lag | `references/migration-patterns.md` | runbook rows + ≤150 words of notes |
+| Slow query, endpoint or database | one endpoint or everything; statements by share of total time over a window, each split into calls/s and mean; reproduce as the app runs it; `EXPLAIN (ANALYZE, BUFFERS)` | `references/postgresql/query-tuning.md` | load table, causes ranked with before/after, index-set changes, follow-ups; ≈150 words per cause |
+| Query shape: pagination, UPSERT, search, import, time buckets, hot rows | the query, its index and the code that calls it | `references/postgresql/query-patterns.md` | the query, its index and the calling code |
+| Incident: stalls, errors, connection exhaustion | what changed, and when; sessions by wait event; the root blocker (`scripts/query_diagnostics.sql` §1–2); the load window (§6) | `references/postgresql/production-ops.md` | stabilize first; load table, causes ranked; ≈300 words plus ≈100 per further cause |
+| Maintenance: vacuum, bloat, wraparound | xmin holders, freeze age (`query_diagnostics.sql` §4–5) | `references/postgresql/production-ops.md` | runbook rows |
+| Partitioning a live table, replicas, scale-out | system.md §3–§4; the lifecycle operation the key serves | `references/performance-patterns.md` | layout + runbook rows |
+| Major-version upgrade or host move | extensions and their target versions; size; downtime budget; replicas and CDC consumers | `references/postgresql/production-ops.md` (Upgrades) | runbook rows |
 
-Before any DDL on a live table: `SET lock_timeout`, one DDL step per short transaction, `CONCURRENTLY` index builds outside any transaction block, and backfills that commit per batch outside the migration tool's transaction.
+**Done** when the same reproduction or metric shows each fix, before and after; the named causes together account for the load behind the symptom (slowness across endpoints is a shared resource running out, and a regressed statement that owns a few percent of it is a finding, not the cause); and an incident report names the lasting fix and the alert that would have caught it.
 
-## Key Design Patterns Summary
-
-| Pattern | When to Use | Reference |
-|---------|------------|-----------|
-| Table Inheritance | Common attributes + type-specific attributes | `references/design-patterns.md` |
-| CQRS | Read/write model separation needed | `references/design-patterns.md` |
-| Event Sourcing | Complete change history required | `references/design-patterns.md` |
-| Soft Delete | Logical deletion required | `references/design-patterns.md` |
-| Audit Trail | Change tracking required | `references/design-patterns.md` |
-| Partitioning | Large table management | `references/performance-patterns.md` |
-| JSONB Hybrid | Flexible schema + relational mix | `references/data-types-guide.md` |
-| Domain Types | Reusable constrained types (email, URL, amounts) | `references/data-types-guide.md` |
-| Generated Columns | Stored computed values (FTS vectors, derived amounts) | `references/data-types-guide.md` |
-| Temporal Data | Time-validity ranges, price history | `references/design-patterns.md` |
-| Pessimistic Locking | High contention, short transactions | `references/acid-transactions.md` |
-| Optimistic Locking | Low contention, user-facing workflows | `references/acid-transactions.md` |
-| Queue (SKIP LOCKED) | Task/job queue processing | `references/acid-transactions.md` |
-| Outbox / Idempotency tables | Reliable side effects, retry-safe writes | Table shapes live in a reliability capability (e.g. the software-architecture skill's `reliability-patterns.md`), if available — this skill turns them into migrations |
+**On every live table:** strong-lock steps under `lock_timeout` at the stall budget, retried with jitter on 55P03; `CONCURRENTLY` with `lock_timeout` and `statement_timeout` at 0 (a cancel leaves an invalid index or a pending detach), outside any transaction block, then an `indisvalid` check; one DDL step per transaction; backfills bounded per batch; data steps on RLS tables as a role that bypasses RLS; migrations over a direct or session-pooled connection.
 
 ## Output
 
-Produce these files (default destinations — the caller/agent may redirect the `docs/arch/` and `db/migrations/` roots):
+**The database design doc** (default `docs/arch/database.md`) records decisions and their reasons, never this skill's steps. Write it from this skeleton:
 
-| File | Content |
-|---|---|
-| `docs/arch/database.md` | **Table of Contents** (linked) → Requirements summary (incl. the size envelope) → ERD (Mermaid, consult `references/mermaid-erd.md` for syntax) → Schema decisions & trade-offs → Transaction design → Access paths & index strategy → Performance notes → Migration plan. Design doc deviations noted inline. Start with a TOC right after the title — the document gets long and a TOC makes it navigable. |
-| `db/migrations/NNN_<verb>_<domain>.sql` | Executable DDL split **per domain** (never a single "initial schema" file). Each file pairs with `NNN_<verb>_<domain>.rollback.sql`. See naming convention below. |
-
-### Migration File Naming
-
-Split the initial schema into **per-domain migration files** — one file per bounded context or aggregate. Never produce a single `001_initial_schema.sql` containing everything.
-
-```
-db/migrations/
-├── 001_create_user_accounts.sql
-├── 001_create_user_accounts.rollback.sql
-├── 002_create_workspaces.sql
-├── 002_create_workspaces.rollback.sql
-├── 003_create_billing.sql
-├── 003_create_billing.rollback.sql
-└── ...
+```markdown
+# Database Design: <system>
+<!-- Budget, excluding DDL and ERD: ≤400 words for 1–3 tables (no ERD); ≤1,200 for a domain; ≤2,500 for a product.
+     Sections are a menu: omit any that would be empty, heading included. A patch edits only the sections it changes. -->
+## Decisions         <!-- one-way doors and departures from defaults: choice · rejected alternative · why · revisit when -->
+## Model             <!-- Mermaid ERD of entities, keys and cardinality (references/mermaid-erd.md); columns live in the DDL -->
+## Invariants        <!-- never X → constraint | guarded statement | lock | isolation level, or the app owner -->
+## Access paths      <!-- path and its variants · frequency · latency need → index; indexes dropped as redundant -->
+## Tenancy & access  <!-- model · RLS yes/no · roles -->
+## Lifecycle         <!-- per table: history, retention mechanism, erasure path, soft delete yes/no -->
+## Sizing            <!-- inputs → rows and bytes at 1 and 3 years; working set vs RAM -->
+## Migration plan    <!-- step · lock/work class · N-1 safe · duration on the largest table (timing: references/migration-patterns.md, Runbook) · reversible -->
+## Open questions    <!-- each with the default assumed meanwhile -->
 ```
 
-**Why per-domain**:
-- Rollback is atomic — revert one domain without touching others
-- `git blame` attributes each domain's schema history to the right PR
-- PR review unit matches the feature unit
-- Never modify a migration that has been applied — add a new one. Editing applied migrations creates drift between environments and breaks rollback chains
+**Migrations** follow Stage 4. **Report back** in about 150 words plus one line per material finding: files written, one-way doors, `ADR owed` items, defaults assumed, open questions, migration risks, and anything the reader must act on.
 
-**Numbering**: Zero-padded sequential (`001`, `002`, ...). Follow the dev order from `docs/prd/prd.md` when deciding which domains migrate first.
+## Self-Review
 
-**Verbs**: `create_` for new tables, `add_` for columns/indexes, `alter_` for type changes, `backfill_` for data migrations, `drop_` for removals (use expand-contract — see `references/migration-patterns.md`).
-
-## Recommended Extensions
-
-Enable these when the design requires their capabilities:
-
-| Extension | Purpose | Enable When |
-|-----------|---------|-------------|
-| `btree_gist` | GiST operator support for B-tree types | Exclusion constraints (temporal data, reservations) |
-| `pg_trgm` | Trigram-based similarity | Fuzzy text search, `LIKE '%keyword%'` optimization |
-| `citext` | Case-insensitive text type | Case-insensitive UNIQUE columns (email, username) without `lower()` expression indexes |
-| `pgcrypto` | Cryptographic functions | Hashing passwords, generating UUIDs (pre-PG13) |
-| `pg_stat_statements` | Query performance tracking | Production monitoring (enable always) |
-| `pg_partman` | Automated partition management | Time-series partitioning in production |
-| `uuid-ossp` | UUID generation functions (v1/v1mc/v3/v4/v5 — no v7) | When you need v1/v3/v5 specifically. For v4, `gen_random_uuid()` is built-in (PG13+). For v7 (this skill's PK default), use PG18 `uuidv7()` or generate at the application layer |
-| `vector` (pgvector) | Vector similarity search (HNSW, IVFFlat) | Embeddings, semantic search, RAG — up to ~100M vectors co-located with relational data |
-
-```sql
-CREATE EXTENSION IF NOT EXISTS btree_gist;   -- needed for EXCLUDE constraints
-CREATE EXTENSION IF NOT EXISTS pg_trgm;       -- needed for fuzzy search indexes
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;  -- query performance tracking
-```
-
-## Critical Rules — Data / Performance Disasters
-
-These prevent data corruption, loss, or major regressions. Not negotiable.
-
-- **Never use FLOAT for monetary values** → `NUMERIC(precision, scale)`. FLOAT cannot represent decimals exactly; you will lose money.
-- **Always use TIMESTAMPTZ** for timestamps. `TIMESTAMP` (without tz) silently strips timezone info — a footgun across regions/clients.
-- **Index every FK you JOIN or filter on.** PostgreSQL does not auto-create FK indexes. Missing FK indexes turn parent-row updates/deletes into full table scans. Intentionally unindexed FKs must be documented.
-- **`ON DELETE` behavior must be explicit on every FK** (`CASCADE` / `RESTRICT` / `SET NULL` / `SET DEFAULT` / `NO ACTION`). The default differs by tool/intent and propagates surprises silently. (`NO ACTION`, the SQL default, can be deferred to end-of-transaction; `RESTRICT` cannot.) `ON UPDATE` is moot for immutable surrogate PKs (the default), but matters (`ON UPDATE CASCADE` vs `RESTRICT`) whenever a FK references a **mutable natural or composite key**.
-- **`CREATE INDEX CONCURRENTLY`** for any index added to a table that already serves production traffic. Plain `CREATE INDEX` takes a write lock for the duration.
-- **Destructive ops (`DROP COLUMN`, `RENAME`) follow expand-contract**, never direct. Direct DDL mid-deploy breaks rolling deployments.
-- **Auto-DDL (`synchronize: true` and friends) is forbidden in any deployed environment.** Migrations are the only sanctioned schema-mutation path.
-- **Never store secrets or PII carelessly.** Hash passwords with `pgcrypto` (`crypt()`/`gen_salt()`) — don't encrypt them. For reversible PII, prefer app-layer/envelope encryption (encrypted columns lose B-tree indexability and range/equality search). The audit-trail and event-sourcing patterns dump whole-row `to_jsonb(OLD/NEW)` — mask or exclude sensitive columns there or they leak into `audit_logs`. See `references/design-patterns.md` §3.
-
-## Roles & Least Privilege
-
-DDL produced by this skill is owned by a **migration/owner role**; the application connects as a separate **least-privilege role**. This separation is also what RLS depends on — policies don't apply to the table owner unless `FORCE ROW LEVEL SECURITY` is set, and never to superusers/`BYPASSRLS` roles (see Multi-tenancy below and `references/design-patterns.md` §6).
-
-```sql
--- Owner role owns the schema/tables and runs migrations; app role only does DML.
-CREATE ROLE app_owner NOLOGIN;
-CREATE ROLE app_rw LOGIN PASSWORD '...';        -- the role the application connects as
-
-REVOKE ALL ON SCHEMA public FROM PUBLIC;        -- no implicit access to the schema
-GRANT USAGE ON SCHEMA app TO app_rw;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA app TO app_rw;
--- Cover tables created by future migrations too:
-ALTER DEFAULT PRIVILEGES IN SCHEMA app GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_rw;
-```
-
-The app role must be **non-owner and non-superuser** (no `BYPASSRLS`) for tenant isolation to hold. Record the owner/app split and grants alongside the schema (this is the artifact behind review checklist item 7, "Security: access control").
-
-## Conventions — Defensible Defaults
-
-These are choices, not mandates. The skill's defaults are defensible; teams may swap them so long as consistency holds.
-
-- **PK default: UUID v7.** External-API-safe, distributed/offline-friendly, time-ordered (preserves index locality, unlike v4). BIGINT IDENTITY remains the right pick for internal-only IDs and megatables where 8-byte savings measurably matter — see "Primary Key Type Decision" below.
-- **Strings: TEXT by default.** No performance cost in PostgreSQL. Use `VARCHAR(n)` only when the length cap carries semantic weight you want enforced at the type level. Otherwise enforce length with `CHECK`.
-- **ENUM only when values are stable.** `ALTER TYPE ... ADD VALUE` can run inside a transaction (PG12+), but the new value can't be *used* until that transaction commits — so you can't add a value and insert rows using it in the same migration step, and values can't be cleanly removed or reordered. For anything user-extensible, use a lookup table.
-- **Default isolation: Read Committed.** Most OLTP fits. Escalate to Repeatable Read / Serializable per-operation only where correctness demands it (with retry logic).
-- **`created_at` / `updated_at` on entity tables**, except pure association/pivot tables (`user_role`) and append-only event tables (which need only `created_at`).
-- **Multi-tenancy default depends on tenant shape**:
-  - **Many small tenants (B2B SaaS)** → `tenant_id` column + RLS. Single DB, simple ops, isolation enforced in DB — *but only if RLS is wired correctly*: the table owner bypasses RLS unless `FORCE ROW LEVEL SECURITY` is set, and superuser/`BYPASSRLS` roles always bypass, so the app must connect as a dedicated non-owner role. Wrap `current_setting()` in a scalar subquery (`(SELECT current_setting('app.current_tenant', true))`) so it evaluates once per query, not per row, and still filter by `tenant_id` in the query (RLS predicates can suppress partition pruning and some pushdown). Benchmark before committing RLS for high-QPS tenants. See `references/design-patterns.md` §6.
-  - **Few large tenants (enterprise)** → schema-per-tenant or DB-per-tenant. Better blast-radius isolation, easier per-tenant tuning/backup, regulatory-friendlier.
-  - Either way, record as an ADR. Tenant-scoped composite indexes lead with `tenant_id` *only when* tenant-scoped queries dominate; cross-tenant analytics paths may want the opposite ordering.
-- **Foreign-key edge cases:** use `DEFERRABLE INITIALLY DEFERRED` for circular references or intra-transaction row reordering; **composite FKs** require a matching composite `UNIQUE`/PK on the parent — in multi-tenant schemas carry the tenant: `FOREIGN KEY (tenant_id, parent_id) REFERENCES parent (tenant_id, id)`.
-- **Design around your query patterns** — indexes serve real WHERE/JOIN, resultsets bounded, computed values cached when worthwhile.
-
-## Primary Key Type Decision
-
-PK type is a **one-way door** — changing it later requires rewriting every FK reference and external consumer. Record the choice as an ADR.
-
-| Situation | Choose | Why |
-|---|---|---|
-| **Default** — modern app with any external surface (API, mobile, third-party integration, possible future multi-region/offline) | **UUID v7** | Time-ordered (preserves B-tree locality, unlike v4). Safe to expose externally. Distributed/offline-safe. Avoids painful BIGINT→UUID migration if requirements grow. |
-| Pure internal IDs, never exposed externally, single-region only, and 8-byte savings are measurable (event logs, metrics, billion-row append-only tables) | **BIGINT IDENTITY** | 8 bytes vs 16, denser B-tree, human-readable in logs. Savings cascade through FK columns. |
-| Distributed ID generation across regions/clients (no central DB assignment) | **UUID v7** | No coordination needed; clients can mint IDs |
-| Offline-first clients that generate IDs before sync | **UUID v7** | Collision-safe without server round-trip |
-| Merging data from multiple systems later | **UUID v7** | No renumbering at merge time |
-
-**Never use UUID v4 for PKs on hot tables** — random ordering fragments B-tree indexes and hurts write performance. v4 is only acceptable for low-volume / low-write tables.
-
-### UUID v7 generation
-
-- **PostgreSQL 18+**: native `uuidv7()` — `id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7()`.
-- **PostgreSQL ≤17**: generate at the application layer (Node: `uuidv7` package; Python: `uuid_utils.uuid7()`; Rust: `Uuid::now_v7()`; Go: `github.com/gofrs/uuid` v5+; Java: `com.github.f4b6a3:uuid-creator`). Pass the generated UUID into `INSERT` explicitly.
-- The `uuid-ossp` extension provides v1/v1mc/v3/v4/v5 — not v7. For v4, prefer the built-in `gen_random_uuid()` (PG13+); note it produces v4, the version we avoid for hot-table PKs.
-
-**Mixed strategy is fine**: UUID v7 for most tables, BIGINT for the handful of high-volume internal tables where bytes measurably matter (events, audit logs). Just don't flip a whole schema's convention later.
+Skip items for stages that did not run.
+- Every invariant has a rung or a named owner; every system.md Write-path Integrity row maps to one.
+- Every business key declares its uniqueness scope. No float or `money` for money, no default currency or rate, `timestamptz` for instants, ON DELETE on every FK.
+- Index gate: every non-constraint index names the paths and variants it serves, chosen against every variant of its endpoint (a partial index names what it leaves unserved); every hot path has an index; the table's index set was listed with scan counts, redundant prefixes dropped as runbook rows and zero-scan indexes flagged for an owner check; EXPLAIN ran on seeded data when a database was reachable.
+- Tenancy: `tenant_id` in every UNIQUE and FK (`schema_review.sql` §11 empty or explained); RLS forced where on, and on for every table in an API-exposed schema; as the app role with tenant A set, every scoped table returns no rows of tenant B and rejects an insert of B's id.
+- One-way doors recorded with their rejected alternatives; `ADR owed` items listed.
+- Every growing or personal table has a retention mechanism and an erasure path.
+- Every migration statement carries its lock and work class and a timed or estimated duration; no ACCESS EXCLUSIVE scan or rewrite on a live table exceeds the stall budget or shares a runner transaction with a later step; every step is N-1 safe; `CONCURRENTLY` runs with both timeouts at 0; every backfill is keyset-walked, idempotent, resumable, bounded, throttled and, on RLS tables, run as a role that bypasses RLS.
+- Part 2: load attributed before any cause was named (statements by share of a window, growth split into calls/s and mean ms); every cause that owns a material share named with its numbers (the lowest node misestimated 10× or more, the call-rate growth and its source, or the root blocker); each fix at the cheapest layer that works; the reproduction prepared, run 6+ times, as the app role.
+- Delivered calling code checked at its edges: pagination fetches one extra row and returns no next cursor after an exactly full last page; cursors carry every sort key at full precision; retries are bounded and jittered.
+- Every version-tagged feature (PG15+ to PG19+, collation behavior included) matches the target version or names its fallback.
+- **Footprint**: database.md within its budget for the request's size; one runbook row per step; each report within its per-cause or per-finding budget; no material finding dropped to fit, and every trade-off and follow-up the reader must act on stated in the reply, not only in a script comment or a file.

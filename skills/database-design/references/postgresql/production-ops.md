@@ -1,136 +1,67 @@
 # PostgreSQL Production Operations
 
-Patterns for running PostgreSQL reliably in production.
+Incidents, vacuum and wraparound, connection pooling, major upgrades, and the settings that make problems visible. The queries cited as § numbers are in `scripts/query_diagnostics.sql`.
 
-For runnable diagnostic queries against a live database (slowest queries, lock waits, bloat, vacuum lag, stale planner stats), see `scripts/query_diagnostics.sql` — psql-ready queries you can execute directly.
+## Incident triage
 
-## Table of Contents
+Stabilize first, explain later. Mid-incident, change only settings that apply without a restart (`pg_settings.context` other than `postmaster`): a restart is a second outage.
 
-1. [Zero-Downtime Migrations](#1-zero-downtime-migrations)
-2. [Backfilling Large Tables](#2-backfilling-large-tables)
-3. [VACUUM & ANALYZE Strategy](#3-vacuum--analyze-strategy)
-4. [Connection Pooling](#4-connection-pooling)
-5. [Index Maintenance](#5-index-maintenance)
-6. [PostgreSQL Configuration Tuning](#6-postgresql-configuration-tuning)
-7. [Enabling pg_stat_statements](#7-enabling-pg_stat_statements)
-8. [Monitoring Checklist](#8-monitoring-checklist)
+1. **What changed, and when?** Deploy, migration, bulk load or backfill, traffic shift, upgrade, failover, config change. A step change at a known time points to that change; a slow climb points to growth, bloat or a pinned xmin horizon.
+2. **Shape** (§1): group sessions by state and wait event.
+   - `Lock` waits → the blocker tree (§2). Terminate the root blocker, never the queue behind it. The usual root is an idle-in-transaction session, or DDL waiting behind one and blocking everyone after it (the lock queue: `references/migration-patterns.md`).
+   - Many `idle in transaction` (§3) → the application holds transactions open across network calls. The fix is in the application; `idle_in_transaction_session_timeout` on the app role is the backstop.
+   - `active` with no wait event → CPU. Attribute the load before blaming a plan (`references/postgresql/query-tuning.md`, Attribute the load first): statements by share of the §6 window, each split into calls/s and mean ms, before vs during. A flipped plan shows as mean up at steady calls; demand as calls up on a steady mean (a deploy's new caller, retries after timeouts, a poller, one tenant). Name every statement that owns a material share: an incident can have several causes.
+   - `IO` waits (`DataFileRead`) everywhere → the working set no longer fits in memory, a plan flipped to a scan, or a statement's call rate grew: rank the §6 window by `shared_blks_read`.
+   - `LWLock` waits, by `wait_event`. `LockManager`: queries lock more relations (partitions and their indexes) than a backend's fast-path slots (16 before PG18, sized from `max_locks_per_transaction` since, so raising it adds slots after a restart); prune partitions at plan time, drop unused indexes. `SubtransSLRU`/`SubtransBuffer`: some transaction holds more than 64 subtransactions (savepoints, ORM nested transactions, `EXCEPTION` blocks in loops), worst on replicas; remove them. `MultiXact*`: many transactions locking the same rows at once, typically FK checks against a hot parent or lookup row. `WALWrite`: many tiny commits; batch them. Any other: look it up in the monitoring docs before tuning.
+3. **"Too many connections"**: raising `max_connections` trades errors for contention collapse. Pool instead (below), and check that app instances × pool size fits the pooler and the server.
+4. **Leave anti-wraparound vacuum alone** (`… (to prevent wraparound)` in §2 or §7): cancelled, it restarts and blocks your DDL again. Cancel the DDL instead.
 
-## 1. Zero-Downtime Migrations
+**Report** in about 300 words for one cause, plus about 100 per further cause; never drop a material finding to fit, compress it to one line:
+1. **Evidence**: what changed and when, the session shape, the root blocker, and the load table (statement · share of the window · calls/s and mean ms before → during).
+2. **Stabilized by**: what was done during the incident.
+3. **Causes**, ranked by the share they explain, each with its lasting fix.
+4. **Other contributors and follow-ups**, one line each, and the alert that would have caught it sooner.
 
-Lock-safe execution of schema changes against live traffic lives in `references/migration-patterns.md` (the single source): the **Migration Session Preamble** (`lock_timeout` + `statement_timeout`, one DDL step per short transaction, retry on SQLSTATE `55P03`, finding the blocker, the execution runbook), `CREATE INDEX CONCURRENTLY` plus the invalid-index check and drop-then-retry, `NOT VALID` → `VALIDATE CONSTRAINT` for CHECK / FK / NOT NULL (including the PG18+ `NOT NULL ... NOT VALID` path), and expand-contract renames.
+Maintenance (vacuum, freeze, repack) ships as runbook rows (`references/migration-patterns.md`).
 
-## 2. Backfilling Large Tables
+## Vacuum and wraparound
 
-See `references/migration-patterns.md` § Large Table Migrations: commit per batch (a `PROCEDURE` + `CALL`, a top-level `DO` with `COMMIT`, or an app-side loop — never inside the migration tool's wrapping transaction), walk a primary-key keyset with an idempotent `IS NULL` recheck, no `FOR UPDATE` / `SKIP LOCKED`, throttle with `pg_sleep` and against `pg_stat_replication.replay_lag`, and finish with `ANALYZE`.
+Vacuum is healthy when it **reaches** every table in time and **removes** what it finds.
 
-## 3. VACUUM & ANALYZE Strategy
+- **Dead tuples survive a vacuum** (§10, high `n_dead_tup` just after `last_autovacuum`): the xmin horizon is pinned, and no tuning helps until its holder is gone. Check §4 in this order: the oldest `backend_xmin` (a long or idle-in-transaction session), replication slots (`xmin`, `catalog_xmin`; an inactive slot also retains WAL until the disk fills), prepared transactions, standbys sending `hot_standby_feedback`. Then end the session, drop the dead slot, or finish the prepared transaction.
+- **Vacuum reaches big tables too late**: by default it starts when dead rows reach about 20% of the table. Set per-table `autovacuum_vacuum_scale_factor` to 0.01–0.05 on large tables (PG18 also caps the trigger with `autovacuum_vacuum_max_threshold`). On append-only tables lower `autovacuum_vacuum_insert_scale_factor`, so pages get frozen and marked all-visible. These are online changes (SHARE UPDATE EXCLUSIVE).
+- **Vacuum runs too slowly**: `autovacuum_vacuum_cost_limit` is shared by all running workers, so more workers split the same budget. Raise the limit, globally or per table, before adding workers.
+- **Wraparound** (§5): alert when `age(datfrozenxid)` passes 2× `autovacuum_freeze_max_age` or `mxid_age(datminmxid)` 2× `autovacuum_multixact_freeze_max_age` (autovacuum is losing), and in any case at 1 billion; page at 1.5 billion. Wraparound sits near 2.1 billion: the server first warns, then refuses new transaction IDs. Clear whatever pins the horizon (§4), then run a plain `VACUUM` on the tables with the oldest `relfrozenxid` (§5), or database-wide: not `VACUUM FREEZE` (more work than needed), not `VACUUM FULL` (it needs a transaction ID), and no single-user mode, whatever an older server's hint says.
+- **Bloat**: measure it with `pgstattuple` (`pgstattuple_approx` on large tables), not from table size. Rebuild online with pg_repack (needs a primary key or a NOT NULL unique index, free disk of about twice the table and its indexes, brief ACCESS EXCLUSIVE locks at start and end, no DDL on the table meanwhile) or, where the server has it (PG19+), `REPACK … CONCURRENTLY`. Never `VACUUM FULL` a live table.
+- `ANALYZE` a table after a bulk load or backfill; autoanalyze lags.
 
-### Why It Matters
-- VACUUM reclaims dead tuples (from UPDATE/DELETE)
-- ANALYZE refreshes planner statistics (row counts, value distribution)
-- Without VACUUM: table/index bloat grows indefinitely
-- Without ANALYZE: planner makes wrong decisions (Seq Scan instead of Index Scan)
+## Pooling
 
-### Monitor Dead Tuples
-```sql
-SELECT
-    schemaname, relname,
-    n_live_tup, n_dead_tup,
-    ROUND(n_dead_tup * 100.0 / NULLIF(n_live_tup + n_dead_tup, 0), 2) AS dead_pct,
-    last_vacuum, last_autovacuum, last_analyze, last_autoanalyze
-FROM pg_stat_user_tables
-WHERE n_dead_tup > 1000
-ORDER BY n_dead_tup DESC;
-```
+Pool application traffic in transaction mode (PgBouncer or the platform's pooler). Size pools for **active** work: start near 2–4× the server's CPU cores across all pools and measure (I/O-latency-bound storage tolerates more). An idle backend costs a few MiB (`ps` overstates it): pool to cap active connections and setup cost, not idle memory. Keep pool sizes plus reserves below `max_connections`, leaving admin and replication headroom.
 
-### Per-Table Autovacuum Tuning (for hot tables)
-```sql
--- More aggressive vacuum for frequently updated tables
-ALTER TABLE orders SET (
-    autovacuum_vacuum_scale_factor = 0.05,   -- trigger at 5% dead tuples (default 20%)
-    autovacuum_analyze_scale_factor = 0.02,  -- re-analyze at 2% changes
-    autovacuum_vacuum_cost_delay = 2         -- less throttling
-);
-```
+Transaction pooling breaks anything scoped to a session:
+- session `SET` → `SET LOCAL`, or `set_config(name, value, true)` per transaction (tenant context for RLS: `references/design-patterns.md`);
+- session advisory locks → `pg_advisory_xact_lock`;
+- `LISTEN`, temporary tables, `WITH HOLD` cursors and SQL-level `PREPARE`/`EXECUTE` → a session-mode pool or a direct connection;
+- protocol-level prepared statements work through PgBouncer when `max_prepared_statements` > 0 (the default is 200 in current releases and 0 in older ones: check yours). After a migration that changes a statement's result type, clients fail with "cached plan must not change result type" until the pooler runs `RECONNECT`.
 
-### When to Run Manual ANALYZE
-- After bulk INSERT, UPDATE, or DELETE
-- After creating new indexes
-- When EXPLAIN shows row estimate ≠ actual (stale stats)
+## Upgrades
 
-```sql
-ANALYZE orders;           -- specific table
-ANALYZE;                   -- entire database (use sparingly)
-```
+A major-version upgrade or host move: list the extensions (each must exist on the target), size, replicas and CDC consumers, then choose by downtime budget.
+- **`pg_upgrade --link`**, minutes down. Rehearse on a restored copy; once the new cluster starts, the way back is the pre-upgrade backup. PG18+ `initdb` enables data checksums and both clusters must match (`--no-data-checksums`). pg_upgrade keeps logical slots only from a PG17+ source; from older ones, CDC consumers re-snapshot.
+- **Logical replication** into the new major, seconds down: every updated table needs a primary key or replica identity, DDL freezes, sequence values are copied at cutover (unless the old server is PG19+), and large objects are not carried. A host's blue/green upgrade is often this underneath.
+- **Before traffic**, run the `vacuumdb` steps pg_upgrade prints: PG18+ keeps planner statistics but not extended ones (`--analyze-in-stages --missing-stats-only`).
+- **A new OS image that moves glibc** reorders text and silently corrupts text indexes: heed the collation-version warning, `REINDEX` text indexes, verify with amcheck.
 
-## 4. Connection Pooling
+Ship it as runbook rows (`references/migration-patterns.md`).
 
-PgBouncer configuration, pool modes, what transaction pooling breaks (session `SET`, session-level advisory locks, `LISTEN`/`NOTIFY`, protocol-level prepared statements on PgBouncer < 1.21 or with `max_prepared_statements = 0`), and pool sizing against `max_connections`: see `references/performance-patterns.md` §3.
+## Settings
 
-## 5. Index Maintenance
+Set only what differs from the default:
+- `track_io_timing = on` (check its clock cost with `pg_test_timing`); `log_lock_waits = on` (the default from PG19); `log_autovacuum_min_duration`, `log_min_duration_statement` and `log_temp_files` low enough that slow vacuums, slow statements and spills reach the log.
+- `statement_timeout` and `idle_in_transaction_session_timeout` per app role (`ALTER ROLE app_rw SET …`), never global: migrations and maintenance need other values.
+- `shared_preload_libraries = 'pg_stat_statements,auto_explain'` (restart; managed services expose both as parameters). `auto_explain`: `log_min_duration` near the latency SLO, `log_analyze = on` with `sample_rate` below 1 on busy systems, `log_timing = off`.
 
-Finding unused indexes (excluding PK / UNIQUE / replica-identity indexes), rebuilding bloated indexes with `REINDEX INDEX CONCURRENTLY`, and index sizes: see `references/indexing-strategy.md` § Index Maintenance and `scripts/query_diagnostics.sql` (#4 unused indexes, #6 invalid indexes, #7 sizes).
+## Alerts
 
-## 6. PostgreSQL Configuration Tuning
-
-Memory parameters (`shared_buffers`, `work_mem`, `maintenance_work_mem`, `effective_cache_size`), the cache-hit-ratio check, and WAL settings for high-write loads: see `references/performance-patterns.md` §2.
-
-## 7. Enabling pg_stat_statements
-
-Several diagnostic queries in this skill rely on `pg_stat_statements`. It's not enabled by default.
-
-```sql
--- 1. Add to postgresql.conf (requires restart)
--- shared_preload_libraries = 'pg_stat_statements'
-
--- 2. Create the extension (no restart needed after library is loaded)
-CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
-
--- 3. Verify it's working
-SELECT count(*) FROM pg_stat_statements;
-```
-
-Key settings (postgresql.conf):
-```ini
-pg_stat_statements.max = 5000          # max tracked statements (default 5000)
-pg_stat_statements.track = top         # track top-level statements only (default)
-pg_stat_statements.track_utility = on  # track utility commands (CREATE, ALTER, etc.)
-```
-
-On managed PostgreSQL services (RDS, Cloud SQL, Neon, Supabase), this extension is usually pre-installed — you just need `CREATE EXTENSION`.
-
-```sql
--- Reset statistics (useful after deploying query changes)
-SELECT pg_stat_statements_reset();
-```
-
-### auto_explain — capture the plan, not just the aggregate
-
-`pg_stat_statements` tells you *which* query regressed; `auto_explain` logs the *actual plan* of the slow execution — the difference between knowing and guessing during an incident:
-
-```ini
-shared_preload_libraries = 'pg_stat_statements,auto_explain'
-auto_explain.log_min_duration = '500ms'   # log plans for anything slower
-auto_explain.log_analyze = on             # include actual rows/timing
-auto_explain.log_buffers = on
-auto_explain.sample_rate = 1.0            # lower (e.g. 0.1) on very hot systems — log_analyze adds overhead
-```
-
-At minimum, set `log_min_duration_statement = '1s'` so slow statements land in the log even without the module.
-
-## 8. Monitoring Checklist
-
-| What to Monitor | Query / Tool | Threshold |
-|-----------------|-------------|-----------|
-| Cache hit ratio | `pg_stat_database` | > 99% |
-| Dead tuple ratio | `pg_stat_user_tables` | < 10% per table |
-| Unused indexes | `pg_stat_user_indexes` | Drop if idx_scan = 0 |
-| Long-running transactions | `pg_stat_activity` | Alert > 5 min |
-| Lock contention | `pg_locks` + `pg_stat_activity` | Alert on blocking > 30s |
-| Slow queries | `pg_stat_statements` | Investigate top 10 by avg_ms |
-| Connection count | `pg_stat_activity` | Alert at 80% of max_connections |
-| WAL generation rate | `pg_stat_wal` (PG14+) | Baseline + alert on spikes |
-| Replication lag | `pg_stat_replication` (`replay_lag`) | Alert past what read-after-write flows tolerate; throttle backfills against it |
-| Idle-in-transaction sessions | `pg_stat_activity` (`state = 'idle in transaction'`) | Alert > 5 min — they block VACUUM, `VALIDATE`, and DDL; set `idle_in_transaction_session_timeout` as the backstop |
-
-Run `scripts/query_diagnostics.sql` weekly and during every incident — point-in-time reads of these same signals, plus FK/index/bloat checks.
+Starting thresholds: oldest xmin age and freeze age (above); slot retained WAL; blocked sessions > 30 s; idle in transaction > 5 min; connections > 80% of the limit; `replay_lag` past the read-after-write budget; any invalid index (§9).

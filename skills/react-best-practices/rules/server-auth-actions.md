@@ -1,96 +1,59 @@
 ---
-title: Authenticate Server Actions Like API Routes
-impact: CRITICAL
-impactDescription: prevents unauthorized access to server mutations
-tags: server, server-actions, authentication, security, authorization
+title: Server Functions Are Public Endpoints; Check Everything Inside the Handler
+tags: server, security, server-functions, tenancy
 ---
 
-## Authenticate Server Actions Like API Routes
+After the Server boundary order (authenticate, validate, load tenant-scoped, authorize): write, still scoped; invalidate; return `{ ok } | { error }` with a generic message, logging the details. Input never carries the caller's identity, tenant or role; a target user's id is a resource id, tenant-scoped like any other.
 
-**Impact: CRITICAL (prevents unauthorized access to server mutations)**
+**Incorrect:** `deleteUser(userId)` that allows `role === 'admin' || session.userId === userId`, then deletes by `userId` alone. An admin of org A deletes a user of org B.
 
-Server Actions (functions with `"use server"`) are exposed as public endpoints, just like API routes. Always verify authentication and authorization **inside** each Server Action—do not rely solely on middleware, layout guards, or page-level checks, as Server Actions can be invoked directly.
+**Correct (a shared core, then a thin adapter per framework):**
 
-Next.js documentation explicitly states: "Treat Server Actions with the same security considerations as public-facing API endpoints, and verify if the user is allowed to perform a mutation."
+```ts
+// lib/members.server.ts: server-only (Next: import 'server-only'). Never a 'use server'
+// file, whose exports are endpoints that would take `session` from the caller.
+export const Input = z.object({ memberId: z.uuid(), email: z.email() })
+export type Result = { ok: true } | { error: string; fields?: Record<string, string> }
 
-**Incorrect (no authentication check):**
-
-```typescript
-'use server'
-
-export async function deleteUser(userId: string) {
-  // Anyone can call this! No auth check
-  await db.user.delete({ where: { id: userId } })
-  return { success: true }
+export async function changeMemberEmail(session: Session, input: z.infer<typeof Input>): Promise<Result> {
+  const member = await db.member.findFirst({ where: { id: input.memberId, orgId: session.orgId } })
+  if (!member) return { error: 'Not found' }
+  if (session.role !== 'admin' && member.userId !== session.userId) return { error: 'Forbidden' }
+  await db.member.update({ where: { id: member.id, orgId: session.orgId }, data: { email: input.email } })
+  return { ok: true }
 }
 ```
 
-**Correct (authentication inside the action):**
-
-```typescript
+```ts
+// Next.js, called through useActionState
 'use server'
-
-import { verifySession } from '@/lib/auth'
-import { unauthorized } from '@/lib/errors'
-
-export async function deleteUser(userId: string) {
-  // Always check auth inside the action
-  const session = await verifySession()
-  
-  if (!session) {
-    throw unauthorized('Must be logged in')
-  }
-  
-  // Check authorization too
-  if (session.user.role !== 'admin' && session.user.id !== userId) {
-    throw unauthorized('Cannot delete other users')
-  }
-  
-  await db.user.delete({ where: { id: userId } })
-  return { success: true }
+export async function updateMemberEmail(_prev: Result | null, form: FormData): Promise<Result> {
+  const session = await getSession()
+  if (!session) return { error: 'Sign in again' }
+  const raw = Object.fromEntries(form)
+  const input = Input.safeParse(raw)
+  // React resets the form even on this error: send back what to re-render as defaultValue
+  if (!input.success) return { error: 'Invalid input', fields: { email: String(raw.email ?? '') } }
+  const result = await changeMemberEmail(session, input.data)
+  if ('ok' in result) revalidatePath('/members')
+  return result
 }
-```
 
-**With input validation:**
-
-```typescript
-'use server'
-
-import { verifySession } from '@/lib/auth'
-import { z } from 'zod'
-
-const updateProfileSchema = z.object({
-  userId: z.string().uuid(),
-  name: z.string().min(1).max(100),
-  email: z.string().email()
+// TanStack Start; on { ok } the client calls router.invalidate() or its query invalidation
+const authMiddleware = createMiddleware({ type: 'function' }).server(async ({ next }) => {
+  const session = await getSession()
+  if (!session) throw new Error('Sign in again')   // thrown errors reach the client
+  return next({ context: { session } })
 })
 
-export async function updateProfile(data: unknown) {
-  // Validate input first
-  const validated = updateProfileSchema.parse(data)
-  
-  // Then authenticate
-  const session = await verifySession()
-  if (!session) {
-    throw new Error('Unauthorized')
-  }
-  
-  // Then authorize
-  if (session.user.id !== validated.userId) {
-    throw new Error('Can only update own profile')
-  }
-  
-  // Finally perform the mutation
-  await db.user.update({
-    where: { id: validated.userId },
-    data: {
-      name: validated.name,
-      email: validated.email
-    }
-  })
-  
-  return { success: true }
-}
+export const updateMemberEmail = createServerFn({ method: 'POST' })
+  .middleware([authMiddleware])   // runs inside this call, unlike a route's beforeLoad
+  .validator(Input)               // .inputValidator() in some 1.x releases
+  .handler(({ data, context }) => changeMemberEmail(context.session, data))
 ```
 
-Reference: [https://nextjs.org/docs/app/guides/authentication](https://nextjs.org/docs/app/guides/authentication)
+TanStack Start adds its CSRF middleware automatically only when the app has no `src/start.ts`; with one, register `createCsrfMiddleware()` in its `requestMiddleware`. CSRF protection is not authorization.
+
+**Prove it** with one test per check, calling the function directly rather than through the UI: no session; another tenant's id (the same not-found as a missing one); a role below the one required; malformed input; the same submit twice (one effect). Rate-limit functions that send, charge or enumerate, by actor and by IP.
+
+Sources: https://nextjs.org/docs/app/guides/authentication · https://tanstack.com/start/latest/docs/framework/react/guide/server-functions · https://zod.dev/v4/changelog

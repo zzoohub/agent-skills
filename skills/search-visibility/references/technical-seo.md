@@ -1,327 +1,160 @@
-# Technical SEO Reference
+# Technical SEO
 
-Detailed reference for technical SEO covering crawling, indexing, site architecture, Core Web Vitals, rendering, and AI crawler considerations.
+Read when the work touches any section below. Other files point here by number: crawler table §2, FAQ/HowTo rule §7. Platform facts were checked on 2026-10-08 against the primary docs named: cite them with that date. CDN defaults and program terms change fastest; re-check one a decision rides on, and when you can't, list it as a check before the decision, with an owner.
 
-## Table of Contents
+## Triage order
 
-1. [Crawling and Indexing](#1-crawling-and-indexing)
-2. [Site Architecture](#2-site-architecture)
-3. [Rendering](#3-rendering)
-4. [Core Web Vitals](#4-core-web-vitals)
-5. [HTTPS and Security](#5-https-and-security)
-6. [Structured Data (Schema Markup)](#6-structured-data-schema-markup)
-7. [International SEO (hreflang)](#7-international-seo-hreflang)
-8. [Image and Video SEO](#8-image-and-video-seo)
-9. [Site Migration Checklist](#9-site-migration-checklist)
-10. [Common Technical SEO Issues Checklist](#10-common-technical-seo-issues-checklist)
+For each template that carries traffic or revenue, check one URL, then count the affected URLs. Stop at the first failing stage and fix it before anything below.
 
----
+1. **Fetch.** Each target engine's search bot gets a 200 through robots.txt, the CDN/WAF and the origin; a valid, auto-renewed certificate; HTML under 2 MB. Evidence: the live URL Inspection tests in Search Console and Bing Webmaster Tools; logs filtered to each operator's published IP ranges (§1, §2). A curl with a borrowed user agent is a hint, never a finding: WAFs judge bots by IP and network.
+2. **Index controls.** Money URLs are self-canonical, not noindexed or snippet-blocked, not Disallowed; links, sitemap and hreflang agree (§1, §2).
+3. **Indexed.** Each template's sitemap is mostly indexed, and exclusions are intended (§3).
+4. **Rendered.** Content, links, canonical and markup survive rendering; quotable text is in the raw HTML (§4).
+5. **Discovered.** Money pages are linked from pages Google crawls often; no orphans (§5).
+6. **Experience.** The smartphone page, which Google indexes, keeps desktop's main content, links, structured data, title and robots meta (tabs and accordions are fine); Core Web Vitals pass at p75 on money templates (§6).
+7. **Enhancements.** Valid markup for live features, reciprocal hreflang, indexable media (§7, §8, §10).
 
-## 1. Crawling and Indexing
+Symptoms that point straight to a stage:
+- A template's clicks collapse right after a release → noindex, canonical, Disallow or 5xx shipped with it → diff the release's `<head>` and robots.txt.
+- Ranks in Google and Bing, never cited by ChatGPT → OAI-SearchBot blocked in robots.txt or at the CDN → its status codes in logs.
+- Ranks for the head query, never an AI Overview supporting link → a snippet control, the Search generative AI exclusion, or no ranking for the sub-queries (§2).
 
-### How Search Engines Discover Content
+## 1. Index controls and crawl
 
-Search engines use crawlers (bots) to discover pages by following links and reading sitemaps. A page must be crawled before it can be indexed, and indexed before it can appear in search results.
-
-The process: **Discovery → Crawl → Render → Index → Rank**
-
-### robots.txt
-
-Controls which URLs crawlers can access on your site. Located at `yoursite.com/robots.txt`.
-
-Key rules:
-- `User-agent: *` applies to all crawlers
-- `Disallow: /path/` blocks crawling of that directory
-- `Allow: /path/page` overrides a broader Disallow
-- `Sitemap: https://yoursite.com/sitemap.xml` points crawlers to your sitemap
-
-Common mistakes:
-- Accidentally blocking CSS/JS files that crawlers need to render pages
-- Blocking entire sections of the site without realizing it
-- Using robots.txt to try to remove pages from the index (it does not work, use noindex instead)
-- Forgetting to update robots.txt after site migrations
-
-### AI Crawler Considerations
-
-AI platforms use their own crawlers. If these are blocked, your content will not appear in AI-generated answers.
-
-This is the canonical AI user-agent table for the skill (measurement.md and ai-platform-optimization.md reference it). The function column matters more than the name: the bots that get you **cited** in AI answers are the search/retrieval agents, not the training crawlers.
-
-| User-agent | Platform | Function |
+| Goal | Use | Not for |
 |---|---|---|
-| Googlebot | Google | Search index — also powers AI Overviews and AI Mode |
-| OAI-SearchBot | OpenAI | ChatGPT Search citation/inclusion (this controls ChatGPT Search visibility) |
-| ChatGPT-User | OpenAI | User-initiated live fetches from ChatGPT |
-| GPTBot | OpenAI | Model training |
-| PerplexityBot | Perplexity | Search index / citation |
-| Perplexity-User | Perplexity | User-initiated live fetches |
-| Claude-SearchBot | Anthropic | Search indexing for Claude |
-| Claude-User | Anthropic | User-initiated live fetches |
-| ClaudeBot | Anthropic | Model training |
-| Google-Extended | Google | Opt-out *token* for Gemini training and for grounding in Gemini Apps / Vertex AI (not a fetcher; does NOT affect Search, AI Overviews, or AI Mode) |
-| Applebot-Extended | Apple | Opt-out *token* for Apple Intelligence training |
-| Bytespider | ByteDance | Training |
-| CCBot | Common Crawl | Bulk crawl, commonly used as training data |
-
-Important:
-- For AI-search **citation** (usually the goal), the agents that matter are the search/retrieval bots — OAI-SearchBot, PerplexityBot, Claude-SearchBot, and Googlebot — not the training crawlers (GPTBot, ClaudeBot, CCBot, Bytespider). You can allow OAI-SearchBot for ChatGPT Search visibility while disallowing GPTBot for training.
-- Blocking Google-Extended blocks Gemini training data and grounding in Gemini Apps / Vertex AI but does NOT block AI Overviews or AI Mode (those use Googlebot). Google-Extended and Applebot-Extended are opt-out tokens, not crawlers.
-- Check your CDN/bot settings as well as robots.txt: some CDNs (e.g., Cloudflare) block AI crawlers by default, so you may be blocking the search bots you want to be cited by (see `ai-platform-optimization.md`). Note also that robots.txt directives do not reliably control every vendor — PerplexityBot has been documented using undeclared stealth crawlers.
-
-**Cloudflare Content Signals Policy (Sept 24 2025)** — distinct from Content Independence Day. A new `Content-Signal:` robots.txt directive lets operators set yes/no per category — **search**, **ai-input** (real-time generative answers), **ai-train** — auto-applied to 3.8M+ managed domains with a recommended default of search=yes, ai-train=no, and **ai-input deliberately left unspecified**. The policy text is CC0 and references EU Directive 2019/790 Article 4 (potential EU legal weight). **Decision:** if you want AI-answer citations, verify `ai-input` is not set to `no` on your managed robots.txt — a managed default can silently opt you out of generative answer engines. Pair with **Pay Per Crawl** (HTTP 402, customers issuing 1B+/day): an engine that won't pay a charged crawler simply won't fetch and therefore can't cite, so decide which *citation* bots to grant free access to, separately from *training* bots you may monetize or block.
-
-### XML Sitemaps
-
-A file that lists all URLs you want search engines to index.
-
-Best practices:
-- Include only canonical, indexable URLs (200 status, no noindex)
-- Keep under 50,000 URLs per sitemap file, under 50MB uncompressed
-- Use sitemap index files for large sites
-- Include `<lastmod>` dates and keep them accurate (only update when content meaningfully changes)
-- Submit via Google Search Console and reference in robots.txt
-- Exclude URLs blocked by robots.txt or set to noindex
+| Never fetch a URL pattern (internal search, cart, sort orders, facets without demand) | robots.txt `Disallow` | Deindexing: a linked, blocked URL can be indexed without a snippet |
+| Keep a crawlable page out of the index | `noindex` (meta or `X-Robots-Tag`) | Saving crawl: Google still fetches it |
+| Consolidate duplicates | `rel=canonical`, matched by links, sitemap and hreflang | Forcing Google: it is a hint |
+| Hide a URL now (leak, legal) | Search Console Removals plus a permanent control | Permanence: it lapses after about six months |
 
-### Indexation Management
+- **Never stack controls on one URL.** Google cannot see the noindex or canonical on a Disallowed URL, so it lingers as "Indexed, though blocked by robots.txt". To deindex it, lift the Disallow until Google has recrawled the noindex.
+- **Never change URLs outside a migration** (§9).
 
-**noindex**: Prevents a page from appearing in search results while still allowing crawling.
-- Use `<meta name="robots" content="noindex">` in the HTML head
-- Or use the `X-Robots-Tag: noindex` HTTP header
-- Use for: thank you pages, internal search results, thin tag/category pages, staging environments
+**Crawl budget** matters only at 1M+ unique pages changing weekly, 10k+ changing daily, or many URLs in "Discovered – currently not indexed" (Google's crawl-budget guide). Elsewhere, slow indexing is a quality or linking problem (§3, §5). Levers: Disallow URLs never worth fetching, 404/410 removed pages, no redirect chains, fast responses without 5xx.
 
-**Canonical tags**: Tell search engines which version of a page is the main one when duplicate or near-duplicate versions exist.
-- Use `<link rel="canonical" href="https://yoursite.com/preferred-url">` in the HTML head
-- Self-referencing canonicals (a page pointing to itself) are a best practice
-- Do not canonical to a completely different page, that is a redirect use case
+**Faceted navigation.** A facet with search demand ("red running shoes") gets an indexable static URL: its own title and H1, internal links, a stable parameter order, a 404 when empty. Disallow the rest, or keep those filters in URL fragments (`#`); Google calls canonical and nofollow "generally less effective in the long term" here. *Break:* a facet URL that already earns traffic stays open until its static replacement is live and redirected.
 
-### Crawl Budget
+**Sitemaps.** One per template, so indexing can be read per template (§3); only canonical, indexable 200 URLs; `lastmod` changed only with real edits, since Google trusts it only when consistently accurate. For Bing, Naver and other IndexNow engines, ping IndexNow on publish, update and delete; Google does not use it.
 
-For large sites (100K+ pages), crawl budget becomes important. Google allocates a finite number of crawls per site per day.
+## 2. Crawler access and AI controls
 
-Optimize crawl budget by:
-- Ensuring important pages are easily reachable (shallow click depth)
-- Removing or noindexing low-value pages (thin content, parameter variations, outdated content)
-- Fixing soft 404s and redirect chains
-- Keeping server response times fast
-- Using internal linking to prioritize important pages
-- Monitoring crawl stats in Google Search Console
+The role decides what a block costs. The table is not exhaustive: new agents appear every month, so extend it from your logs (the user agents and IPs fetching money templates) and each operator's bot page.
 
----
+| Role | Agents (operator) | Honors robots.txt | Blocking costs |
+|---|---|---|---|
+| Search | Googlebot, incl. AI Overviews and AI Mode | Yes | Google Search and its AI features |
+| Search | Bingbot: Bing and Copilot | Yes | Bing and Copilot citations |
+| Search | OAI-SearchBot: ChatGPT search | Yes; ~24 h to apply | ChatGPT search answers; navigational links may remain |
+| Search | PerplexityBot; Claude-SearchBot (Anthropic); Meta-WebIndexer (Meta AI); Applebot (Siri, Spotlight, Safari); DuckAssistBot (DuckDuckGo's AI answers); Amzn-SearchBot (Alexa; unnamed, it follows your other search bots' rules); Yeti (Naver) | Yes | That engine's results and citations |
+| User fetch | ChatGPT-User ("may not apply"); Perplexity-User ("generally ignores"); Google-Agent and Google's other user-triggered fetchers ("generally ignore"); Meta-ExternalFetcher (may bypass); Amzn-User ("may not follow all"); Claude-User (honors) | Mostly no | Live fetches while answering; control at the CDN/WAF |
+| Training | GPTBot (OpenAI), ClaudeBot (Anthropic), CCBot (Common Crawl, an open corpus many model builders train on), Bytespider (ByteDance); Amazonbot (improves Amazon's products; may train its models); Meta-ExternalAgent (training, and "improving products by indexing content directly") | Yes, per their docs; Bytespider is repeatedly reported ignoring it | Training; for Amazonbot and Meta-ExternalAgent, possibly product features too |
+| Token, not a crawler | Google-Extended (Gemini training and grounding in Gemini Apps and Vertex AI; not Search, AI Overviews or AI Mode); Applebot-Extended (Apple's foundation-model training) | Set in robots.txt | Training, and Gemini grounding |
 
-## 2. Site Architecture
+Sources: developers.google.com/crawling, developers.openai.com/api/docs/bots, docs.perplexity.ai/guides/bots, support.claude.com/en/articles/8896518, support.apple.com/en-us/119829, developers.facebook.com/docs/sharing/webmasters/web-crawlers, developer.amazon.com/amazonbot, duckduckgo.com/duckduckgo-help-pages/results/duckassistbot, commoncrawl.org/faq, searchadvisor.naver.com.
 
-### URL Structure Principles
+**Tokens never fetch.** Google-Extended and Applebot-Extended have no user agent of their own: they govern how Google and Apple use what Googlebot and Applebot already fetched. A CDN rule for them does nothing and they never show in logs; only their robots.txt group counts.
 
-- **Flat but logical**: Important pages should be 2-3 clicks from homepage
-- **Consistent hierarchy**: `example.com/category/subcategory/page`
-- **Human-readable**: Users should understand the page topic from the URL
-- **Hyphens between words**: `example.com/blue-widgets` not `example.com/blue_widgets`
-- **Lowercase only**: Avoid mixed case to prevent duplicate URL issues
-- **No unnecessary parameters**: Keep URLs clean
+- **Allow the search and user-fetch agents of every engine you target.** *Break:* a publisher that licenses its content may block search bots on purpose; record that as a business decision, not a finding.
+- **Training follows the content's job** (the default to recommend when no one has decided; the content owner decides, with legal). Pages meant to make you known (marketing, product, pricing, docs) allow training: engines answering from memory then know your facts, and blocking GPTBot doesn't change ChatGPT search. Content you sell, license or meter refuses every training agent and token, and gets the exclusion review below. Blocking Google-Extended also ends grounding in Gemini apps.
+- **Name every group you mean.** An unnamed agent follows the `User-agent: *` group. A blocklist lets each new agent in until you add it; an allowlist (`*` disallowed, wanted agents named) keeps new compliant agents out, new search engines and tools included. Choose per content class and say why.
+- **robots.txt is a request, not access control.** It binds only compliant agents, and only from now on. User fetchers may ignore it and user agents can be spoofed: enforce at the CDN/WAF, verifying bots by reverse DNS or the operator's published IP ranges. Cloudflare reported a declared AI bot switching to undeclared, browser-like crawlers when blocked (Perplexity, August 2025).
+- **CDN rules sort bots by class, and defaults change;** read yours before and after any change. A training block can catch mixed-use crawlers that search and feed AI from one crawl: on Cloudflare (September 2026), "Block" for training also blocks Googlebot, Bingbot and Applebot, search included ("Block on pages with ads" does so on ad-serving pages), while "Disallow AI Training" refuses training and keeps search (blog.cloudflare.com/accountable-mixed-use-ai-crawlers). A CDN-managed robots.txt can add a `Content-Signal` line (`search`, `ai-input`, `ai-train`): read every value; `ai-input=no` asks engines not to use your pages in AI answers.
 
-### Internal Linking Architecture
+**Exclusion.** To keep content from training, AI answers or reuse, a robots.txt edit covers one path. Cover each, and state what's left:
 
-Internal links serve three purposes:
-1. **Navigation**: Help users find content
-2. **Hierarchy**: Signal to search engines which pages are most important
-3. **Authority distribution**: Pass link equity from strong pages to pages that need it
+| Path out | Control | What it can't stop |
+|---|---|---|
+| Named agents | A group per agent and role; a reservation line (Content-Signal or similar) | Agents you didn't name |
+| Unnamed or new agents | An allowlist, or a monthly log review that adds them | Use before you notice them |
+| Non-compliant or spoofed fetchers | CDN/WAF rules, verified-bot lists, rate limits | Scrapers posing as browsers on residential IPs |
+| User-triggered fetches | CDN/WAF rules per agent | Blocking them also fails users who ask an assistant about your page |
+| Data already collected | Removal requests (Common Crawl filters such URLs from later crawls and its public indices but can't edit published archives, per its November 2025 statement) | Published archives; models already trained on it |
+| Copies elsewhere | Syndication and API terms that pass your restrictions on; takedowns | Copies you never find |
+| Feeds and bulk exports | Excerpt-only RSS; no `llms-full.txt`; authenticated APIs and downloads | Exports partners already hold |
+| Client-side paywalls | Gate on the server; full text only to verified, licensed bots, with paywalled-content markup so Google doesn't read it as cloaking | — |
+| Google's AI features | The Search Console setting or snippet controls (below) | Answers built from other sources about you |
 
-Architecture patterns:
-- **Pyramid**: Homepage → Category pages → Detail pages (most common)
-- **Hub and spoke**: Pillar content → Cluster content (for content-driven sites)
-- **Flat**: All pages roughly equal depth (for smaller sites)
+**Legal weight.** In the EU, Article 4(3) of the DSM Directive (2019/790) lets rightsholders reserve text-and-data mining by machine-readable means (robots.txt, a Content-Signal line, TDMRep), and the AI Act obliges general-purpose model providers to identify and honor such reservations (Article 53(1)(c), applying since 2 August 2025; the GPAI Code of Practice commits signatories to follow robots.txt). Elsewhere its force is unsettled: put the reservation in your terms of use too, and weigh licensing or pay-per-crawl (charging AI crawlers per request at the CDN) against blocking. The IETF's AI-preferences vocabulary is still a draft; check its status before relying on it.
 
-Key principles:
-- Every important page should be reachable within 3 clicks from homepage
-- Use descriptive anchor text (not "click here")
-- Link related content to each other (contextual internal links within body content are most valuable)
-- Navigation menus, breadcrumbs, and footer links all count
-- Identify and fix orphan pages (no internal links pointing to them)
+**Google's AI controls.** No robots.txt token takes a site out of AI Overviews but keeps it in Search. A supporting link must be "indexed and eligible to be shown in Google Search with a snippet", nothing more (Google's AI features doc).
+- Leave AI Overviews, AI Mode and Discover's AI features but stay in Search: Search Console › Settings › Search generative AI (all sites since 2026-08-31; default include; child properties inherit unless their owner overrides; a few days to apply; no effect on other ranking or on training).
+- Keep a page out of AI features: `nosnippet`, `max-snippet:0` or `noindex`, at the cost of the classic snippet or the page. Keep passages out of quotes: `data-nosnippet`.
+- Opt out of Gemini training and grounding: Disallow Google-Extended; Search is unaffected.
 
-### Faceted Navigation (E-commerce)
+**Opting out rarely pays.** It removes your supporting links; the Overview still shows, built from other sources. Consider it only for per-visit revenue (ads, metering) when the AI-Overview split of your CTR curve (`measurement.md` §3) shows clicks lost. Test first: exclude one section's URL-prefix property for 4–6 weeks against a matched section, and judge on clicks and revenue, not impressions. *Break:* licensing or legal terms require it.
 
-Faceted navigation (filters for size, color, price, etc.) can create massive URL bloat.
+**Audit step:** read the Search generative AI setting on the top-level property and any child that overrides it; the CDN's rules per bot class and its Content-Signal values; the robots.txt group of every agent role you target or refuse (Google-Extended when Gemini matters). Confirm in logs that wanted bots get 200s on money templates and refused ones get the response you chose.
 
-Handle with:
-- `noindex` on low-value filter combinations
-- Canonical tags pointing filter pages to the main category
-- robots.txt blocking of parameter-heavy URLs
-- AJAX-based filtering that does not create new URLs
-- Strategic indexing of only the most valuable filter combinations (those with search volume)
+**The access-policy deliverable** (≤800 + the artifacts, applied in place when their files are in the workspace and the change is decided, else drafted inline; the policy itself inline unless a policy file exists): the goal per content class (pages meant to make you known, content sold or licensed, private); a verdict per agent role (search, user fetch, training, tokens, unnamed), with its default and trade-off; the artifacts, ready to apply (robots.txt groups, CDN or WAF rules, meta or header controls, console settings, a reservation line for your terms); for exclusion, each path out with its control and the residual risk; acceptance checks per agent (the robots.txt verdict for its token from a tester or parser, then verified-IP log lines showing the chosen response within the operator's stated delay); what the controls can't do.
 
-### Pagination
+## 3. Indexing diagnostics
 
-For paginated content (category pages, blog archives):
-- `rel="next"`/`rel="prev"` is no longer used by Google for indexing (dropped ~2019); it may still be a minor signal for other engines. Prioritize crawlable, internally-linked paginated pages with self-referencing canonicals instead
-- Ensure all paginated pages are crawlable and linked
-- Consider a "view all" page if the total content is manageable
-- Include self-referencing canonical on each paginated page
+Read Page Indexing per template, filtered by that template's sitemap. Google never indexes every URL: the "Not indexed" total is not a KPI; the indexed share of each money template is.
 
----
+| Status | Usual cause | Fix |
+|---|---|---|
+| Crawled – currently not indexed | Quality or duplication: read and declined | Improve or merge; resubmitting does nothing |
+| Discovered – currently not indexed | Low priority: few links from crawled pages, or too many URLs | Link from pages Google crawls; cut the URL count (§1) |
+| Duplicate, Google chose different canonical than user | Links, sitemap, redirects or hreflang point elsewhere | Align every signal on one URL, or accept Google's pick |
+| Indexed, though blocked by robots.txt | Disallow on a linked URL | Lift the Disallow until the noindex is seen |
+| Soft 404 | Thin pages, or SPA "not found" views served with 200 | Return a real 404, or add substance |
 
-## 3. Rendering
+## 4. Rendering and fetch limits
 
-### Server-Side Rendering (SSR) vs Client-Side Rendering (CSR)
+**Google** queues every 200 page for rendering and may skip non-200 pages. Its JavaScript risks are specific (Google's JavaScript SEO basics): a noindex in the raw HTML may stop rendering, so JavaScript cannot remove it; a JavaScript-set canonical must equal the raw one; only `<a href>` elements are links; a client-side "not found" view served with 200 is a soft 404 (redirect to a URL that returns 404, or add noindex); content that loads only after a click, swipe or typing is never seen.
 
-| Aspect | SSR | CSR |
-|--------|-----|-----|
-| How it works | Server generates complete HTML | Browser downloads JS, then renders |
-| SEO friendliness | Excellent, crawlers get complete content immediately | Risky, crawlers may not execute JS |
-| AI crawler compatibility | High, all crawlers can read HTML | Low, many AI crawlers do not execute JS |
-| Initial load speed | Faster first contentful paint | Slower initial load, faster subsequent navigation |
+**Fetch cap.** Googlebot indexes only the first 2 MB of an HTML file, uncompressed (PDF: 64 MB). Put the `<head>` tags early and move large inline state, CSS and base64 images out.
 
-**Recommendation**: Use SSR or pre-rendering for any content you want discoverable by search engines and AI systems. If your site is built with React, Vue, Angular, or similar frameworks, ensure critical content is server-rendered.
+**Other AI crawlers.** In Vercel/MERJ's December 2024 log study, crawlers from OpenAI, Anthropic, Meta, ByteDance and Perplexity fetched JavaScript without running it; Googlebot and Applebot rendered. Text you want quoted by ChatGPT, Claude or Perplexity must be in the server-delivered HTML: SSR, SSG or prerendering for content, pricing and docs. Google calls dynamic rendering "a workaround and not a long-term solution".
 
-### AI Crawlers Execute Zero JavaScript (a binary extractability prerequisite)
+**Test:** diff the raw HTML (curl) against URL Inspection's rendered HTML. A key sentence missing from the raw HTML is invisible to non-Google AI crawlers.
 
-The dedicated AI crawlers **fetch JavaScript files but never execute them**: the Vercel/MERJ study (Dec 17 2024, 500M+ GPTBot fetches) found GPTBot, OAI-SearchBot, ChatGPT-User, ClaudeBot, and PerplexityBot do no JS rendering; independent hands-on tests (Glenn Gabe, gsqi.com) confirmed ChatGPT/Claude/Perplexity could not read JS-dependent pages. Only Google (Gemini via Googlebot/Chromium) renders JS; Bingbot renders partially and inconsistently (so ChatGPT Search — which historically leaned on Bing's index but now increasingly runs on OpenAI's own crawl/index — is at most a partial exception). **Consequence:** any content that appears only after client-side JS (React/Vue/Angular SPAs — pricing tables, FAQ answers, comparison data) is **invisible** to the largest AI engines unless it is in server-delivered HTML. **Decision:** for JS-framework sites, move every citation-worthy passage into SSR/SSG/prerendered HTML — this is the difference between being citable and being absent from ChatGPT, Claude, and Perplexity, not a nice-to-have.
+## 5. Architecture and internal links
 
-### Pre-rendering / Static Site Generation (SSG)
+- **Depth follows value.** Measure click depth and inlinks per template with a crawler. Money pages and revenue clusters sit close to the navigation, hubs and category pages Google crawls most; archives may sit deep. Google publishes no click-depth threshold.
+- **Orphans** (in sitemaps, analytics or logs, with no internal inlinks) get a link from a relevant crawled page, or are dropped.
+- **Pagination.** Link each page to the next with `<a href>`, give each its own canonical (never page 1), never put page numbers in `#` fragments; Google ignores `rel=next/prev`. Behind "load more" or infinite scroll, also expose paginated URLs, or list the items in a sitemap or Merchant Center feed.
 
-Generate HTML at build time rather than per request. Best of both worlds for content that does not change frequently. Frameworks: Next.js (React), Nuxt (Vue), Astro, Hugo, Gatsby.
+## 6. Core Web Vitals
 
-### Dynamic Rendering
+Field data at the 75th percentile (CrUX, Search Console) counts; lab tools diagnose.
 
-Serve pre-rendered HTML to crawlers while serving the SPA to users. Google **no longer recommends** dynamic rendering — it relies on unreliable user-agent detection, risks serving different content to bots than to users, and Google has removed most of its guidance for it. Prefer SSR, SSG, or hydration; treat dynamic rendering only as a last-resort legacy stopgap. (Note: many AI crawlers execute no JS at all, so dynamic rendering that only targets Googlebot still leaves you invisible to them.)
+- **CWV break ties.** Ranking uses them, but relevance comes first. Act when CrUX shows a money template failing at p75; a passing template gains nothing from a better score. *Break:* when the case for speed is conversion, judge it by conversion.
 
-### Testing Rendering
+## 7. Structured data
 
-- Use Google Search Console URL Inspection tool to see how Google renders your pages
-- Check "View Source" vs. rendered DOM in browser DevTools
-- Test with JavaScript disabled to see what crawlers with limited JS support see
+Google's AI features need no markup: "there's no special schema.org markup you need to add" (Google's AI optimization guide). Markup pays only through a live Google or Bing feature or entity facts (Organization `sameAs`, Product/Offer).
 
----
+- **Mark up only gallery types that match the page's main entity,** and check Google's Search Gallery the day you implement: features get retired. Markup matches visible content (and, for products, the merchant feed); validate with the Rich Results Test.
+- **FAQPage and HowTo get no Google display.** FAQ rich results ended for all sites on May 7 2026, HowTo in 2023, and neither is in Google's gallery. Keep valid existing markup; never add it for rich results or AI citations. Engines read the visible Q&A text. (Canonical rule: other files point here.)
+- **Reviews.** A business's own pages marked up as LocalBusiness or another Organization type get no review stars (self-serving); fake or undisclosed incentivized reviews are prohibited.
+- **LocalBusiness** feeds the knowledge panel and business carousels; the local pack comes from Google Business Profile. **Breadcrumbs** display on desktop only.
+- **Regions.** Many features are region-limited; when checked, Event and Job posting were not offered in Korea. Read the feature's availability list before scoping work.
 
-## 4. Core Web Vitals
+## 8. International
 
-Google page experience metrics. They are ranking signals (though relatively modest compared to content relevance and links).
+**Ownership.** This skill decides whether locales get separate URLs, the URL structure, which locales to build, and the hreflang rules. An i18n capability (the `i18n` skill, if available) implements routing, locale resolution, tag generation and caching, and alone decides for authenticated, non-indexed app surfaces.
 
-### LCP (Largest Contentful Paint)
-- **What**: Time until the largest visible element (image, video, text block) is rendered
-- **Target**: 2.5 seconds or less
-- **Common issues**: Large unoptimized images, slow server response, render-blocking resources, client-side rendering delays
-- **Fixes**: Optimize and properly size images (WebP/AVIF), use CDN, preload critical resources, implement lazy loading for below-fold images, reduce server response time (TTFB)
+- **Which locales:** those with measured demand (keyword research per market, in its language, never translated keywords) and the capacity to keep content current. Machine-translated mirrors rarely earn rankings or AI citations (ai-platform-optimization.md, Korea).
+- **Structure.** Default to subfolders (`example.com/ko/`): one host, least maintenance, links accruing to one domain. *Break:* a separate legal entity or operation, or a market where a local domain earns trust; then a ccTLD. Never URL parameters.
+- **No automatic redirects by IP or browser language:** Googlebot crawls mostly from the US and would see one version; offer a locale switcher.
+- **hreflang.** Every page lists itself and each alternate. Tags between two pages that don't both point to each other are ignored: the non-reciprocal pair fails, not the whole set. Codes are language first, then an optional region: `ko`, not the country code `kr`; `en-gb`, not `en-uk`. `x-default` is recommended for the fallback or selector page. One method is enough (`<head>` tags, HTTP headers or the sitemap); if you use more, keep them identical. Every alternate returns 200 and is canonical to itself.
 
-### INP (Interaction to Next Paint)
-- **What**: Responsiveness to user interactions (clicks, taps, key presses). Replaced FID in March 2024.
-- **Target**: 200 milliseconds or less
-- **Common issues**: Long JavaScript tasks blocking the main thread, heavy event handlers, excessive DOM size
-- **Fixes**: Break up long tasks, defer non-critical JS, reduce DOM size, use web workers for heavy computation, optimize event handlers
+## 9. Migrations
 
-### CLS (Cumulative Layout Shift)
-- **What**: Visual stability, how much content shifts unexpectedly during loading
-- **Target**: 0.1 or less
-- **Common issues**: Images/embeds without dimensions, dynamically injected content, web fonts causing FOIT/FOUT, ads resizing
-- **Fixes**: Always set width/height on images and videos, reserve space for ads and embeds, use `font-display: swap` with preloaded fonts, avoid injecting content above existing content
+Any change of domain, URL pattern, platform or templates at scale.
 
-### Measuring Core Web Vitals
+- **Change one thing at a time:** sequence a move, a replatform and a redesign rather than combining them; on a large site, move one section first and watch it (Google's site-move guide).
+- **Map before launch.** Every old URL with traffic, links or rankings gets its closest new equivalent: 301 or 308, one hop, ending in a 200. No equivalent: 404/410, never a homepage redirect.
+- **Save the baseline before launch** (a full crawl, Search Console page and query exports, a log sample): the post-launch diffs need it. Crawl the old URL list against staging to test the redirect map.
+- **Staging stays behind a login;** robots.txt and noindex leak, and a staging noindex tends to ship.
+- **Agree the rollback trigger before launch:** metric (redirect errors on money URLs, indexed money URLs, organic clicks to money templates), threshold and window.
+- **After launch,** crawl the old URL list again (each must 301 to a 200 in one hop); diff titles, canonicals, robots, hreflang and body copy per template against the baseline; watch Page Indexing and logs daily for the first weeks.
+- **Keep redirects at least a year.** On a domain move, file Change of Address for every verified variant of the old domain. Expect "a few weeks or more" before Google shows the new URLs on a medium site, longer on a large one; rankings fluctuate meanwhile.
 
-- **Field data (real users)**: Google Search Console, PageSpeed Insights (CrUX data), web-vitals JavaScript library
-- **Lab data (synthetic)**: Lighthouse, WebPageTest, Chrome DevTools Performance panel
-- Field data is what Google uses for ranking. Lab data helps diagnose issues.
+**The change-plan deliverable** (≤1,000 + URL map; `change-plan-{topic}.md` in the search dir, updated until launch): sequence, one change at a time; URL-map rules and coverage; pre-launch baseline; launch checks; rollback trigger (metric, threshold, window).
 
----
+## 10. Images and video
 
-## 5. HTTPS and Security
-
-- HTTPS is a confirmed (minor) ranking signal
-- All pages should be served over HTTPS
-- Ensure HTTP to HTTPS redirects are in place
-- Avoid mixed content (HTTPS page loading HTTP resources)
-- Keep SSL certificates valid and up to date
-
----
-
-## 6. Structured Data (Schema Markup)
-
-### What It Does
-
-Structured data (typically JSON-LD) helps search engines understand the content type and relationships on your pages. It can enable rich results (star ratings, breadcrumbs, product info, etc.) in SERPs for *currently supported* types — note that Google has retired several rich-result types (FAQ, HowTo), so always confirm a type is still supported before implementing for SERP appearance.
-
-### Implementation Principles
-
-- Use JSON-LD format (Google recommended format)
-- Schema must accurately reflect visible page content. Do not add schema for content that is not on the page
-- Validate with Google Rich Results Test and Schema Markup Validator
-- Do not add schema for rich results you are not eligible for
-
-### Common Schema Types
-
-| Schema Type | Use For | Rich Result |
-|-------------|---------|-------------|
-| Article | Blog posts, news articles | Article appearance |
-| Product | Product pages | Price, availability, reviews |
-| FAQPage | FAQ sections | ⚠️ No Google rich result. Restricted to gov/health sites Aug 2023, then fully removed for all sites May 7 2026. Still valid schema; aids AI/LLM answer extraction |
-| HowTo | Tutorial/guide content | ⚠️ No Google rich result (deprecated/removed 2023). Optional semantic markup for AI extraction only |
-| Organization | Homepage/about page | Knowledge panel, brand info |
-| LocalBusiness | Physical business locations | Local pack, business details |
-| BreadcrumbList | Site navigation | Breadcrumb trail in SERPs |
-| Review | Review content | Star ratings |
-| VideoObject | Video content | Video thumbnails in SERPs |
-| Speakable | Voice search priority content | Limited beta: US-English news publishers only, read aloud via Google Assistant |
-
-### Schema and AEO/GEO Connection
-
-This subsection is the **canonical FAQ/HowTo deprecation timeline for the skill** — other references point here rather than restating dates, so update them in one place.
-
-For AEO purposes, note that FAQPage and HowTo schema **no longer produce Google SERP rich results**. HowTo rich results were removed in 2023; FAQ rich results were restricted to government/health sites in Aug 2023 and fully deprecated for all sites on May 7, 2026 (the FAQ report and Rich Results Test support drop in June 2026, the Search Console API in Aug 2026). The structured Q&A and step markup can still help AI answer engines and LLMs parse, extract, and cite content — so treat it as AEO/GEO *extraction* value, not a Google SERP feature. Speakable schema is a limited beta (US-English news publishers, Google Assistant), not a general voice-search signal.
-
-For GEO purposes, structured data provides machine-readable entity signals that AI systems can cross-reference when determining brand identity and category.
-
-Ensure your schema markup, visible page content, and any external data feeds (e.g., Google Merchant Center) describe the same information consistently.
-
----
-
-## 7. International SEO (hreflang)
-
-For sites serving multiple languages or regions, hreflang tells Google which language/region version to show.
-
-- **Reciprocity is mandatory**: every hreflang annotation must be returned by all the pages it references. If page A points to B, B must point back to A (and to itself). Missing return tags are the most common hreflang error and cause Google to ignore the cluster.
-- **Always include a self-referencing tag** plus an **`x-default`** entry for the fallback/locale-selector page.
-- **Use correct codes**: ISO 639-1 language (`en`), optional ISO 3166-1 Alpha-2 region (`en-gb`). Region without language is invalid.
-- **Pick one placement** and be consistent: HTML `<head>` link tags, an XML sitemap `xhtml:link` annotation (best for large sites), or HTTP headers (for non-HTML files like PDFs). Do not mix methods for the same URLs.
-- hreflang is a targeting signal, **not** a duplicate-content fix — pair it with self-referencing canonicals (canonical to self, not to another language).
-- This section owns the search-signal layer; the application-side implementation (locale routing, URL strategy, translation structure, generating the tags) belongs to an i18n capability (the `i18n` skill, if available). Localized content must be net-new per locale to earn AI citations — see `ai-platform-optimization.md` § Non-English Surfaces.
-
-## 8. Image and Video SEO
-
-AI Overviews, Google Images, and YouTube are all cited surfaces, so media is part of visibility, not an afterthought.
-
-**Images**: descriptive filenames and `alt` text (real description, not keyword stuffing), responsive `srcset`, modern formats (WebP/AVIF), explicit width/height (CLS), lazy-load below-fold, and an image sitemap for large libraries. `ImageObject` schema and on-page captions help AI systems associate the image with its subject.
-
-**Video**: host with a transcript and chapters; add `VideoObject` schema (`name`, `description`, `thumbnailUrl`, `uploadDate`, `duration`, and `clip`/`SeekToAction` for key moments). Transcripts are what AI systems actually read — a video without a transcript is largely invisible to text-based retrieval. YouTube descriptions and chapters are independently crawled (see `geo-multi-platform.md`).
-
----
-
-## 9. Site Migration Checklist
-
-When moving to a new domain, redesigning, or restructuring:
-
-1. **Pre-migration**: Crawl and document all existing URLs, rankings, and backlinks
-2. **Redirect mapping**: Create 1:1 redirect map from old URLs to new URLs (301 redirects)
-3. **Preserve structure**: Maintain URL patterns where possible
-4. **Update internal links**: Point to new URLs directly, do not rely solely on redirects
-5. **Update sitemaps**: Submit new sitemap, remove old one
-6. **Update Search Console**: Verify new property, use Change of Address tool if domain change
-7. **Monitor**: Watch for crawl errors, indexation drops, and ranking changes for 3-6 months
-8. **Preserve backlinks**: Redirects pass link equity, but reach out to high-value linking sites to update URLs
-
----
-
-## 10. Common Technical SEO Issues Checklist
-
-- [ ] No accidental noindex on important pages
-- [ ] robots.txt not blocking critical resources or AI crawlers
-- [ ] XML sitemap submitted and up to date
-- [ ] All important pages return 200 status
-- [ ] No redirect chains (A to B to C; should be A to C)
-- [ ] No redirect loops
-- [ ] Canonical tags present and correct
-- [ ] No mixed HTTP/HTTPS content
-- [ ] Mobile-friendly / responsive design
-- [ ] Core Web Vitals passing (LCP 2.5s or less, INP 200ms or less, CLS 0.1 or less)
-- [ ] Hreflang implemented correctly (for multi-language sites)
-- [ ] Structured data valid and accurate
-- [ ] No soft 404s (pages returning 200 but showing error/empty content)
-- [ ] Server response time under 200ms (TTFB)
-- [ ] Content accessible without JavaScript execution (for AI crawlers)
+Images: `answer-writing.md`. Each video gets an indexable watch page with a visible transcript and chapters, plus `VideoObject` markup (`Clip` or `SeekToAction` for key moments). The transcript is the text AI engines read.

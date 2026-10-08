@@ -1,202 +1,196 @@
 ---
 name: review-checklists
 description: |
-  Pre-landing code review, two passes. Pass 1 (blocking): security (OWASP Top 10:2025
-  and LLM Top 10 — auth, API, business logic, supply chain, crypto, SSRF, logging,
-  AI/LLM/MCP) and correctness bugs that survive green CI. Pass 2 (non-blocking):
-  maintainability/design smells.
-  Use when: reviewing a diff before commit/PR, security audit, or pentest prep.
-  Trigger on "code review", "security checklist", "vulnerability checklist", "OWASP
-  check", "auth review", "crypto review", "API audit", "race condition",
-  "idempotency", "TOCTOU", "cache invalidation", "double charge", "lost update",
-  "concurrent", "retry safety", "exactly once", "deadlock", "outbox", "N+1",
-  "pagination", "DST", "fire-and-forget", "maintainability", "refactor smell", "tech
-  debt", "design review", "god object", "fat controller", "coupling", "anemic model",
-  "test quality", "will this bite us later".
-  Do NOT use for: mobile-client internals (MASVS) or privacy law (GDPR/CCPA); logic
-  bugs tests own; style (linters); micro-cleanups; or writing fixes.
+  Pre-landing code review in two passes. Pass 1 (blocking): security (OWASP Top
+  10, LLM Top 10: access control, auth, injection, SSRF, crypto, supply chain,
+  AI/LLM/MCP) and bugs that survive green CI (races, retries, partial failure,
+  caching, time, untested logic). Pass 2 (informational): maintainability and
+  design smells. Use to review a diff, PR or file before it lands, audit code,
+  or pre-mortem code being written: "code review", "review this PR",
+  "security review", "OWASP check", "is this race-safe", "can this
+  double-charge". Do NOT use for: plans or design docs (plan-review);
+  exploiting a running app (adversarial-execution); building these mechanisms
+  (hexagonal-backend, database-design).
 ---
 
 # Review Checklists
 
-One pre-landing review, two passes. Tests prove behavior on a single-threaded happy path; linters and type-checkers catch mechanics. This skill covers what they all miss: **exploits** and **bugs that survive green CI** (Pass 1, blocking), and **cost-to-change** (Pass 2, informational). Pick sections by what the diff touches — most reviews read 3-5 reference files; when in doubt, read more rather than fewer.
+Tests prove the single-threaded happy path and linters catch mechanics; this review covers the rest. Two questions sit behind "review this": what can the change now make happen (to whom, twice, concurrently, after a crash) that it couldn't before, and what does the requester need to decide, by when?
 
-| Pass | Section | Blocks the commit? | Catalog |
-|---|---|---|---|
-| 1 | **Security** — OWASP Top 10:2025 + OWASP LLM Top 10 | A confirmed critical/high finding | `references/security/*.md` |
-| 1 | **Correctness** — the bugs that survive green CI | A confirmed finding | `references/correctness.md` |
-| 2 | **Maintainability** — will this stay cheap to change | No, unless project policy escalates | `references/maintainability.md` (+ `references/maintainability/<language>.md`) |
+| Pass | Section | Blocks the commit? |
+|---|---|---|
+| 1 | **Security**: OWASP Top 10:2025 + OWASP LLM Top 10 | A confirmed critical or high finding |
+| 1 | **Correctness**: the bugs that survive green CI | A confirmed critical or high finding |
+| 2 | **Maintainability**: will this stay cheap to change | No, unless project policy escalates |
 
-**Pass 1 (blocking).** A confirmed finding stops the commit until it is fixed or explicitly accepted with written justification — never an FYI. Medium security findings and correctness hardening notes are reported without blocking (see the finding contract for when they escalate).
+A blocking finding stops the commit (or, once an interim keeps it unreachable, the enabling) until fixed or explicitly accepted in writing, never an FYI. So does an unmet **mandate**, in any section, with no exploit needed: a sign-off a governing doc requires, an accepted decision record the change contradicts, a risk control assigned to it, a compliance control the system is in scope for, a checklist item marked mandatory (conventions and style guides are not mandates). A sign-off the diff can't show is *not shown* and blocks only the step its source gates.
 
-**Pass 2 (informational).** Reported in the same review, kept separate from Pass 1, and blocking only when project policy escalates it. Still raise high coupling and missing abstractions early: they get exponentially more expensive to fix the longer they live.
+## Calibrate first
 
-A caller that executes exploits rather than judging design (a runtime red-team) uses the two Pass 1 sections only.
+**Frame the decision** before reading hunks. Don't stop to ask: take the default and list it in Scope.
+- *Decision and deadline*: merge, release, demo or go/no-go, and when. Default: merge to production today.
+- *First exposure*: who meets the change first, behind what (a flag defaulting off, an allowlist, a beta cohort). Default: every user and tenant on deploy.
+- *Fixed decisions*: product calls stakeholders won't reopen ("the agent emails customers"). Fixes work within them; if only reopening one closes a blocking path, say so and name who decides. Default: what the PR and governing docs state.
+- *Governing docs*: decision records, risk register, architecture doc (defaults `docs/arch/adr/`, `docs/arch/risks.md`, `docs/arch/system.md`; caller may redirect), sign-off rules for this kind of change (security review of agent tools), a project `checklist.md`, any checklist the requester supplies. Each mandatory item is a mandate, each stated invariant one to check; routine CODEOWNERS review is a Scope line ("requires: @owner"), not a mandate. None found: say so in Scope.
+
+**Mode** (name it in Scope):
+- *Diff* (default): the diff and the code it calls or is called by. A pre-existing defect is a finding, marked *pre-existing*, when the diff makes it reachable or worse or composes with it (Method step 4); else one Scope line.
+- *Re-review* (fixes pushed): mark each prior blocking finding, mandate and Unconfirmed item closed, partial or open; then Diff mode on the fix commits only, with no new Pass 2 items on code the fix didn't touch.
+- *Audit* (asked for, or no diff): the whole target, caps per module. Inventory the route registry, auth middleware and data-scoping layer, then hunt the entry points that bypass them, then money and tenant paths.
+- *One pass* ("security only"): that pass alone; mandates still apply.
+- *Pre-mortem* (code being written): Method steps 1–3 with the triggered sections as a checklist; return ≤10 items of invariant → guard → test (≤150 words), no verdict.
+
+**Depth follows the riskiest thing touched:**
+- **Deep**: auth, permissions, money, tenant scope, personal data, migrations, LLM tools, irreversible effects, code on every request path (middleware, client wrappers, config and flag defaults). Both views, chains, Unconfirmed items.
+- **Light**: docs, tests, renames, pure refactors, once verified (`git diff -w -M`; nothing renamed is persisted or external): confirm no guard, check or effect moved or vanished; a one-line verdict. Never Light: prompts, tool descriptions, agent-instruction or policy files, or a test whose expected value or assertion changed: each changes behavior. A hunk that isn't pure gets the depth of what it touches.
+- **Standard**: everything else. Too big to read closely: Deep hunks line by line, the rest skimmed; Scope says so and asks to split mixed mechanical and behavior changes.
+
+## Method
+
+1. **Name the intent** (what the change must achieve, and whether it does) **and the invariants** it must keep ("one charge per order", "tenant A never reads B's rows") from the PR text, commits, tests and governing docs. Where they are silent, assume these and list them in Scope:
+   - a new entry point is reachable anonymously until you cite its authentication, and by any user of any tenant until you cite its object scope;
+   - two or more instances run; every caller retries (users double-submit; clients, SDKs and proxies retry);
+   - webhooks, queues and cron deliver at least once and overlap; rolling deploys run old and new code together;
+   - money and customer messages are irreversible.
+2. **Map the delta** (notes, not output):
+   - entry points added or changed (route, resolver, server action or function, consumer, webhook, cron, CLI, LLM tool): who can reach each, the asset, the guard;
+   - effects: DB write, external call, enqueue, cache write or delete;
+   - sinks: raw query, shell, eval, raw HTML, outbound fetch, file path, deserializer, redirect, disabled TLS or signature check, committed secret, and every message or tool call an agent can send (who receives it, and what from the model's context it can carry);
+   - changed contracts: a function, type, endpoint, event, config key or default whose meaning changed (nullable, throwing, a new enum value or unit, a renamed field); every caller or consumer the diff didn't update, jobs and other services included, is a candidate finding;
+   - minus lines: a removed `await`, `WHERE` predicate, lock, transaction, check or test is a one-line regression;
+   - dependency, CI and infrastructure changes; a version bump is a changed contract (read the breaking changes of each major, or 0.x minor, it crosses; an unread changelog is "not reviewed" in Scope).
+3. **Hunt in damage order**: identity and permissions → money, tenant scope, irreversible effects → sinks → concurrency, retries, partial failure → volume, time, boundaries → supply chain, config → design.
+   - *Per entry point*: is the object load scoped by the authenticated principal, and do its siblings match (list vs get, bulk or export, other transports to the same method)?
+   - *Per effect*: **twice** (who redelivers it?), **concurrently** (every other writer of that row or key, new or pre-existing; how many instances of this one?), **crash after each step** (what state is left?), **slow** (on timeout, is the outcome known?).
+   - *Per sink*: trace it to its source (committed secrets: `references/security/supply-chain.md`).
+4. **Prove, then widen.** Run the gates. Search every path to the changed behavior, touched or not (other transports, workers, admin tools, scripts), and pre-existing code sharing its state or effects (the same row, counter, queue, cache key or tool): a defect there that changes the new behavior's outcome is a finding. One root cause is one finding with every location; a fix on one path only is a finding on the rest; ask which findings chain. Note paths **safe by accident** (one worker today, a lock or status check kept for another reason, a slow call that serializes, a stale absolute write that absorbs duplicates) and what would end that. A risk the code can't settle (isolation level, a guard in code you can't see, outside reachability) that would be critical or high if true goes to Unconfirmed with its deciding fact: never dropped, never inflated.
+5. **Close the loop.** Apply the whole fix set on paper, holding the fixed decisions, and re-run every blocking path: each trigger must now fail at a named guard, and each agent exit is re-checked for who receives it and what context rides along. Fixes open paths: one that ends a step-4 accident (relaxing that status check, turning that stale write into an increment, dropping that lock) unmasks the race it hid, so it lands with or after that race's guard; binding an exit's recipient leaves its model-written content free. Then set the fix order, the residual risk and, if a blocker can't land by the deadline, a safe interim: a finding the interim keeps unreachable then blocks enabling, not merging; a mandate binds where its source says, so a flag never defers a merge-time one.
+6. **Rank and write** with the Review Output Contract; run the Self-Review.
 
 ## Routing — what to read
 
-| Reviewing... | Read |
-|---|---|
-| Login, signup, session, JWT, OAuth, SAML/SSO, MFA, passkeys, CSRF, cookies | `references/security/auth.md` |
-| REST/GraphQL endpoints, input validation, XSS, path traversal, file upload, CORS, WebSocket, deserialization, reverse proxy / load balancer (request smuggling) | `references/security/api.md` |
-| Payment, inventory, pricing, state machines, discounts, limits — the *attacker* view | `references/security/business-logic.md` |
-| package.json, requirements.txt, Dockerfile, CI/CD, IaC / Kubernetes, git, secrets management | `references/security/supply-chain.md` |
-| Encryption, hashing, key management, TLS, certificates | `references/security/crypto.md` |
-| Headers, debug mode, default creds, cloud config, CORS, subdomain takeover, cache poisoning | `references/security/misconfiguration.md` |
-| URL fetching, webhooks, callbacks, image/file proxy | `references/security/ssrf.md` |
-| Error messages, logging, audit trails, alerting, exceptions | `references/security/error-logging.md` |
-| LLM/AI integration, prompt handling, model output rendering, RAG, agent tools / MCP servers | `references/security/llm-security.md` |
-| Concurrency, locks, transactions, retries, webhook/queue handlers, caching, background jobs, pagination or batch reads, datetime/timezone, money/inventory state machines, data crossing serialization/network/DB boundaries, schema changes — the *accident* view | `references/correctness.md` — sections: Concurrency & Races · Idempotency & Retries · Transactions & Outbox · Partial Failure & Side-Effect Ordering · Caching · Data Volume & Pagination · Time & Calendars · Trust & Serialization Boundaries · Schema & Migration Safety |
-| Any diff, for design smells | `references/maintainability.md`; TS/JS diffs also `references/maintainability/typescript.md`, Rust diffs `references/maintainability/rust.md` |
+Open the file for each area your map touches (in a security file, read its *Not a finding* lines before reporting there), never to hunt for absent controls.
 
-When money or inventory moves, apply both views: the attacker's (`references/security/business-logic.md` — deliberate concurrent double-spend, cumulative refund/limit abuse, state-machine skips) and the accident's (`references/correctness.md` — client retries, crash mid-operation, replica lag). Same mechanics, different threat model.
+| The diff touches… | Read |
+|---|---|
+| Object access, roles, tenants; login, sessions, cookies, CSRF, JWT, OAuth/SSO, SAML, MFA, passkeys, redirects | `references/security/auth.md` |
+| Endpoints, injection, XSS, path traversal, uploads, inbound webhooks, deserialization, WebSocket, smuggling, resource exhaustion | `references/security/api.md` |
+| Payments, inventory, pricing, discounts, refunds, limits, approvals, state machines: the *attacker* view | `references/security/business-logic.md` |
+| Dependencies, lockfiles, CI/CD, containers, IaC, committed secrets | `references/security/supply-chain.md` |
+| Hashing, encryption, randomness, signatures, TLS | `references/security/crypto.md` |
+| CORS, headers, debug and default config, static file serving, cloud storage, caches and CDNs, DNS records, exposed services | `references/security/misconfiguration.md` |
+| A server-side fetch of a URL | `references/security/ssrf.md` |
+| A security control's error path; leaky errors and logs | `references/security/error-logging.md` |
+| LLM calls, prompts, RAG, model output, agent tools, MCP | `references/security/llm-security.md` |
+| Effects, races, retries, transactions, partial failure, caching, data volume, time, serialization boundaries, schema migrations: the *accident* view | `references/correctness.md` |
+| A module boundary, public or persisted contract, or abstraction the diff adds or changes (otherwise Pass 2 is the gates alone) | `references/maintainability.md`; TS/JS also `references/maintainability/typescript.md`, Rust `references/maintainability/rust.md` |
+
+When money or inventory moves, read both views: abuse (double-spends, cumulative refunds or limits, skipped states) and accident (retries, crashes mid-operation, replica lag).
 
 ## Scope
 
-- **Security scope** is web / server / API and cloud / supply-chain, plus the AI/LLM features they host. Mobile-client-internal security (MASVS, jailbreak/root detection) and legal privacy-compliance (GDPR/CCPA) are out of scope.
-- **Correctness scope** is the concurrency / retry / partial-failure / boundary class. Deterministic logic bugs belong to tests; style and formatting to linters.
-- **Maintainability scope** is staff-level design judgment — see its scope guard below.
-- **Not in scope for any pass:** implementing the fixes.
-- **One root cause, one finding.** An exploit an attacker drives is security; breakage that needs no attacker is correctness; a cost to future change is maintainability. When a root cause fits two passes, report it once, in the pass where it blocks.
-
----
-
-## Pass 1 — Security
-
-The checklists are organized by domain (routing table above); each lists specific patterns to detect, CWE references, and its OWASP mapping.
-
-### OWASP Top 10:2025 coverage map
-
-| OWASP Category | Checklist File(s) |
-|---------------|-------------------|
-| A01: Broken Access Control | `references/security/auth.md`, `references/security/api.md`, `references/security/ssrf.md` |
-| A02: Security Misconfiguration | `references/security/misconfiguration.md` |
-| A03: Software Supply Chain Failures | `references/security/supply-chain.md` |
-| A04: Cryptographic Failures | `references/security/crypto.md` |
-| A05: Injection | `references/security/api.md` |
-| A06: Insecure Design | `references/security/business-logic.md` |
-| A07: Authentication Failures | `references/security/auth.md` |
-| A08: Software or Data Integrity Failures | `references/security/supply-chain.md`, `references/security/api.md` (deserialization) |
-| A09: Security Logging & Alerting Failures | `references/security/error-logging.md` |
-| A10: Mishandling of Exceptional Conditions | `references/security/error-logging.md` |
-
-Label findings with these 2025 IDs, not the 2021 numbering (SSRF now folds into A01; A03 is supply chain; A10 is exceptional conditions).
-
-_AI/LLM security is governed by the separate OWASP Top 10 for LLM Applications, not the web Top 10 above. Label with the current 2026 IDs (published 2026-08: Excessive Agency rose to LLM03, System Prompt Leakage became Hidden Context Exposure at LLM08, Improper Output Handling moved to LLM10); the 2025↔2026 crosswalk heads `references/security/llm-security.md`._
-
-### Universal red flags
-
-These auto-fail patterns apply everywhere regardless of domain:
-
-```
-□ Secrets in code, logs, or git history (CWE-798)
-□ User input reaching shell, eval, or raw queries (CWE-78, CWE-89, CWE-94)
-□ Missing ownership check before data access (CWE-639)
-□ State-changing request without authenticity/origin verification — CSRF, missing signature/webhook check (CWE-345)
-□ TLS/certificate verification disabled (CWE-295)
-□ User-controlled URL in server-side request (CWE-918)
-□ Sensitive data in error responses or logs (CWE-209, CWE-532)
-□ Weak or deprecated cryptographic algorithm (CWE-327)
-```
-
-## Pass 1 — Correctness
-
-The bugs that pass tests + lint + types and still break in production. Tests run single-threaded on a happy path, so the entire class of **concurrency / retry / partial-failure / boundary** defects slips through a green pipeline — and these corrupt data, double-charge, or lose writes. Flag them when the diff touches the trigger areas in the routing table; the catalog is `references/correctness.md`. A few catalog items carry their own blocking threshold (an outbound call with no timeout blocks only when a bounded pool sits upstream; an after-commit hook instead of an outbox is acceptable only where losing the event is acceptable) — honor it.
-
-## Pass 2 — Maintainability
-
-The review lens nothing else covers. Tests prove *behavior*; linters and type-checkers catch *mechanics*; the security section catches *exploits*; the correctness section catches the *survive-CI bugs*. None of them tell you whether the code will be **cheap to change in six months**. That is this pass. The catalog is `references/maintainability.md`.
-
-### Scope guard — do NOT flag what tooling already owns
-
-| Owned by | Don't review here |
-|---|---|
-| Formatter (prettier/black/`ruff format`/rustfmt) | formatting, import order |
-| Linter (eslint/ruff/clippy/`go vet`) | unused vars/imports, unreachable code, simple dead code |
-| Type-checker (tsc strict/mypy/pyright/rustc) | within-language type errors, simple nullability |
-| Tests | behavioral correctness of deterministic logic |
-| The correctness section (Pass 1) | races, idempotency, cache invalidation, partial-failure, boundary defects — and missing *runtime* validation (unchecked responses/`res.ok`, unvalidated input): that a check is absent is a correctness finding, not an error-handling-design one. A type-system escape hatch at a boundary (`any`/`as`/`unsafe`/`transmute`) that makes unchecked data *look* typed is the design finding here |
-| The security section (Pass 1) | exploits |
-| A dedicated cleanup pass (e.g. `/simplify` in Claude Code), if available | reuse / efficiency / micro-simplification cleanups |
-
-This pass is for **staff-level design judgment** — the cost-to-change problems none of those own.
-
----
+- **One root cause, one finding**, in the pass where it blocks: an exploit an attacker drives is security; breakage needing no attacker is correctness; a cost to future change is maintainability. A boundary escape hatch (`any`, `as`, `unsafe`) and the missing runtime check behind it are two: the check is correctness, the hatch Pass 2.
+- **Elsewhere**, if available: plans and specs → plan-review; architecture → software-architecture; superseding a decision record → arch-decision; live exploits → adversarial-execution; building fixes → hexagonal-backend, database-design; React or React Native UI correctness → react-best-practices or react-native-skills, rated on this ladder. Not covered: mobile-client internals (MASVS), privacy law, lint and type errors.
 
 ## Before You Report — the gates
 
-A checklist that cries wolf gets ignored; the fastest way to get it ignored is a false positive (or an opinion war) on every PR. Every candidate passes its gates before it becomes a finding.
-
 ### Every pass
 
-1. **Prove it before you report it** — security: reachability and exploitability; correctness: the real trigger; maintainability: the concrete future cost. The per-pass gates below say how.
-2. **Don't re-flag what the diff already fixes** — read the full diff before commenting; a vulnerability the diff removes, a guard it adds, or a smell it pays down is not a finding against this PR.
-3. **Leave decoys alone** — code that matches a checklist pattern but is safe in context is not a finding: a parameterized `WHERE id = $1`, a fetch whose host is hardcoded or chosen from a server-side allowlist, an allowlisted identifier, a high-entropy random API token stored as an unsalted SHA-256 hash, bcrypt at cost 12, a numeric IPv4 form that a WHATWG URL parser normalizes before the check. At most leave a one-line "considered and cleared" note; never pad the findings with it.
+1. **Prove it by the pass's gates below; don't re-flag what the diff already fixes** (read the whole diff first).
+2. **Find the guard one layer away** — middleware authz, auto-escaping, schema validation, a gateway control; a unique index in the migrations, a transaction or lock in the caller, framework dedup, a single-consumer queue. A guard elsewhere is still a guard: cite its `file:line`.
+3. **Leave decoys alone** — safe in context despite the pattern (a parameterized `WHERE id = $1`, a server-allowlisted host, a random API token stored as unsalted SHA-256; each security file's *Not a finding* lines list more): at most a "considered and cleared" line in Scope, never a finding.
+4. **Defaults are version facts** — check a library default against the version the lockfile pins; an option that turns a protection on must exist under that exact name there (a misspelled or invented key fails open).
 
 ### Security — exploitability discipline
 
-1. **Trace the source** — is the input actually attacker-controlled, or does it originate from config or a trusted service? Name the entry point.
-2. **Check one layer up** — middleware authz, framework auto-escaping, schema validation, or a gateway control may already guard what looks unguarded locally. A guard that lives upstream is still a guard; cite it instead of flagging its local absence.
-3. **Check context applicability** — webhook/cloud/storage items assume those features exist; don't apply bucket-policy findings to a CLI tool.
-4. **State the precondition with the finding** — "exploitable when X" beats "vulnerable"; it gives the reader both the risk and the test.
+1. **Trace the source** — attacker-controlled, or from config or a trusted service? Name the entry point and the attacker's position, in the Severity ladder's terms.
+2. **Check context applicability** — no bucket-policy findings on a CLI tool.
+3. **State the precondition** — "exploitable when X", not "vulnerable". Give each distinct path (attacker position, entry point) its own line: the fix must close each.
 
 ### Correctness — confirm it's real
 
-1. **Look for the guard one layer away** — a unique index in the schema/migrations, a transaction or lock in the caller, framework-level dedup, a single-consumer queue. A guard that lives elsewhere is still a guard; cite it instead of flagging its local absence.
-2. **Confirm the concurrency is real** — request-scoped state can't race with itself; a single-writer cron can't lose updates to itself. Name the two actors that actually collide.
-3. **Confirm the retry is real** — who retries this path (client, queue, gateway)? If nothing retries it, a missing idempotency key is a hardening note, not a blocker.
-4. **Confirm the scale is real** — for N+1 / unbounded-read / data-volume findings, name what makes the cardinality production-unbounded (rows per user, items per order, events per day). A loop over a fixed enum or a 30-row lookup table is not a finding.
+1. **Name the two actors that collide.** Request-scoped state can't race itself unless the request fans out (goroutines, threads, `Promise.all` or `gather` over shared state). A single writer exists only if something enforces it (a leader lock, a lock row, one replica deployed stop-before-start): name it. A scheduler or CronJob is not one.
+2. **Name the retrier** — client, queue, gateway, SDK or a double-submit, which always counts for money and irreversible effects (charge, payout, customer email or SMS, stock). Downgrade only a cheap, reversible effect whose duplicates you can show can't arrive.
+3. **Name the cardinality** that makes it unbounded in production. A fixed enum or a 30-row lookup table is not a finding.
+4. **Logic bugs on untested paths count** — an inverted comparison, off-by-one, wrong variable or unhandled null that no test exercises: report it and name the missing test.
+5. **Run each trigger past the state guards on its path** — a status check, an early return or a caller-held lock can make it unreachable: clear that one, but list it under Safe by accident if the guard exists for another purpose. Keep each survivor with its precondition, and every end state its orderings produce (A before B, B before A).
 
 If you can't name the trigger ("two concurrent webhook deliveries for the same order"), the finding isn't confirmed yet.
 
 ### Maintainability — is it a finding?
 
-1. **Name the cost, or drop it** — the Cost line must name a concrete future change that gets more expensive or riskier because of this code. "Not clean" / "I'd have written it differently" is noise, not a finding.
-2. **Check the codebase's own convention first** — if the diff follows the established local pattern, it is not a finding against *this PR*; consistency is itself a maintainability asset. Raise pattern-level objections once, as a separate codebase-wide proposal, not per-diff. A convention excuses *style*, not *defects*: an established smell elsewhere in the codebase does not grandfather a new instance of the same smell.
-3. **Framework idiom is not a smell — and neither is the declared paradigm** — judge code against its framework's grain: an ActiveRecord model isn't an anemic-model finding; a server route colocated with its data fetch isn't a layering violation; a CLI script printing to stdout isn't a logging smell. Likewise check the project's declared architecture style (docs/arch/system.md, the README, AGENTS.md) before applying items that assume one: a vertical-slice codebase colocating handler + logic + data access per feature is not a fat-handler finding, and a functional-core module of pure functions over plain data is not an anemic model. Flag *fighting* the declared style, not *using* it.
-4. **Scale the bar to blast radius** — a one-off script or internal tool doesn't need the architecture of the module every feature imports; the same shortcut that's fine in `scripts/` is a finding in `core/`. Say why this code's position justifies the standard you're applying.
-5. **Rule of three cuts both ways** — don't demand an abstraction at the second occurrence, and don't bless the fifth copy either. A single-implementation interface that exists as a test seam is a seam, not premature abstraction.
-6. **Findings live in the diff** — pre-existing smells the diff didn't introduce or worsen are context notes for the author, not findings against the PR.
+1. **Name the cost, or drop it** — the Cost line names a concrete future change this code makes costlier or riskier; "not clean" is noise.
+2. **Convention first** — following the local pattern isn't a finding against this PR; object to the pattern once, codebase-wide. A convention excuses *style*, not *defects*: an established smell doesn't grandfather a new instance.
+3. **Rank by cost of reversal** — persisted formats and public contracts > module boundaries and dependency direction > abstractions with several callers > one function's insides (a finding only if it hides a defect or blocks the change named in Cost). At most three unless a design review was asked for. Tag a Cost on a persisted format or public or event contract this diff introduces **one-way door** (cheap to change only before merge).
 
-The gates kill findings you *can't ground* — they never excuse the ones you can. If the Cost line is fillable with a concrete future change, the finding survives every gate: report it and state the tension ("follows the house pattern, but each new instance re-pays the same cost"). Naming a smell and then waiving it through a gate is the failure mode this section exists to prevent, not an application of it.
-
----
+The gates kill findings you *can't ground*, never the ones you can: if the Cost line holds a concrete future change, report it and state the tension ("follows the house pattern, but each new instance re-pays the same cost").
 
 ## Review Output Contract
 
-Every finding carries a name, its labels, `file:line`, a severity, whether it blocks, and three body lines that end in a specific fix. The pass decides the labels and the body:
+**Severity** (Pass 1, both sections) follows the attacker's position and the damage, never the vulnerability's name:
+- **Critical** (blocks): an anonymous or self-registered attacker, with no victim action, reaches code execution, takeover of any account, another tenant's or user's private data (read or write), money movement, or live production credentials. With no attacker: irreversible or unnoticed damage on a normal production path (money moved wrongly, records destroyed or corrupted, data lost with no alert).
+- **High** (blocks): those impacts behind one realistic precondition (same-tenant membership, one victim click, a non-default config this project uses); a verification switched off on a production path (TLS, signature, token audience); repairable but visible or cascading damage (duplicate customer messages, stuck jobs, staleness the product can't tolerate, a path to an outage).
+- **Medium** (doesn't block): needs a privileged or improbable position (tenant admin on their own tenant, insider, internal network), only aids another attack, or heals itself. Report it only if concrete and fixable in this diff.
+- **Not reported**: missing defense in depth with no exploit path here (security headers, generic rate limits, verbose errors leaking nothing sensitive, routine audit events). At most one `Hardening:` line, for an area the diff edits.
 
-| Pass | Labels | Severity → blocking | Body lines |
-|---|---|---|---|
-| Security | CWE-XXX + OWASP A0X:2025 (AI/LLM issues: LLM0X:2026) | critical / high → blocking; medium → non-blocking unless it chains | Problem · Exploit path · Fix |
-| Correctness | "blocking", plus a CWE where one fits (e.g. CWE-362 race, CWE-367 TOCTOU) | confirmed → blocking; downgraded by a gate → hardening note | Failure mode · Trigger · Fix |
-| Maintainability | — | informational → non-blocking unless project policy escalates | Smell · Cost · Fix |
+A chain that changes the attacker's position goes up a level; a partial guard one layer away takes it down one. *Break when* the diff removes or weakens an existing control (rate it by what it now exposes, Medium at least) or a mandate covers the item (then it blocks). A catalog item's explicit severity wins; a matched *Finding when* line has an exploit path, so it is never Not reported.
 
-**Security (Pass 1):**
+**Labels.** Security: the most specific CWE, never a Category, Pillar or entry MITRE marks Discouraged (not CWE-20, 200, 284, 285, 287 or 840), plus `OWASP Axx:2025` (A01 access control incl. SSRF and CSRF, A02 misconfiguration, A03 supply chain, A04 crypto, A05 injection, A06 insecure design, A07 authentication, A08 integrity, A09 logging and alerting, A10 exceptional conditions) or, for AI features, `LLMxx:2026` (crosswalk and agent IDs: `llm-security.md`). Correctness: a CWE only where one fits (CWE-367 TOCTOU, CWE-362 race).
+
+**Write the review in this shape.** The budget limits the record, never the analysis: blocking findings share 150 words × their count, spent where the triggers are; each Mandate item is one line; other finding bodies ≤60 words; the verdict block ≤80; Scope ≤90; a clean review ≤120, a checklist map aside. A material finding that won't fit is compressed to one line or overruns with the reason stated, never dropped. Sections are a menu: omit empty ones, heading included; add one the requester's decision needs. Fixes name the mechanism and its layer in prose, never a patch. Verdict: *needs fixes* if anything blocks, mandates included; *needs answers* if nothing blocks but an Unconfirmed item or a one-way door remains; else *ready*.
 
 ```markdown
-- **[Issue Name]** (CWE-XXX, OWASP A0X:2025) — `file:line` — severity: critical | high | medium
+**Verdict:** needs fixes (N blocking) | needs answers (N) | ready — [the requester's decision, answered against the deadline]
+- Land first: [blocking items in order, and why that order]; can follow: [the rest, and on what condition]
+- If a blocker misses [deadline]: [interim: flag off, internal-only, tool disabled, scope cut] — [what it keeps closed]
+- Residual after the fixes: [what stays open; who accepts it]
+
+### Prior findings (re-review)
+- **[Name]** — closed at the guard's layer (`file:line`) | partial: [what remains] | open
+
+### Pass 1 — blocking
+- **Mandate: [what is required]** — [source `doc:line` or approver] — unmet | not shown: [what is missing]; blocks: [the step its source gates]; settle by: [the sign-off, a superseding decision, or the code change]
+- **[Name]** (CWE-nnn, OWASP Axx:2025) — `file:line`[, …] — critical | high[ — pre-existing]
   - Problem: [one line]
-  - Exploit path: [who controls the input, what they reach — the precondition]
-  - Fix: [specific remediation]
+  - Exploit paths: [each distinct one: attacker position → input they control → sink or missing check → impact; its precondition]
+  - Fix: [mechanism, at the guard's layer]; test: [the one that fails on revert]
+- **[Name]** (CWE-nnn, if one fits) — `file:line`[, …] — critical | high[ — pre-existing]
+  - Failure mode: [what breaks]
+  - Triggers: [each reachable one: the two actors, the retrier or the crash point, with its precondition]
+  - End states: [each outcome the orderings produce: A then B → …; B then A → …]
+  - Fix: [mechanism, at the guard's layer]; test: [the one that fails on revert]
+
+### Pass 1 — non-blocking
+- [≤3 Mediums in the same shape; past three, one line each: name — `file:line`]
+- Safe by accident: [path — what protects it today — what would end that]
+- Hardening: [one line]
+
+### Chains
+- [A] + [B] → [new position or impact] — [severity]
+
+### Unconfirmed (critical or high if true; ≤3, then one line each)
+- [deciding fact] → if true: [finding, severity]; settle by: [file to read, question for the author, or requests to fire]
+
+### Checklist ([whose])
+- [item, a few words] — met (`file:line`) | not met → [finding or mandate] | n/a | can't verify here: [what would]
+
+### Pass 2 — informational (≤3)
+- **[Smell]** — `file:line`[ — one-way door]
+  - Smell: [one line]
+  - Cost: [the future change it makes expensive or risky]
+  - Fix: [specific: "extract X behind Y", never "improve the design"]
+
+**Scope:** reviewed …; not reviewed …; assumed …; mandates met: …; considered and cleared: [surface — guard `file:line`]; pre-existing: …
 ```
 
-Severity = impact × exploitability: **critical** — remote compromise, auth bypass, secrets exposure, injection with attacker-controlled input; **high** — exploitable with preconditions, sensitive-data exposure; **medium** — hardening gaps (headers, rate limits, verbose errors). Medium escalates when findings chain (verbose error + IDOR = targeted exfiltration) — report chains explicitly.
+Write for the author: never narrate this skill's gates or walk its catalogs; a checklist the requester or project supplies gets the item → status map, every item once.
 
-**Correctness (Pass 1):**
+## Self-Review
 
-```markdown
-- **[Issue Name]** (blocking) — `file:line`
-  - Failure mode: [how it breaks under concurrency / retry / partial failure — one line]
-  - Trigger: [the real-world condition that exposes it — load, retry, crash mid-op]
-  - Fix: [specific mechanism — unique index, idempotency key, FOR UPDATE, try/finally]
-```
-
-**Maintainability (Pass 2):**
-
-```markdown
-- **[Smell / Issue Name]** — `file:line`
-  - Smell: [name the design smell, one line]
-  - Cost: [what future change gets expensive, or which change becomes risky]
-  - Fix: [specific — "extract X behind interface Y", not "improve the design"]
-```
+- Each blocking finding: every trigger or exploit path, each reachable past its path's state guards, with its precondition; every end state; the guard sought one layer away; a Fix (mechanism, layer) and its revert-failing test.
+- Loop closed (step 5): every blocking path fails at a named guard, fixed decisions held; each agent exit checked for carried context; each fix ending a safe-by-accident path lands with or after its race's guard; order, residual and interim stated.
+- Every mandate and supplied-checklist item has a status; an unmet mandate blocks and shows in the verdict.
+- Every mapped entry point, effect and changed contract (callers searched) ends as a finding, an Unconfirmed item or a cleared line citing its guard's `file:line` (routine ones grouped); minus lines read; pre-existing code sharing state or effects checked; whatever rests on a library default names the pinned version.
+- No Pass 1 finding in tests, fixtures or dev-only config (a committed real-format secret excepted); nothing Not-reported; no decoy.
+- One root cause, one finding, one pass; the verdict matches the counts, mandates and one-way doors, and answers the requester's decision against the deadline.
+- **Footprint**: blocking findings within 150 words × their count, each Mandate one line; other bodies ≤60, verdict block ≤80, Scope ≤90, a clean review ≤120 (checklist map aside), a pre-mortem ≤10 items and ≤150 words; ≤3 full Mediums and ≤3 full Unconfirmed (one line each past that), ≤3 Pass 2, per module in an audit; no patch; nothing material dropped to fit.

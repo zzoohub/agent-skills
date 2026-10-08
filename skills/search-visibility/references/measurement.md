@@ -1,248 +1,74 @@
-# Measurement Reference: SEO + AEO + GEO Metrics
+# Measurement
 
-How to measure success across traditional search, answer engine features, and AI-generated answer platforms.
+Read for Search Console, Bing or GA4 data, a traffic change, a baseline, proof that a fix worked, or AI visibility. Platform facts checked 2026-10-08 in Google's and Bing's docs: cite them with that date.
 
----
+## 1. Data hygiene
 
-## Table of Contents
+- **Register every console the market uses:** Search Console (a Domain property), Bing Webmaster Tools, Naver Search Advisor for Korea. Query data lives only there. Search Console's platform properties (2026) add your official Instagram, TikTok, X and YouTube accounts' performance in Search and Discover.
+- **Search Console rows are incomplete, not sampled.** Anonymized queries count in chart totals but never as rows, and leave the totals once a query filter is on, so rows never sum to the total. The UI export stops at 1,000 rows, the API at 50,000 a day per search type; the BigQuery bulk export has no cap.
+- **History is 16 months,** and the BigQuery export starts the day you enable it, with no backfill: enable it, or archive through the API, before you need a year-over-year comparison.
+- **Split brand from non-brand** with Search Console's branded-queries filter (it can misclassify, and low-impression sites don't get it) or a regex, and report non-brand on its own: brand demand follows PR and product news.
+- **Average position misleads:** it averages your topmost position per query, so new rankings at position 40 drag it down while clicks grow; read it per query or cluster. A link inside an AI Overview takes the Overview's position.
+- **Search Console clicks never match GA4 sessions** (consent, blockers, redirects): compare trends, not totals.
+- **Annotate** releases, migrations, tracking and consent changes, and Google's updates (Search Status Dashboard). The newest days are preliminary.
 
-1. [The Measurement Challenge](#the-measurement-challenge)
-2. [Traditional SEO Metrics](#traditional-seo-metrics)
-3. [AEO Metrics](#aeo-metrics)
-4. [GEO Metrics](#geo-metrics)
-5. [Integrated Measurement Framework](#integrated-measurement-framework)
-6. [Tools Landscape](#tools-landscape)
-7. [Measurement Pitfalls to Avoid](#measurement-pitfalls-to-avoid)
+## 2. Traffic changes
 
+Answer in order: is the change real (tracking, reporting); which stage broke (`technical-seo.md` triage order and symptoms); which segment moved, when (template, device, country, brand or non-brand, cluster). A site-wide average hides a one-template loss. Report three numbers, in the reader's metric (clicks, key events, revenue) over a stated window: the change as reported, the part that is artifact, and the corrected change as a range. A memo that only implies the corrected size hasn't answered the question.
 
-## The Measurement Challenge
+| Pattern | Likely cause | Check |
+|---|---|---|
+| GA4 down, Search Console flat | Tracking or consent change | Tag and consent-banner deploys |
+| Impressions down and average position improving, from mid-September 2025 | Google stopped serving 100 results per page (`&num=100`), removing deep-position impressions | Reporting artifact: compare clicks across the date |
+| Impressions flat, CTR down | The results page absorbed the click: an AI Overview, ads, a new feature | Live results for top queries; the Generative AI report for those pages |
+| Impressions down, position flat | Demand or seasonality | Year over year; Google Trends |
+| Positions fall across templates on a core update's dates | Core update | The rule below |
+| Sudden site-wide drop, or impressions on queries you never targeted (pharma, casino, foreign script) | Manual action, or hacked pages | Search Console › Manual actions and Security issues; URLs you didn't create. Clean up, then request a review |
+| Slow decline on one cluster | Competitors added what you lack, or lost links | Information-gain grid (`seo-fundamentals.md` §3); lost referring domains |
 
-Traditional SEO has a clear attribution path: user searches, clicks result, lands on site, converts. Analytics tools (GA4, GSC) track this end to end.
+**After a core update, don't thrash.** With no technical regression, wait until a week after the update completes, compare that week with one before it started, and find where losing pages cluster (template, query type, intent). Improve those on substance: Google warns against quick fixes, and recovery can take months. *Break:* a release shipped near the drop; revert or fix it first.
 
-AEO complicates this: when your content appears as a featured snippet or voice answer, users may get the information without clicking. High impressions with low clicks is often a sign of AEO success, not a problem.
+## 3. Your CTR curve
 
-GEO breaks the path further. When an AI tool mentions your brand, the user may search your brand name later, visit your site directly days later, sign up without ever clicking from the AI answer, or never visit your site but form a positive brand impression.
+Published CTR curves describe other sites and results pages; build your own. Take three months of non-brand Search Console queries per device and compute CTR per position (1, 2, 3, 4–5, 6–10). Split the queries by whether an AI Overview shows (from a SERP tool or a hand check) and, where one shows, whether it cites you. Use the curve to find winners to leave alone, titles to test (well below the curve at a stable position; one change at a time) and the value of a ranking gain.
 
-You need traditional SEO metrics, AEO metrics, and GEO metrics to see the full picture.
+Cited pages tend to out-click uncited ones on AI Overview queries, but stronger brands are both cited and clicked more: the gap is correlation, so promise no clicks from a citation.
 
----
+## 4. The AI-visibility ladder
 
-## Traditional SEO Metrics
+Measure from the bottom rung up; no rung stands in for another.
 
-### Organic Traffic
-- **What**: Visits from organic (non-paid) search results
-- **Tools**: Google Analytics 4, Google Search Console
-- **Track**: Total organic sessions, organic users, landing page performance
-- **Segment by**: Brand vs. non-brand queries, landing page, device, geography
+| Rung | Question | Evidence |
+|---|---|---|
+| 1. Eligibility | Can the engine use you? | Index status in Search Console and Bing Webmaster Tools; search-bot hits per template in logs (agents: `technical-seo.md` §2) |
+| 2. Retrieval | Do engines fetch you while answering? | User-fetcher hits per URL (ChatGPT-User, Perplexity-User, Claude-User) |
+| 3. First-party citations | Where do engines show or cite you? | Bing Webmaster Tools › AI Performance, a sample: citations, cited pages and grounding queries (Copilot, Bing's AI answers). Search Console's Generative AI report: impressions only, AI Overviews and AI Mode combined, by page, country and device |
+| 4. Sampled appearance | How often are you named, recommended or cited against competitors? | The prompt panel (§5) |
+| 5. Outcomes | Does it pay? | AI-referral sessions and key events; self-reported attribution; pipeline |
 
-### Keyword Rankings
-- **What**: Your position in search results for target keywords
-- **Tools**: Semrush, Ahrefs, Moz, SE Ranking, Google Search Console
-- **Track**: Rank position, ranking URL, SERP features owned, position changes
-- **Focus on**: Keywords with business relevance, not just volume
+- **A bot hit is not a visit.** Search-bot hits show eligibility, user-fetcher hits an engine answering with your page; neither is traffic.
+- **Google's AI clicks don't show up as such:** AI Overview and AI Mode clicks sit inside Search Console's Web totals and GA4's Organic Search.
+- **AI referrals** follow the product-analytics capability's channel definition, if available; map missing assistants in a custom channel group, never bing.com. They undercount (apps and some assistants strip the referrer): add an AI option to "how did you hear about us?" and compare its share with the channel's.
+- **Bing's grounding queries** (searches an engine ran to answer) feed the keyword map and the panel.
+- **Judge AI traffic on key events and pipeline,** not engagement rates.
 
-### Click-Through Rate (CTR)
-- **What**: Percentage of impressions that result in clicks
-- **Tools**: Google Search Console
-- **Track**: CTR by query, CTR by page, CTR by position
-- **Benchmark**: CTR-by-position is now effectively bimodal. On AI-Overview-*absent* queries it roughly follows the legacy curve (position 1 ~25-30%, position 5 ~5-8%). On AI-Overview-*present* queries it is sharply depressed — position-1 CTR drops ~30-58% when an AI Overview sits above the result (Ahrefs, 2025), and clicks are near-zero for sites not cited inside the AIO. Being cited *inside* the AI Overview is the new CTR lever; do not treat any single position curve as universal
-- **Improve by**: Optimizing title tags, meta descriptions, and structured data for rich results
+## 5. The prompt panel
 
-### Impressions
-- **What**: How many times your pages appeared in search results
-- **Tools**: Google Search Console
-- **Track**: Total impressions, impressions by query, impressions by page
-- **Use for**: Identifying visibility trends and content opportunities
+A tracked panel and its waves live in `ai-visibility-log.md` in the search dir.
 
-### Backlink Metrics
-- **What**: External links pointing to your site
-- **Tools**: Semrush, Ahrefs, Moz, Majestic
-- **Track**: Total referring domains, new/lost links, domain authority of linking sites, anchor text distribution
-- **Focus on**: Quality (authority and relevance of linking domains) over quantity
+- **Build** prompts from real demand: Search Console question queries, sales-call and support wording, site search, Bing grounding queries, titles of the threads and roundups engines cite, and the tracked prompts in each competitor-page draft's opening comment, or a handoff the caller passes. At least 5 per cluster, tagged by type (shortlist, comparison, how-to, brand fact) and weighted by revenue proximity; include the brand-fact prompts (`consensus-and-accuracy.md`). Start with 20–30 prompts on the 3–5 clusters nearest revenue and two engines; grow toward 100 only with a tracker that meets the Tools bar below. Freeze the wording: a reworded prompt starts a new series.
+- **Pilot** (one cluster or engine in question): that cluster's 5 prompts × 5 runs on one or two engines, logged in the AI-visibility log when one is kept or tracking is wanted; answer with the gap class, evidence and lever, and size the full panel.
+- **Run** monthly waves, each prompt at least 5 times per engine (10 when a decision rides on it): logged out, or a clean account with memory off; fixed location and language; in the consumer interface buyers use, since API answers can differ. *Can't run the consumer interfaces* (no logins, bot walls)? Check Access yourself, hand the caller the panel and a run sheet, and mark the other gap classes as hypotheses; API runs with web search may seed the source map, labeled as such, never as appearance rates.
+- **Record** per run: named; recommended (offered as a pick); your cited URLs; every cited domain; factual errors; paid or organic placement.
+- **Report** per cluster and engine: appearance rate (share of runs naming you) and cited rate beside each competitor's from the same runs, plus the top cited domains. Never a rank: in SparkToro and Gumshoe's January 2026 test, repeated runs of one prompt returned the same brand list under 1% of the time. Judge a change at the next one or two waves.
+- **Noise floor.** Take each prompt's change in appearance rate between waves; across n prompts, a shift is real when the mean change ± 2·SD/√n excludes zero and the next wave agrees. On a 50-prompt × 5-run panel, moves under about 10 points are usually noise.
+- *Break:* a confident wrong answer to a brand-fact prompt is a bug to trace now (`consensus-and-accuracy.md`), not a rate to watch.
+- **Tools.** Hand collection suits a small panel; a tracker earns its cost only if it uses the consumer interface, repeats prompts, exports raw answers with every cited URL, fixes location and language, and separates paid placements.
 
-### Core Web Vitals
-- **What**: Page experience metrics (LCP, INP, CLS)
-- **Tools**: Google Search Console, PageSpeed Insights, Chrome UX Report
-- **Track**: Pass/fail status for each metric, field data trends, pages needing improvement
-- **Target**: LCP 2.5s or less, INP 200ms or less, CLS 0.1 or less
+## 6. KPIs and proof
 
-### Indexation
-- **What**: How many of your pages are in the search index
-- **Tools**: Google Search Console (Pages report)
-- **Track**: Indexed pages count, indexation issues, crawl errors
-- **Watch for**: Significant drops in indexed pages, increasing "excluded" pages
+Report by money template and cluster: non-brand organic clicks and key events; the indexed share of each money template's sitemap; appearance and cited rates against competitors, Bing AI citations and Generative AI impressions on money pages; brand-fact accuracy (share of brand-fact prompts answered correctly); AI-referral key events and the self-reported AI share.
 
-### Conversions from Organic
-- **What**: Goal completions or revenue from organic search traffic
-- **Tools**: Google Analytics 4 (with conversion tracking configured)
-- **Track**: Conversion rate by landing page, revenue from organic, assisted conversions
-- **This is the bottom line**: All SEO metrics ultimately serve conversion goals
+**Never targets:** average position across queries; total impressions or ranking-keyword counts; the "Not indexed" total; DA or DR; AI ranks or single runs; bot hits as traffic.
 
----
-
-## AEO Metrics
-
-### Featured Snippet Ownership
-- **What**: Which of your pages currently hold featured snippet positions for target queries
-- **Why it matters**: Featured snippets are position zero, the most visible placement in search results. Owning a snippet means your brand is the answer.
-- **Tools**: Semrush (Position Tracking with SERP Features filter), Ahrefs (SERP Features report), Moz, manual checking
-- **Track**: Total snippets owned, snippets gained/lost per period, snippet type (paragraph, list, table), competitor snippet ownership for same queries
-- **Segment by**: Topic area, content type, snippet format
-
-### People Also Ask Presence
-- **What**: How often your content appears in PAA boxes for target queries
-- **Why it matters**: PAA boxes appear on a large share of searches (estimates range ~40-67% depending on dataset/region and are higher on mobile). Each PAA click generates additional questions, creating cascade visibility.
-- **Tools**: Semrush, Ahrefs, AlsoAsked, manual tracking
-- **Track**: Number of PAA appearances for target topics, which specific questions reference your content, competitor PAA presence comparison
-
-### Voice Search Visibility
-- **What**: Whether your content is selected as the voice assistant answer for target queries
-- **Why it matters**: Voice assistants read one answer. You are either the answer or invisible.
-- **Tools**: Manual testing with Google Assistant, Siri, Alexa; some third-party tracking tools emerging
-- **Track**: Voice answer attribution for priority queries, voice-driven branded searches (correlating indicator)
-- **Reality check**: Voice search measurement is still immature. Manual testing of priority queries is the most reliable method currently available.
-
-### Zero-Click Visibility Indicators
-- **What**: Signals that your content is being seen but not clicked because the answer is delivered on the SERP
-- **Why it matters**: Zero-click does not mean zero value. Brand impressions and authority still accrue.
-- **Tools**: Google Search Console
-- **Track**: Queries with high impressions but unusually low CTR (especially question queries), impression trends for snippet-held queries
-- **Interpret carefully**: Low CTR on a query where you hold the snippet is normal AEO behavior, not a problem to fix
-
-### Rich Result Performance
-- **What**: Performance of pages with *currently supported* structured-data rich results (review stars, product, breadcrumbs, video, etc.). Note: FAQ and HowTo rich results are deprecated, and their Search Console reports / Rich Results Test support are being retired in 2026 — do not track them as live rich results (timeline in `technical-seo.md` §6)
-- **Tools**: Google Search Console (Enhancements reports), Rich Results Test
-- **Track**: Valid vs. invalid structured data items, CTR comparison for pages with vs. without rich results, rich result types active
-
----
-
-## GEO Metrics
-
-### AI Citation Frequency
-- **What**: How often AI platforms mention your brand when answering questions related to your domain
-- **Why it matters**: Direct measure of AI visibility. Higher frequency means more brand exposure through AI channels.
-- **How to track (free)**: Maintain a spreadsheet of 20-50 target queries relevant to your domain. Test monthly across ChatGPT, Perplexity, Google AI Mode, and Claude. Record: cited (yes/no), position in response, exact wording used, competitors also mentioned.
-- **Track**: Citation count by AI platform, citation count by topic area, citation count by query type
-- **Segment by**: AI platform, topic area, query type
-
-### Share of Voice in AI Answers
-- **What**: Your mention frequency compared to competitors for the same queries
-- **Why it matters**: Shows competitive positioning in AI discovery
-- **How to track (free)**: Use the same query spreadsheet. For each query, note which brands are mentioned. Calculate your share: your mentions / total brand mentions across all queries.
-- **Example**: For 50 queries about "best CRM software," Brand A appears 25 times, Brand B appears 18 times, your brand appears 8 times. Your share of voice = 8/51 = 16%.
-
-### Sentiment in AI Mentions
-- **What**: Whether AI answers frame your brand positively, neutrally, or negatively
-- **Why it matters**: Being mentioned is not enough. Negative framing is worse than not being mentioned.
-- **How to track (free)**: When recording citations, add a sentiment column (positive/neutral/negative). Note the exact framing. Track trends over time.
-- **Improve by**: Addressing root causes of negative sentiment (product issues, support gaps), building positive content and reviews on third-party platforms.
-
-### Context / Prompt Tracking
-- **What**: Which specific questions, topics, or prompts trigger mentions of your brand in AI answers
-- **Why it matters**: Reveals which topics you "own" in AI perception vs. where you are invisible
-- **How to track (free)**: Organize your query spreadsheet by topic cluster. After 2-3 months, patterns emerge showing which topics consistently cite you and which don't.
-- **Use for**: Identifying content gaps (topics where you should appear but don't) and strengths (topics where you consistently appear).
-
-### AI Referral Traffic
-- **What**: Visits to your site that originated from AI platforms
-- **How to track (free)**: GA4's built-in **"AI Assistant" default channel group** launched ~**May 13 2026** (Google's docs): it auto-tags recognized AI traffic with medium `ai-assistant`, channel `AI Assistant`, and campaign `(ai-assistant)`, with no configuration — check Reports → Acquisition → Traffic acquisition. It is **non-retroactive** and rolling out gradually, so it may not appear in every property yet. Google officially names **only ChatGPT, Gemini, and Claude** (it has not published a fuller list — do not assume Perplexity or "20+ assistants" are covered natively). As a supplement, add a custom channel group covering `chatgpt.com`, `perplexity.ai`, `gemini.google.com`, `claude.ai`, `copilot.microsoft.com`, `bing.com`. To detect AI *visits* in server logs, look for the search/user-initiated agents (OAI-SearchBot, ChatGPT-User, PerplexityBot, Perplexity-User, Claude-SearchBot, Claude-User) — not Google-Extended (an opt-out token for Gemini training/grounding, not a fetcher). See the canonical crawler table in `technical-seo.md`.
-- **Reality check (material undercount)**: **35-70% of AI sessions still land in Direct** because mobile-app/in-app clicks strip the referrer (Statcounter, Mar 2026), so GA4 materially undercounts AI traffic. Supplement with "how did you hear about us?" surveys that include an AI option.
-- **Track what you can**: Referral traffic from perplexity.ai, chatgpt.com, and other AI platforms that include referral information.
-
----
-
-## Integrated Measurement Framework
-
-### The Three-Dashboard Approach
-
-**Dashboard 1: Traditional SEO Performance**
-- Organic traffic trends
-- Keyword ranking positions
-- CTR trends
-- Backlink growth
-- Core Web Vitals status
-- Indexation health
-- Conversions from organic
-
-**Dashboard 2: Answer Engine Performance (AEO)**
-- Featured snippet ownership and changes
-- People Also Ask presence
-- Rich result performance (currently-supported types — note FAQ/HowTo rich results are deprecated; see `technical-seo.md` §6)
-- Voice search visibility (manual audit results)
-- Zero-click indicators (high impression / low CTR question queries)
-
-**Dashboard 3: AI Visibility Performance (GEO)**
-- AI citation frequency (overall and by platform)
-- Share of voice vs. competitors
-- Sentiment distribution
-- Topic/prompt coverage map
-- AI referral traffic (where measurable)
-
-### Connecting the Three
-
-While direct attribution across all three layers is limited, look for correlating signals:
-
-- **Featured snippet ownership to AI citations**: Content that wins snippets is often the same content AI systems cite. Track whether snippet wins correlate with increased AI mentions.
-- **Branded search volume increase**: If answer features and AI platforms mention your brand more, branded searches often increase. Track branded query volume in GSC.
-- **Direct traffic increase**: Both AEO and GEO brand visibility can increase direct visits.
-- **Conversion path analysis**: In GA4, look at assisted conversions and multi-touch attribution.
-- **Survey data**: Ask new customers "how did you hear about us?", include both "saw answer in search results" and "AI tool recommended" as options.
-
-### Reporting Cadence
-
-| Metric Category | Recommended Cadence |
-|----------------|-------------------|
-| Organic traffic, rankings, conversions | Weekly review, monthly report |
-| Core Web Vitals, indexation | Monthly check |
-| Backlink growth | Monthly review |
-| Featured snippet ownership, PAA presence | Monthly tracking |
-| Rich result performance | Monthly check |
-| Voice search audit (manual) | Quarterly |
-| AI citation frequency, share of voice | Monthly tracking |
-| AI sentiment | Quarterly assessment |
-| Competitive benchmarking (SEO + AEO + GEO) | Quarterly deep dive |
-| Full audit (technical SEO + AEO + GEO readiness) | Semi-annual or annual |
-
----
-
-## Tools Landscape
-
-### Traditional SEO
-- **Google Search Console**: Free. Rankings, impressions, CTR, indexation, Core Web Vitals. Essential.
-- **Google Analytics 4**: Free. Traffic, user behavior, conversions. Essential.
-- **Semrush / Ahrefs / Moz**: Paid. Keyword research, competitor analysis, backlink monitoring, site audits. Choose one as your primary platform.
-- **Screaming Frog / Sitebulb**: Paid. Technical SEO crawling and auditing.
-- **PageSpeed Insights / Lighthouse**: Free. Core Web Vitals and performance analysis.
-
-### AEO
-- **Semrush / Ahrefs**: SERP feature tracking including featured snippets and PAA presence.
-- **AlsoAsked**: People Also Ask data mining and visualization.
-- **Google Search Console**: Impression/CTR data for identifying zero-click patterns.
-- **Rich Results Test**: Validates structured data eligibility.
-- **Manual voice assistant testing**: Direct testing on Google Assistant, Siri, Alexa for priority queries.
-
-### GEO / AI Visibility (Zero-Cost)
-- **Manual prompt testing**: Spreadsheet of 20-50 queries, test monthly across ChatGPT/Perplexity/Google AI Mode/Claude. See GEO Metrics section above for tracking details.
-- **GA4 AI Assistant channel**: Built-in default channel group (added ~May 2026, automatic; medium `ai-assistant`) covering ChatGPT/Gemini/Claude and others. Supplement with a custom channel group for any platforms GA4 hasn't recognized (`chatgpt.com`, `perplexity.ai`, `gemini.google.com`, `claude.ai`, `copilot.microsoft.com`, `bing.com`).
-- **GSC brand query trends**: Rising branded searches = indirect GEO attribution.
-- **Server logs**: Check AI search/user-initiated agents (OAI-SearchBot, ChatGPT-User, PerplexityBot, Perplexity-User, Claude-SearchBot, Claude-User) — see the canonical table in `technical-seo.md`.
-- **Signup survey**: Add "AI tool recommended it" option.
-
-### Dedicated AI-visibility tools (paid)
-Purpose-built platforms for tracking AI citations / share of voice at scale (the scalable alternative to the manual prompt spreadsheet above): **Profound** (enterprise category leader), **Peec AI**, **Otterly**, **ZipTie**, **LLMrefs**. See `ai-platform-optimization.md` for coverage details — this market moves fast, so verify current coverage and pricing before committing.
-
-### Integrated
-- **Semrush**: Offers traditional SEO tools, SERP feature tracking (AEO), and AI visibility tracking in Enterprise tier.
-
----
-
-## Measurement Pitfalls to Avoid
-
-- **Do not treat low CTR as always bad**: For question queries where you hold a snippet, low CTR with high impressions is AEO success, not failure.
-- **Do not ignore AEO/GEO because they are hard to measure**: The attribution gap does not mean visibility is not valuable.
-- **Do not over-index on volatile AI metrics**: AI citation sources are highly volatile — a single platform or algorithm change has shifted a domain's citation share by ~50% within weeks (e.g., Reddit's ChatGPT share collapsing from ~60% to ~10% in 2025). Look at trends over quarters, not days.
-- **Do not abandon traditional SEO metrics**: Rankings and organic traffic still drive the majority of measurable conversions.
-- **Do not conflate correlation with causation**: Branded search increases could come from many sources, not just answer features or AI visibility.
-- **Do not measure everything, measure what matters**: Focus on metrics that connect to business outcomes.
-- **Do not judge GEO on engagement KPIs — judge it on conversions, segmented by engine and industry**: AI-referred visitors *bounce more* (67.8% vs 63.7%) and view fewer pages (4.0 vs 5.2) than search visitors; time on site is the only engagement metric AI "won" (86s vs 78s) (Ahrefs cross-site study, ~82K sites, May-Jun 2025). Yet AI traffic converts disproportionately well in some datasets (Ahrefs' own site: 0.5% of traffic but 12.1% of signups). By classic engagement dashboards AI traffic looks *worse*, so they mislead. **Conversion direction is contested** — a 94-brand ecommerce study found ChatGPT converted ~31% higher than *non-branded* organic but at ~1.4% of the volume (Visibility Labs / Search Engine Land, Feb 2026), while a larger academic study (973 sites) found ChatGPT trailing organic overall — so present a modest, segmented lift, not the inflated 4-23x multiples in vendor blogs. Volume benchmark: AI referral is ~**1.08% of total traffic** (Conductor 2026; IT sector highest ~2.8%), and conversion varies by engine (~3.2% ChatGPT/Claude, ~2.3% Gemini/Perplexity; 0.7-7.0% by industry — First Page Sage, Apr 2026). Treat all as directional, re-verify quarterly.
-- **Read citation-frequency metrics with wide error bars**: AI search tools gave *incorrect* source attributions in **>60% of 200 tests** across 8 tools (Tow Center, Columbia, Mar 2025; per-tool range 37% Perplexity to 94% Grok 3). Even well-structured content can be cited inaccurately or mis-attributed. **Decision:** put brand-name and entity clarity *inside* the liftable block itself (not just correct facts), and don't over-read small month-to-month citation-share swings.
+**Proving a fix.** Record the baseline before shipping (metric, source, date range). Read Google metrics only once the changed URLs are recrawled (URL Inspection shows the last crawl), against equal windows before and after adjusted with last year's same weeks, or against similar untouched pages. A branded-search rise after AI or off-site work may come from PR, ads or seasonality: report it as correlation, not proof.

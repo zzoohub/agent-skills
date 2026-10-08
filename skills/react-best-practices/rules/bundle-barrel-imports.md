@@ -1,62 +1,20 @@
 ---
-title: Avoid Barrel File Imports
-impact: CRITICAL
-impactDescription: 200-800ms import cost, slow builds
-tags: bundle, imports, tree-shaking, barrel-files, performance
+title: Fix Barrel Imports Where the Analyzer Shows Unused Modules
+tags: bundle, imports, barrel-files, tree-shaking
 ---
 
-## Avoid Barrel File Imports
+A barrel file (an `index.js` of `export * from './x'`) makes the bundler, or Node for unbundled server dependencies, load every re-exported module unless it can prove them unused and side-effect free. Icon and component libraries re-export thousands of modules; the cost lands on dev boot, HMR, builds and server cold starts more often than on client bytes. Act when the analyzer or a dev-boot profile shows it.
 
-Import directly from source files instead of barrel files to avoid loading thousands of unused modules. **Barrel files** are entry points that re-export multiple modules (e.g., `index.js` that does `export * from './module'`).
-
-Popular icon and component libraries can have **up to 10,000 re-exports** in their entry file. For many React packages, **it takes 200-800ms just to import them**, affecting both development speed and production cold starts. (Figures in this rule are from Vercel's October 2023 measurements of unoptimized imports; re-measure for your own stack.)
-
-**Why tree-shaking doesn't help:** When a library is marked as external (not bundled), the bundler can't optimize it. If you bundle it to enable tree-shaking, builds become substantially slower analyzing the entire module graph.
-
-**Incorrect (imports entire library, when nothing optimizes the barrel):**
-
-```tsx
-import { Check, X, Menu } from 'lucide-react'
-// Loads 1,583 modules, takes ~2.8s extra in dev
-// Runtime cost: 200-800ms on every cold start
-
-import { Button, TextField } from '@mui/material'
-// Loads 2,225 modules, takes ~4.2s extra in dev
-```
-
-**Correct - Next.js (`optimizePackageImports`):**
-
-Next.js already optimizes a built-in default list of popular barrel packages — including `lucide-react`, `@mui/material`, `@mui/icons-material`, `@tabler/icons-react`, `react-icons/*`, `@headlessui/react`, `date-fns`, `lodash-es`, `ramda`, `rxjs` and `react-use` — so do not list those yourself (check the current default list in the Next.js `optimizePackageImports` docs). Add only other true re-export barrels; the option is still under `experimental` (as of Next.js 16):
+**Next.js:** `optimizePackageImports` rewrites barrel imports into direct ones at build time, and Next already applies it to a default list of common icon, UI and utility libraries (`lucide-react`, `@mui/material`, `date-fns`, `lodash-es` and more). Don't repeat those (check the current list in the docs); add only other true re-export barrels. The option is still under `experimental`.
 
 ```js
-// next.config.js - optimizes barrel imports of the listed packages at build time
-module.exports = {
-  experimental: {
-    optimizePackageImports: ['my-icon-kit']
-  }
-}
+// next.config.js
+module.exports = { experimental: { optimizePackageImports: ['my-icon-kit'] } }
 ```
 
-```tsx
-// Keep the standard imports - Next.js transforms them to direct imports
-import { Check, X, Menu } from 'lucide-react'
-// Full TypeScript support, no manual path wrangling
-```
+**Elsewhere:** import from the package's subpath, such as `import Button from '@mui/material/Button'`.
 
-When available, this is the preferred approach because it preserves TypeScript type safety and editor autocompletion while still eliminating the barrel import cost.
+- Some libraries (notably `lucide-react`) ship no type declarations for deep import paths, so a deep import is an implicit `any` under `strict`. Prefer the framework option, or check that the package exports types for its subpaths.
+- CommonJS `lodash` is not a barrel: its entry is one monolithic file that `optimizePackageImports` can't split. Use per-method imports (`lodash/debounce`), `lodash-es`, or a native equivalent.
 
-**Correct - Direct imports (non-Next.js projects):**
-
-```tsx
-import Button from '@mui/material/Button'
-import TextField from '@mui/material/TextField'
-// Loads only what you use
-```
-
-> **TypeScript warning:** Some libraries (notably `lucide-react`) don't ship `.d.ts` files for their deep import paths. Importing from `lucide-react/dist/esm/icons/check` resolves to an implicit `any` type, causing errors under `strict` or `noImplicitAny`. Prefer `optimizePackageImports` when available, or verify the library exports types for its subpaths before using direct imports.
-
-In Vercel's October 2023 measurements, these optimizations gave 15-70% faster dev boot, 28% faster builds, 40% faster cold starts, and significantly faster HMR.
-
-Libraries commonly affected: `lucide-react`, `@mui/material`, `@mui/icons-material`, `@tabler/icons-react`, `react-icons`, `@headlessui/react`, `@radix-ui/react-*`, `ramda`, `date-fns`, `rxjs`, `react-use`.
-
-> **CommonJS `lodash` is not a barrel:** its entry is one monolithic file that `optimizePackageImports` cannot split. Use per-method subpath imports (`import debounce from 'lodash/debounce'`), `lodash-es`, or a native equivalent.
+Source: https://nextjs.org/docs/app/api-reference/config/next-config-js/optimizePackageImports

@@ -1,196 +1,144 @@
 ---
 name: churn-prevention
 description: |
-  Churn prevention, cancel flows, payment recovery, and customer health scoring.
-  Carve-out: dunning emails ARE owned here, not copywriting (email).
-  Use when: designing cancel flows, creating save offers, implementing dunning sequences,
-  building customer health scores, reducing involuntary churn, diagnosing churn patterns,
-  or when user mentions "churn", "retention", "payment failed", "payment recovery",
-  "downgrade", "at-risk customers", "subscription cancellation", "why are users leaving".
-  Do NOT use for: onboarding optimization (use cro); marketing email sequences including
-  win-back (use copywriting — email); pricing/tier design, including a downgrade tier's cost
-  (use pricing; "downgrade" here means a save-offer lower tier); or deep retention analytics
-  — cohort analysis, retention curves, segmentation, Carrying Capacity, PMF, Aha-Moment
-  (use product-analytics). This skill owns intervention-tied churn diagnosis:
-  voluntary-vs-involuntary split, cancel-reason themes, at-risk scoring.
+  Reduces subscription churn: finds where lost revenue goes (failed payments,
+  early vs late cancels, contraction), then designs the fix: cancel flows and
+  save offers (which offer, to whom, when; price terms via pricing),
+  failed-payment recovery, churn health scores, and auto-renewal
+  compliance. Owns billing-event notices (dunning, card expiry, renewal,
+  cancellation confirmation), not copywriting.
+  Use when: "churn", "cancel flow", "save offer", "failed payments",
+  "at-risk accounts", "renewal at risk".
+  Do NOT use for: win-back or re-engagement email (copywriting); retention
+  cohorts, curves or PMF (product-analytics); tier design or discount price
+  terms (pricing); onboarding (cro).
 ---
 
 # Churn Prevention
 
-Strategies for reducing both voluntary and involuntary churn through proactive intervention, cancel flow optimization, and payment recovery.
+## Premise
 
-**Output:** Write the churn-prevention strategy to the growth docs root (default `biz/growth/churn-prevention.md`; caller may redirect the `biz/<area>/` root) and the dunning / payment-recovery playbook to `biz/growth/dunning.md`. If no file-write tool is present, return the content inline. Update an existing file in place rather than creating a duplicate.
+Churn work wins only on durable, incremental retained revenue: a save counts only if the account would otherwise have left and still pays after the offer ends. The cancel flow harvests a decision made weeks earlier, so the cheapest saves come before intent. Find where lost revenue goes before choosing a lever; then cost and reversibility, not clean evidence, decide what ships now (§ Ship or gate).
 
----
+Good output: lever 1 from the largest addressable bucket; do-now steps in order, with preconditions; every offer capped and costed; every change with a comparison that could show it failed.
 
-## Churn Prevention Framework
+## Modes & outputs
 
-### Understand Churn Types
+Default paths; the caller may redirect the `biz/` root. Update files in place; with no file-write tool, return content inline. Sections, listed here or in each reference's header, are a menu: omit what does not apply, heading included.
 
-**Voluntary churn** — Customer actively decides to cancel
-- Causes: unmet expectations, found alternative, budget cuts, outgrew product
-- Prevention: health monitoring, save offers, feature education, value reinforcement
+| Request | Read | Output · budget |
+|---|---|---|
+| Reduce churn (default) | Stages 0-1 | `biz/growth/churn-prevention.md` ≤1,200 words: Situation (motion, who bills, decomposition, assumptions; logo churn, GRR and NRR separately; annual terms: renewal rate by cohort) · Findings · Do now (ordered; owner, date, precondition, risk, rollback) · Levers 1-3 ranked, each with owner, ship week, sizing, assumption and a 2-4-week leading indicator · Asks (verdict, evidence, cost, counterproposal each) · Forecast against target · Measurement · Not doing. Lever 1's design follows its mode's row |
+| Cancel flow, save offers | `references/cancel-flow-patterns.md`, `references/compliance.md` | § Cancel flow in `churn-prevention.md`, ≤800 |
+| Failed payments, billing notices | `references/dunning-playbook.md`, `references/compliance.md` | `biz/growth/dunning.md` ≤700 |
+| Sales-led renewals, one account at risk | `references/renewal-playbook.md` | § Renewals ≤600 or a save plan ≤400 |
+| Health score | § Customer Health Score Framework, `references/health-signals.md` | § Health-score model, ≤500 |
+| Review a setup, or change a live one | The matching reference | Findings first, ≤700: 🔴 legal exposure, broken cancel or retry path · 🟠 sized revenue leak · 🟡 measurement gap · 🟢 polish; then do-now steps |
 
-**Involuntary churn** — Payment fails, customer didn't intend to leave
-- Causes: expired card, insufficient funds, bank decline, billing errors
-- Prevention: dunning sequences, card update prompts, retry logic
-- **This is the easiest win** — often a large share (roughly 20-40%) of total churn
+- **Budgets limit the record, never the analysis.** They cap decision prose; paste-ready drafts and a calculations appendix (inputs, formula, result) sit outside. Every request runs the checks (who bills, the user's numbers, the reference's traps, every party and automation touched); a material finding that does not fit becomes one line or moves to the appendix, never dropped. **Small requests** skip the question batch (state the defaults) and the written decomposition: the artifact plus one line per material finding, in scope or not. A scope cut names its reason and an owner, with enough to act on.
+- **Build on what exists:** redline the owner's score, flow, notices or spec in your doc, with reasons; replace only what fails a check; owners' files stay unchanged unless the caller asks. In any mode, each stakeholder ask gets an Asks entry.
+- **Drafts only:** no live retry, coupon, offer or send changes without approval. **Report back:** do-now steps in order with preconditions and risks; lever 1 and why; every material finding, one line each; assumptions, questions, approvals needed; files written (cite only what exists).
 
-### Prevention Priority Order
-1. Fix involuntary churn (dunning) — highest ROI, lowest effort
-2. Identify at-risk users early (health scoring)
-3. Intervene before they decide to cancel (proactive outreach)
-4. Optimize the cancel flow (save offers, alternatives)
+## Stage 0 — Read and frame
 
----
+**Read first** (defaults; caller may redirect): `biz/analytics/health-score.md`, `biz/analytics/funnels.md`, `biz/marketing/pricing.md`, `biz/growth/experiments.md`, `biz/growth/churn-prevention.md`, `biz/growth/dunning.md`, the exit-survey export; then what is live: retry, dunning and end-of-retry settings, and each automation that messages customers or changes access on billing or usage events, with its trigger.
 
-## When to Use Which Reference
+**Ask once, in one batch**, with defaults; a subagent that cannot prompt applies them and lists the questions:
+1. Who bills; what else messages customers? (your processor; others unknown, so confirming them is a precondition of every settings change)
+2. Term and motion? (monthly self-serve)
+3. Lost MRR by bucket and month, last 3-6 months: rising, or steadily high? (unknown: measure it in week 1 while reversible fixes ship)
+4. Who acts on risk flags: accounts each, review cadence? (automation only)
+5. Consumers or businesses, where? (consumers, strictest regime served)
+6. Concession ceiling or gross margin? (the launch default, `references/cancel-flow-patterns.md` § Offer mechanics)
+7. Target and date? (none: forecast the base case)
 
-| Scenario | Reference |
-|----------|-----------|
-| Cancel flow design, save offers, exit surveys, proactive retention | `references/cancel-flow-patterns.md` |
-| Payment failure recovery, dunning emails, retry logic | `references/dunning-playbook.md` |
+## Stage 1 — Decompose and route
 
-Read the relevant reference when you need implementation details for a specific area. The sections below provide the strategic framework.
+**Who bills sets the scope:** merchant of record or app store → configure their retry, grace and retention settings; net-terms invoices → collections with finance, not dunning; app and web mixed → route each subscriber by who bills them.
 
----
+Split lost MRR over the last 3-6 months (annual terms: 12 months of renewals) into involuntary · voluntary before the first renewal or day 90 · voluntary later · contraction, leaving out unaddressable exits (business closed). Cut each bucket by billing term and acquisition promo: churn at promo expiry is a pricing-fit leak. Counting: churn at its effective date; past due after the retry window is involuntary; paused MRR is at risk, not retained; unconverted trials are acquisition loss; reactivations are a separate inflow, never netted.
 
-## Core Principles
+**If churn rose, find the break first:** each bucket by month and by signup cohort. A step in one bucket at one date is an event (price change, billing migration, outage, release, a promo or annual cohort coming due): explain or reverse it before ranking. Cohorts flat while the blend rises: mix shift toward monthly, promo or new-channel customers, an acquisition-fit lever. **Bound every attribution:** parts sum to no more than the user's counts; a cause owns only the excess churn among accounts it touched over comparable untouched ones (grandfathered plans for a price change, non-users for a release).
 
-### Prevention > Recovery
-Catch at-risk users before they decide to leave. A user considering cancellation has already emotionally detached.
+**Rank** levers by low-case retained MRR (bucket MRR × share reached × lift) ÷ effort-weeks. Unmeasured lift: use the break-even lift (repays build and concession cost within two quarters), rank by its plausibility, and make it the test hypothesis and kill line. Don't assume dunning first: involuntary's share falls as price rises (Recurly, July 2026: ~30% of churn at $10-25 a month, ~6% at $250+).
 
-### Respect the User's Decision
-No dark patterns. Make cancellation possible (don't hide it). Offer alternatives, not obstacles. Trust builds re-subscription later.
+| Largest bucket | Lever 1 | Break when |
+|---|---|---|
+| Involuntary | Payment recovery (`references/dunning-playbook.md`) | Recovered accounts cancelling within 60 days: passive voluntary churn; fix value |
+| Voluntary before first renewal or day 90 | Activation (cro, if available); acquisition fit by channel | Cancels cluster at trial-to-paid: fix trial disclosure and reminders first |
+| Voluntary later, self-serve | Reason-mapped cancel flow with capped offers (`references/cancel-flow-patterns.md`), then health-triggered automation; annual-plan offers to monthly payers past ~3 paid months (pricing's terms) | Under ~50 cancels a month: the same flow, read as directional, plus churner interviews |
+| Voluntary later, sales-led | Renewal process and account saves (`references/renewal-playbook.md`); health score for owners, not save offers | Book under ~50 accounts: review each renewal by hand |
+| Contraction | Seat and usage utilization; packaging to pricing, if available | Seasonal or usage-priced: compare year over year |
 
-### Understand WHY Before Offering Saves
-Exit survey data should drive save offer design. Don't offer a discount to someone who found an alternative — offer a feature comparison instead. See the dynamic save offers table in `references/cancel-flow-patterns.md` for the full reason-to-offer mapping with primary and fallback offers.
+## Ship or gate
 
-### Involuntary Churn is the Easiest Win
-Payment failures are mechanical problems with mechanical solutions. Fix these first before tackling harder voluntary churn.
+| Action | Ships | Waits for |
+|---|---|---|
+| Loss-preventing notices (payment failure, card expiry, renewal, confirmations) | Now; never held out (test content or timing) | — |
+| Capped, reason-matched save offers within the given or default ceiling | Now, under the holdout | Readout, to deepen, lengthen or add |
+| Human outreach on red flags, triggers and intent signals, sized to capacity | Now, with a holdout or owner-by-owner rollout | — |
+| Retry, updater, token, end-of-retry and journey settings | Once traced and approved | — |
+| Automated plays keyed to health bands | — | Backtest clears the pass bar |
+| Over-ceiling concessions, contract or price changes, data deletion, billing migration | — | Evidence, owner approval |
 
----
+**Trace first:** before changing a setting, fix what fires on the events it touches (`references/dunning-playbook.md` § Inventory and trace). **No-build first,** whatever the rank: native features of the tools already paid for, and hosted pages; then builds by value per effort.
 
-## Compliance & Click-to-Cancel (2025-2026 landscape)
+## Measure
 
-> **Not legal advice — verify against current law in every region you serve before launching any cancel flow.**
+- **Holdout**, random and sticky per account: 10-20% of cancel-intent accounts get the survey-only path; proactive plays are withheld from 10-20% of flagged accounts, or rolled out owner by owner. Size via cro, if available.
+- **Primary metric**, treatment minus holdout: saves, net revenue retained per cancel-intent after concession cost, at 90 days and 60 days after any discount ends; plays, GRR of flagged accounts at 90 days (annual: at renewal).
+- **Guardrails:** re-cancels within 30 days of an offer ending, refunds and chargebacks, complaints.
+- **Small samples** (under ~150 holdout cancel-intents per decision window; plays, ~200 flagged accounts a quarter): compare with a pre-launch cohort of matching reason and tenure (plays: the prior quarter's flagged cohort); directional only.
+- **Forecast against the target:** low and base case per lever, deduplicated, dated from when each starts counting; name any shortfall and what would close it, never a raised lift.
+- Log each test in `biz/growth/experiments.md` (default; caller may redirect) as cro's test card, if available.
 
-### US — FTC
-- The FTC's federal "Click to Cancel" Rule was **vacated by the 8th Circuit on 2025-07-08** on procedural grounds (no preliminary regulatory analysis).
-- The FTC submitted a draft Advance Notice of Proposed Rulemaking (ANPRM) on 2026-01-30 to restart the rulemaking with proper procedure.
-- **Enforcement under existing unfair/deceptive-practices doctrine continues** (FTC Act §5, ROSCA, state UDAP laws). State AGs have also stepped up enforcement. There is no nationwide click-to-cancel mandate today — obligations come from the state patchwork below plus general UDAP enforcement.
+**If the numbers don't move** (symptom → cause → check):
+- Save rate up, revenue churn flat → saves not incremental or durable → holdout delta, re-cancels after offers end.
+- Recovery or notices up, churn flat → `references/dunning-playbook.md` § Metrics.
 
-### California — AB 2863 (Automatic Renewal Law amendments)
-- **Effective 2025-07-01.** Applies to contracts entered into, amended, or extended on or after that date.
-- **Same-medium cancellation** required: if a consumer signs up online, they must be able to cancel online with equal ease. No phone-only or in-person-only cancellation paths.
-- "Click-to-cancel" button required for online cancellations; cannot obstruct or delay. (Presenting a skippable discount/save offer during cancellation is *not* an obstruction, provided a clear, conspicuous cancel option remains.)
-- Expanded definitions of "automatic renewal" and "continuous service" cover **free trials and free-to-pay conversions**.
-- **Express affirmative consent** to renewal terms required; records retained ≥3 years (or 1 year post-termination, whichever is longer).
-- Enforcement by California AG, district attorneys, and private plaintiffs.
+## Compliance & Click-to-Cancel
 
-### New York — Click-to-Cancel Act (2025 Budget Bill)
-- Signed 2025-05-09 as part of the state budget; **effective 2025-11-05**.
-- Simple cancellation mechanism **as easy as the one used to consent, in the same medium**. If consent was online, cancellation must be online; in-person consent must also offer online or phone cancellation.
-- Companies cannot impose unreasonable or unlawful conditions, refuse, obstruct, or unreasonably delay cancellation.
-- **New York City** layers a municipal Click-to-Cancel Rule (DCWP) on top, **effective 2026-10-01** for auto-renewal and continuous-service subscriptions offered to NYC consumers: cancellation at least as easy as signup and in the same medium, clear disclosure, affirmative consent, renewal notices; enforced as a deceptive trade practice with per-violation fines.
+Not legal advice; dated, sourced rules per jurisdiction: `references/compliance.md`; verify before launch.
 
-### Other US states with auto-renewal rules
-- **Colorado** (SB25-145): enacted 2025-08-06, but its requirements — including the one-step online cancellation link and the broadened coverage reaching B2B purchasers — apply from **2026-02-16**.
-- **Vermont** (9 V.S.A. § 2454a): a long-standing auto-renewal law (enacted 2017, effective 2019) that already requires online/same-medium cancellation — *not* a 2025 law.
-- **Illinois**: the current auto-renewal statute (815 ILCS 601, from 2000) does **not** mandate one-step online cancellation; a one-step online-cancel amendment (SB3562) cleared Senate committee and reached Senate 2nd Reading on 2026-03-12, with no enactment found as of 2026-10 — confirm enactment status before relying on it.
-
-Other states impose analogous requirements. Confirm the current rule and effective date in every state you serve.
-
-### EU / UK
-- **EU:** The Unfair Commercial Practices Directive (2005/29/EC) and the Consumer Rights Directive (2011/83/EU), as implemented in national law, are the operative rules restricting deceptive cancellation "dark patterns" for ordinary subscription businesses today. The Digital Services Act additionally bans dark patterns but only for designated **online platforms** (Art. 25, which itself defers to the UCPD and GDPR where they already apply); the Digital Markets Act bans dark-pattern circumvention (Arts. 5(2), 13) only for designated **gatekeepers** (a handful of Big Tech firms) — neither reaches a typical SaaS seller. GDPR governs consent-specific dark patterns. A dedicated EU rule on subscription/cancellation dark patterns — the **Digital Fairness Act** — is planned (Commission proposal expected ~Q4 2026, may slip — confirm) but is NOT yet in force. Separately, Directive (EU) 2023/2673 adds a "withdrawal button" requirement to the Consumer Rights Directive for distance contracts concluded online, applying from 2026-06-19 (this concerns the statutory right of withdrawal, distinct from ongoing subscription cancellation). France's DGCCRF and other consumer-protection authorities (acting under national UCPD law) have stepped up enforcement on subscription-trap patterns since 2024-2025.
-- **UK:** The DSA and DMA do **not** apply in the UK post-Brexit (they reach UK firms only when serving EU users). UK subscription-trap and dark-pattern rules sit under the **Digital Markets, Competition and Consumers Act 2024 (DMCC Act)** — its consumer-protection / unfair-commercial-practices provisions are in force from 2025-04-06 (CMA direct enforcement), and a dedicated subscription-contracts regime (cancel as easily as you signed up, auto-renewal reminders, cooling-off) was brought forward (announced 2026-08-10) to go live in **January 2027**; secondary legislation and CMA guidance were still unpublished as of 2026-10 — confirm the commencement date. UK GDPR also applies. Confirm separately.
-
-### Practical cancel-flow checklist (compliance-safe)
-- [ ] **Same-medium cancellation** — if signup was online, cancellation is online (no phone-only)
-- [ ] **One-click path** — explicit "Cancel my subscription" button visible without forced multi-step survey
-- [ ] **No required survey before cancellation** — surveys must be skippable
-- [ ] **No required save-offer view** — offers are skippable, not blocking
-- [ ] **Cancellation confirmed by email** with effective date
-- [ ] **No re-enrollment without fresh affirmative consent**
-- [ ] **Records of consent and cancellation retained** per applicable law (CA: 3 years minimum)
-- [ ] **Clear cost disclosure** before any save offer
-- [ ] **Refund/proration policy** at cancellation and downgrade defined and disclosed (verify jurisdictional obligations)
-
-See `references/cancel-flow-patterns.md` for compliant UI patterns.
-
----
+**Invariants**, everywhere unless you route by jurisdiction:
+1. Online signup → online cancel, at least as easy.
+2. A cancel control on every screen, at least as prominent as any offer; skipping survey and offer cancels within two actions.
+3. Survey optional; at most one save step per attempt.
+4. Describe pause and lower tiers freely; anything accepted in one click (pause, plan change, discount, credit) waits for one opt-in per attempt (Minnesota; default if jurisdiction unknown). Germany: no survey, offer or pause between the cancel button and its confirmation page.
+5. Declining cancels immediately; post-offer price and end date shown before acceptance.
+6. Confirmation screen and email: effective date, refund posture.
+7. Renewal, trial-end and price-change notices inside every window served (`references/compliance.md`).
+8. No re-enrollment without fresh consent; consent and cancellation records kept 3 years, or 1 year after termination if longer.
 
 ## Customer Health Score Framework
 
-This section owns the **scoring-model design** (which signals, weights, and thresholds). The instrumented `biz/analytics/health-score.md` artifact and the live data pipeline that computes scores belong to a **product-analytics capability** (if available) — same methodology-vs-artifact split applied in § Churn Diagnosis.
+This section owns the model; read `references/health-signals.md` before designing or computing a score. Record each project's calibration as § Health-score model in `churn-prevention.md`, ≤500 words, a menu: outcome and lead time · signals · red flags · weights · pass bar · bands. Backtest any existing score against the new one. Backtests and live scoring (`biz/analytics/health-score.md`): product-analytics, if available.
 
-Track these signals to identify at-risk users before they churn:
+1. **Outcome and lead time:** churn or ≥20% contraction within 90 days (annual: at the next renewal), predicted only from data available a lead time earlier. Lead time = owners' review cadence + the play's time to effect (annual: + the notice period); unknown: 30 days self-serve; sales-led or annual, T-120 before the notice deadline.
+2. **Formula:** each signal scores its change against the account's own baseline, sub-score = min(100, 100 × current ÷ baseline), never percentile ranks; category = mean of the segment's valid sub-scores (void signals dropped, never scored 0); `Health = Usage × 0.40 + Engagement × 0.25 + Business × 0.35`, B2B or sales-led `0.25 / 0.25 / 0.50`; Business includes payment risk. These weights are a prior: used at ≥100 churn events until fitted, kept only if they beat the red-flag count (fewer events: `references/health-signals.md` § Small data).
+3. **Red flags override the composite:** failed payment or dispute; champion or admin departure; seat removal; downgrade request; below the activation bar (no value event by day 30, sales-led by the onboarding plan's date; under a quarter of paid seats active; under a third of the segment's median value events at that tenure). Renewal proximity sets urgency, not health. Intent signals (exports, billing- or cancel-page visits) stay out of the score and get a same-day response, never an offer.
+4. **Pass bar** before the composite's bands drive any action (red flags act at once): an out-of-time backtest at the lead time (via product-analytics, if available) shows churn rising band by band and At risk, at the capacity cutoff, churning ≥3× the base rate within its plan or contract-size segment; re-run quarterly and after pricing or packaging changes. Until it clears, red flags and triggers, not bands, feed a capacity-sized human worklist under a holdout (`references/health-signals.md` § Interim worklist); the backtest runs now, on history, never on treated accounts.
 
-### Usage Signals
-- Login frequency (declining = risk)
-- Feature adoption breadth (using 1 feature vs 5)
-- Time spent in product (declining trend)
-- Key action completion rate
+| Band | Action | Owner |
+|---|---|---|
+| Healthy ≥70 | Expansion signals to pricing or cro, if available | Automation |
+| Watch 40-69 | Nudge tied to the dropped signal | Lifecycle automation |
+| At risk <40, or any red flag | Named owner within 5 business days; value recovery (re-onboarding, admin training, fix the blocker); no discount by default. Payment flags instead: dunning (`references/dunning-playbook.md`) and the worklist's billing row | CSM or founder; automation only: a value-recovery sequence |
 
-### Engagement Signals
-- Email open/click rates (declining = disengagement)
-- Support ticket patterns (many tickets OR zero tickets = risk)
-- Community/forum participation
-- Feature request activity
+Move the At-risk cutoff so the band holds what its owners can work in one review cycle; each flagged account shows its top two reasons.
 
-### Business Signals
-- Payment failures or late payments
-- Plan downgrades
-- Seat/usage reduction
-- Contract renewal timing
+## Self-Review
 
-### Implementation
-
-Use a weighted composite score whose components map 1:1 to the signal categories above, so you score exactly what you track. A good starting point (weights sum to 1.0):
-
-```
-Health Score =
-  Usage score      × 0.40 +   (login frequency + feature-adoption breadth + time-in-product + key-action completion)
-  Engagement score × 0.25 +   (email open/click + support-ticket pattern + community + feature-request activity)
-  Business score    × 0.35     (payment/billing health + downgrade/seat trend + renewal proximity)
-```
-
-Each category score is the 0-100 average of its sub-signals; normalize raw data (e.g., logins per week) into scores using percentile ranks or simple thresholds based on your user base. These weights are starting points — calibrate them against your own retained-vs-churned cohorts.
-
-**B2C/PLG vs B2B:** the default weights are tuned for B2C/PLG, where the user is the buyer and individual login/usage predicts churn. For B2B (especially sales-led, multi-seat, annual contracts) the economic buyer rarely logs in and churn surfaces at renewal or via seat contraction — down-weight login/usage and up-weight Business signals: seat trend, champion/power-user engagement, renewal proximity, and support/QBR cadence.
-
-| Score | Status | Action |
-|-------|--------|--------|
-| 80-100 | Healthy | Nurture, upsell opportunities |
-| 60-79 | At Risk | Proactive check-in, feature education |
-| 40-59 | Declining | Intervention: success call, personalized help |
-| 0-39 | Critical | Urgent: executive outreach, retention offer |
-
-For risk signals with directional lead-time heuristics and proactive intervention triggers, see the "Churn Prediction & Proactive Retention" section in `references/cancel-flow-patterns.md`.
-
----
-
-## Churn Diagnosis
-
-This skill owns **operational churn diagnosis tied to intervention** — the split and the cancel-reason themes that drive save-offer and dunning design. For deep retention-cohort analysis, retention curves, segmentation, and Aha-Moment work, hand off to a **product-analytics capability** if available.
-
-### Diagnose for intervention (owned here)
-- **Voluntary vs involuntary?** Check the split first — the solutions are completely different (dunning/retry for involuntary; save offers + health monitoring for voluntary).
-- **Cancel-reason themes** — group exit-survey data by reason to drive the dynamic save-offer mapping (see `references/cancel-flow-patterns.md`).
-
-### Hand off to product-analytics (deep analysis)
-Retention-cohort dimensions (time cohort, plan tier, acquisition channel, usage pattern), churn-rate-by-cohort trends, last-action-before-churn, and the "features retained users use that churned users don't" (Aha-Moment) gap are retention-analytics work — route those to a product-analytics capability if available.
-
-### Churn Rate Benchmarks
-
-Track **logo churn** (accounts/customers lost) separately from **revenue / net-dollar churn** (seat reductions, downgrades, contraction). Seat/usage contraction is silent revenue churn that logo-churn metrics miss; for usage- or seat-based billing, monitor contraction as its own motion alongside cancellations.
-
-| Segment | Poor | Average | Good |
-|---------|------|---------|------|
-| B2C monthly | >8% | 5-8% | <5% |
-| B2B monthly | >5% | 2-5% | <2% |
-| B2B annual (logo churn) | >15% | 5-15% | <5% |
-
-Annual logo churn varies sharply by segment (SMB-focused ~15-25%+, enterprise ~3-7%); a single flat row obscures this. Strict sources treat <5% as genuinely good and 5-7% as the enterprise "acceptable" floor.
-
----
+Before finalizing (a review checks the existing setup):
+- Counting rules applied; rises traced to their break; attributions within the user's counts, causes checked on untouched accounts.
+- Levers sized (unmeasured lift: break-even); lever 1 from the largest addressable bucket, or the doc says why; the forecast meets the target or names the gap.
+- Reversible plays ship now under a holdout, no-build first, settings traced downstream; no loss-preventing notice or billing call held out.
+- Each offer and concession has eligibility, a cap and a cost; no discount reaches a never-activated account.
+- Failure notices reach every admin early with the next attempt, the one deadline, the loss and trust cues; recovery is confirmed.
+- Existing artifacts redlined; pause length and data retention one number each.
+- Numbers are the user's or marked assumptions, calculated in the appendix; no vendor benchmark is a target.
+- Each change has a holdout or stated comparison, primary metric, guardrails and decision date.
+- Each jurisdiction served passes the invariants and its variants (Germany, EU withdrawal, app stores).
+- Health score: lead time from cadence and time to effect; signals valid per segment; payment risk in; backtest on history, without treated accounts, before bands drive action.
+- Asks have verdicts; the reply has the ordered do-now steps with preconditions and risks and every material finding, citing only what exists; nothing live changed without approval.
+- **Footprint:** decision prose within the mode's budget, no material finding dropped to fit; each section carries a decision; the doc never narrates this method.

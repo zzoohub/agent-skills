@@ -1,337 +1,217 @@
 # PostgreSQL Migration Patterns
 
-> Examples use the skill's PK default `UUID DEFAULT uuidv7()` (PG18+); on PG ≤17 generate v7 at the application layer — see SKILL.md → 'Primary Key Type Decision'.
+The single source for running schema and data changes against live traffic. Before writing any step, answer three questions: what lock it takes and for how long, whether both the deployed and the incoming code work after it, and how it is undone.
 
-These patterns are the **agility engine**, not just outage-avoidance: they are what let you keep a hard, fully-constrained schema *and* change it routinely (see SKILL.md → "Modeling for Change"). The right answer to fast-changing requirements is a cheap, safe, reversible change *process* — these patterns — not a soft, under-constrained schema *shape*.
+## Rules for every step
 
-## Table of Contents
+**N-1 compatibility replaces rollback scripts.** Every step works with both the deployed code and the code about to deploy, so an app rollback never needs a schema rollback. Schema and code ship separately: expand → code that handles both shapes → migrate data → code that uses only the new shape → contract.
+- *Expand* steps (add a table, column, index, constraint) are reversible: ship the down (rollback) SQL with each, tested on masked or synthetic data, never a copy of production.
+- *Contract* steps (drop, narrow, rewrite in place) are irreversible: run them after a verification window, with a recorded PITR target (timestamp or LSN) and an archive of exactly what they destroy (`\copy (SELECT id, legacy_col FROM t) TO 'legacy_col.csv' CSV`).
+- *Break when* a maintenance window is acceptable (internal tool, pre-launch): one coordinated deploy is cheaper than four.
 
-1. [Core Principles](#core-principles)
-2. [Migration File Convention](#migration-file-convention)
-3. [Zero-Downtime Migration Patterns](#zero-downtime-migration-patterns)
-4. [Strangler Fig Pattern (Table Migration)](#strangler-fig-pattern-table-migration)
-5. [Large Table Migrations](#large-table-migrations)
-6. [Post-Migration Checklist](#post-migration-checklist)
+A full `pg_dump` is no safety net: it holds ACCESS SHARE on every table for its whole run, so your ACCESS EXCLUSIVE step queues behind it, and restoring it discards every later write.
 
-## Core Principles
+**Contract steps wait for every consumer** (SKILL.md Stage 4): CDC/ETL sees a rename as drop + add, so the warehouse column vanishes.
 
-1. **Every migration has a rollback** — no exceptions — and the rollback is **tested, not just written**: run forward → rollback → forward in CI against a production-scale snapshot, and assert the schema returns to its prior state. An untested rollback fails at 3am, which is the only time you reach for it
-2. **Version-controlled** — migrations are numbered sequentially
-3. **Tested on production-scale data** — a migration that works on 1000 rows may break on 10 million
-4. **Backup before migration** — always
+**The lock queue is the outage.** Even metadata-only DDL needs a brief ACCESS EXCLUSIVE lock. While a long transaction holds any lock on the table, the DDL waits, and every later query on the table, reads included, queues behind it. Guard each step by type:
+- **Strong-lock DDL** (ACCESS EXCLUSIVE, SHARE ROW EXCLUSIVE): `lock_timeout` = the stall the table's hottest query can absorb, usually 100 ms–1 s on OLTP; retry 10–30 times with jittered backoff on SQLSTATE `55P03`; if retries keep failing, find the blocker (`scripts/query_diagnostics.sql` §2–3). A `statement_timeout` of a few seconds catches a "metadata-only" step that is really a rewrite.
+- **`CONCURRENTLY`** (index builds, `REINDEX`, `DROP INDEX`, `DETACH PARTITION`) and **`VALIDATE`** block no DML: `statement_timeout = 0`, watch progress (§7). `CONCURRENTLY` also needs `lock_timeout = 0`: its waits for every older transaction are lock waits, and a cancel leaves an INVALID index or a partition pending detach (finish it with `DETACH PARTITION … FINALIZE`).
+- **Backfills**: bound each batch, not the session: a `statement_timeout` covers a whole `CALL`, COMMITs inside included.
 
-```bash
-# Logical backup before migration
-pg_dump -Fc -d mydb -f backup_before_migration.dump
+**One DDL step per transaction.** A multi-step `BEGIN…COMMIT` holds every lock until the final COMMIT, so a later step's wait keeps the earlier ACCESS EXCLUSIVE locks, and the traffic queued behind them, in place. The exception is an atomic swap of metadata-only statements (worked example).
 
-# Restore if needed
-pg_restore -d mydb backup_before_migration.dump
-```
+**Connection and tool.** Run migrations over a direct or session-pooled connection: under transaction pooling, `SET lock_timeout` and the runner's session advisory lock land on another server connection than the DDL (fallback: `SET LOCAL` per step, or `ALTER ROLE migrator SET lock_timeout = '1s'`, which a session running `CONCURRENTLY` resets to 0). Then find the runner's transaction scope. Most tools wrap each file in a transaction: put `CONCURRENTLY` and COMMIT-per-batch backfills in a file marked with the tool's no-transaction switch, or run them outside the tool, and say which. A runner holding one transaction across all pending files keeps every lock until the run ends, so each strong-lock step ships as its own run; a multi-statement file sent as one query string runs as one implicit transaction, so it carries one strong-lock step. Neither accepts `CONCURRENTLY`. A generated migration is a draft: read the SQL the ORM emits and label each statement, since generators write plain `CREATE INDEX`, validating FKs and rewriting type changes.
 
-## Migration File Convention
+**RLS-forced tables filter their owner too**: with no tenant set, a backfill updates nothing and a verify query finds no mismatches. Run data steps (backfill, verify, archive, purge) as the `BYPASSRLS` maintenance role (`references/design-patterns.md` §6) after `SET row_security = off`, so a policy that still applies raises an error instead of matching zero rows; or set the tenant per batch.
 
-```
-db/migrations/
-├── 001_create_user_accounts.sql
-├── 001_create_user_accounts.rollback.sql
-├── 002_create_orders.sql
-├── 002_create_orders.rollback.sql
-├── 003_add_phone_to_users.sql
-└── 003_add_phone_to_users.rollback.sql
-```
+## Lock and work per statement
 
-## Zero-Downtime Migration Patterns
+Label every statement before it ships. AE = ACCESS EXCLUSIVE (blocks everything), SRE = SHARE ROW EXCLUSIVE (blocks writes), SUE = SHARE UPDATE EXCLUSIVE (reads and writes continue).
 
-### Schema is a contract — inventory consumers first
+| Statement | Lock | Work | Online path |
+|---|---|---|---|
+| ADD COLUMN, nullable or non-volatile default (`now()` included) | AE, brief | metadata; existing rows read the default as evaluated at ALTER time | as is |
+| ADD COLUMN with volatile default (`uuidv7()`, `clock_timestamp()`), identity, STORED generated, or (before PG19) constrained domain | AE | rewrite | nullable plain column → backfill → constraint |
+| ALTER COLUMN TYPE | AE | rewrite + index rebuild, unless binary-coercible: `varchar(n)` → `text`/longer, `numeric` precision up at same scale, `timestamp` → `timestamptz` with session `TimeZone` UTC | new column + sync |
+| SET NOT NULL | AE | scan, skipped when a valid `CHECK (col IS NOT NULL)` exists | CHECK `NOT VALID` → `VALIDATE` → SET NOT NULL; PG18+ `NOT NULL … NOT VALID` |
+| ADD CHECK | AE | scan | `NOT VALID` → `VALIDATE` |
+| ADD FOREIGN KEY | SRE on both tables | scan of child | `NOT VALID` → `VALIDATE` |
+| VALIDATE CONSTRAINT | SUE (FK: + ROW SHARE on parent) | scan | — |
+| CREATE INDEX | SHARE (blocks writes) | build | `CONCURRENTLY` |
+| ADD PRIMARY KEY / UNIQUE | AE | build (+ NOT NULL scan for a PK) | unique index `CONCURRENTLY` → `ADD CONSTRAINT … USING INDEX` |
+| DROP INDEX | AE | — | `CONCURRENTLY` |
+| DROP CONSTRAINT (FK) | AE on both tables | — | brief, under `lock_timeout` |
+| CREATE TRIGGER | SRE | — | brief, under `lock_timeout` |
+| RENAME, DROP COLUMN, SET DEFAULT | AE, brief | metadata | expand-contract for renames, drops |
+| ATTACH PARTITION | SUE on parent, AE on attached table | scan, skipped by a matching valid CHECK | add that CHECK first |
+| VACUUM FULL, CLUSTER | AE | rewrite | pg_repack, or PG19+ `REPACK CONCURRENTLY` where available |
 
-Expand-contract protects the *deploying application* during a rolling deploy. But the schema is a contract with consumers that do **not** redeploy in lockstep, and a literal "now drop the old column" breaks them silently:
+AE locks replay on physical standbys, cancelling conflicting queries or stalling replay.
 
-- **CDC / ETL pipelines** (Debezium, Fivetran) — a column rename is usually a *drop + add* to these tools, so the downstream stream/warehouse column vanishes mid-stream.
-- **Read replicas feeding a BI/analytics warehouse**, **sibling services** reading the same DB, **materialized views** (a renamed/dropped column makes `REFRESH` fail), and **API serializers** that shape responses directly from columns.
+**Runbook.** Deliver a migration as one row per step: statement | lock | work (metadata, scan, rewrite, build) | duration | guard (`lock_timeout`, `statement_timeout`, batch size) | verify | abort trigger. Time each scan, rewrite, build and backfill on a masked production-sized copy, or on a seed of at least 10% of the rows scaled up (an estimate: index builds scale worse than linearly); a step with neither a measured nor an estimated duration is not ready. Add at most 150 words of notes: the deploy order, the PITR target, what is irreversible.
 
-So before any **rename / retype / drop**: *inventory who else reads this table*, apply expand-contract across that whole consumer set (not just the app), and treat the change as breaking until every consumer — including the nightly job nobody owns — has migrated. The phases below are the mechanism; the consumer inventory is what decides when each phase is actually safe.
+## Pre-flight
 
-### Fail Fast on Locks — the Migration Session Preamble (run first, every time)
-Even 'safe' DDL (e.g. ADD COLUMN, ADD CONSTRAINT ... NOT VALID) briefly takes an ACCESS EXCLUSIVE lock; if it can't acquire it because of a long-running transaction, it waits AND every subsequent query on that table queues behind it (a leading cause of migration outages). Set a short lock_timeout so the migration fails fast and you retry, instead of stalling all traffic:
+Before a strong-lock step or a `CONCURRENTLY` build on a busy table (`scripts/query_diagnostics.sql`):
+- no long or idle-in-transaction session holds a lock on the table: `SELECT l.pid, a.state, a.xact_start FROM pg_locks l JOIN pg_stat_activity a USING (pid) WHERE l.relation = 'orders'::regclass;` (and §3);
+- for `CONCURRENTLY`, no old snapshot anywhere (§4): the build waits for every transaction whose snapshot predates its second scan, on any table, so one forgotten analytics session stalls it for hours;
+- no anti-wraparound autovacuum on the table (§7): it does not yield its lock;
+- free disk for a rewrite or build (the table and its indexes again, plus WAL);
+- replica lag within budget (§8).
+
+## Recipes
+
+Each numbered step is its own migration or deploy, run under the guards above.
+
+### Add a column
+One statement, even with NOT NULL and a constant default (`ADD COLUMN is_verified boolean NOT NULL DEFAULT false`). Never invent a sentinel such as `'unknown'` to satisfy NOT NULL: add the column nullable, backfill real values, then make it NOT NULL. Down: `DROP COLUMN`.
+
+### Make an existing column NOT NULL
+1. Deploy code that sets the column on every insert and update: after step 2, any writer that updates an old row without setting it fails.
+2. `ALTER TABLE t ADD CONSTRAINT t_col_nn CHECK (col IS NOT NULL) NOT VALID;` (new NULLs rejected)
+3. Backfill existing NULLs (Large Table Migrations).
+4. `ALTER TABLE t VALIDATE CONSTRAINT t_col_nn;`
+5. `ALTER TABLE t ALTER COLUMN col SET NOT NULL;` (no scan), then `DROP CONSTRAINT t_col_nn`.
+
+PG18+: `ADD CONSTRAINT t_col_nn NOT NULL col NOT VALID` → `VALIDATE CONSTRAINT` replaces steps 2, 4 and 5; until it is validated, `information_schema` already reports the column non-nullable, which misleads ORMs and code generators. Down: `DROP NOT NULL`, `DROP CONSTRAINT IF EXISTS t_col_nn`.
+
+### Add an index, unique constraint or primary key
 ```sql
-SET lock_timeout = '2s';         -- DDL gives up instead of stalling all traffic
-SET statement_timeout = '15min'; -- bound the whole step (size to the operation)
+CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders (user_id);  -- outside any transaction block
+SELECT indexrelid::regclass FROM pg_index WHERE NOT indisvalid;    -- must return no rows
 ```
-- **One DDL step per short transaction.** Never wrap a multi-step migration in one `BEGIN…COMMIT`: every lock it takes is held until the final COMMIT, so a later step's lock wait (or a long VALIDATE/backfill) keeps the earlier ACCESS EXCLUSIVE locks — and the traffic queued behind them — in place.
-- **On a lock_timeout failure** (SQLSTATE `55P03`, `lock_not_available`): wait and retry with backoff. If it keeps failing, find the blocker — usually a long-running or idle-in-transaction session — with `pg_blocking_pids()` or the long-running-transactions query (`references/postgresql/explain-guide.md` § Diagnostic Queries). Set `idle_in_transaction_session_timeout` as the standing backstop: idle-in-transaction sessions block `VALIDATE`, DDL, and VACUUM.
+A failed or cancelled build leaves an INVALID index that queries ignore but every write maintains (a UNIQUE build that fails in its second scan also keeps enforcing uniqueness). `DROP INDEX CONCURRENTLY` it and rebuild; never retry with `IF NOT EXISTS`, which checks only the name and keeps the invalid index. Rebuild bloat with `REINDEX INDEX CONCURRENTLY`. Down: `DROP INDEX CONCURRENTLY`.
 
-(CREATE/DROP/REINDEX ... CONCURRENTLY can't run inside a transaction block, so set such timeouts at the session level rather than bundling them into one BEGIN...COMMIT with the concurrent build.)
+A constraint attaches to a prebuilt index: `CREATE UNIQUE INDEX CONCURRENTLY t_x_key ON t (x);` → `ALTER TABLE t ADD CONSTRAINT t_x_key UNIQUE USING INDEX t_x_key;` (AE, brief). For a primary key, make the columns NOT NULL first, or `ADD PRIMARY KEY USING INDEX` scans under AE.
 
-**Execution runbook**: backup/snapshot → session preamble → run the step → verify (invalid-index check, constraint validated) → `ANALYZE` affected tables → watch error rates and lock waits before the next step.
-
-### Adding a Column (safe)
+Partitioned tables refuse `CONCURRENTLY` on the parent:
 ```sql
--- Forward: Adding a nullable column is metadata-only (no rewrite, no scan), but it still takes a
--- brief ACCESS EXCLUSIVE lock — run it under the preamble above
-ALTER TABLE user_accounts ADD COLUMN phone TEXT;
-
--- PostgreSQL 11+: adding with a CONSTANT/non-volatile DEFAULT is also safe (no table rewrite)
-ALTER TABLE user_accounts ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT false;
--- ⚠️ A VOLATILE default forces a FULL table rewrite under ACCESS EXCLUSIVE for the whole rewrite —
--- e.g. ADD COLUMN ... uuid NOT NULL DEFAULT uuidv7() (or gen_random_uuid()/now() evaluated per row).
--- For those, add the column nullable, backfill in batches, then SET NOT NULL (see below).
-
--- Rollback
-ALTER TABLE user_accounts DROP COLUMN phone;
-ALTER TABLE user_accounts DROP COLUMN is_verified;
+CREATE INDEX idx_events_k ON ONLY events (k);                          -- invalid for now
+CREATE INDEX CONCURRENTLY idx_events_2026_10_k ON events_2026_10 (k);  -- each partition
+ALTER INDEX idx_events_k ATTACH PARTITION idx_events_2026_10_k;        -- valid once all are attached
 ```
 
-### Creating an Index (safe with CONCURRENTLY)
+### Add a foreign key
 ```sql
--- Forward: CONCURRENTLY does not block reads or writes
-CREATE INDEX CONCURRENTLY idx_user_email ON user_accounts (email);
-
--- Rollback
-DROP INDEX CONCURRENTLY idx_user_email;
--- like CREATE INDEX CONCURRENTLY, this cannot run inside a transaction block
-```
-
-⚠️ `CREATE INDEX CONCURRENTLY` cannot run inside a transaction block.
-If it fails partway through, it leaves an INVALID index behind — find it, drop it, then retry the build:
-```sql
--- OID join — robust across schemas; avoid casting an unqualified name to ::regclass,
--- which resolves via search_path
-SELECT n.nspname AS schema, c.relname AS index_name, i.indisvalid
-FROM pg_index i
-JOIN pg_class c ON c.oid = i.indexrelid
-JOIN pg_namespace n ON n.oid = c.relnamespace
-WHERE NOT i.indisvalid;
-
-DROP INDEX CONCURRENTLY IF EXISTS idx_user_email;  -- then retry
-```
-To rebuild a bloated index, use `REINDEX INDEX CONCURRENTLY` (PG12+), never a plain `DROP` + `CREATE` — see `references/indexing-strategy.md` § Index Maintenance.
-
-### Adding a NOT NULL Constraint (careful)
-```sql
--- Step 1: Add column as nullable
-ALTER TABLE user_accounts ADD COLUMN phone TEXT;
-
--- Step 2: Backfill existing rows — batch this on large tables (see § Large Table
--- Migrations); a single full-table UPDATE is one long transaction that blocks
--- VACUUM, bloats the table, and holds locks for the duration
-UPDATE user_accounts SET phone = 'unknown' WHERE phone IS NULL;
-
--- Step 3: Add NOT NULL constraint with NOT VALID (no table scan; brief ACCESS EXCLUSIVE —
--- fails fast under the preamble's lock_timeout instead of queueing traffic)
-ALTER TABLE user_accounts ADD CONSTRAINT chk_phone_not_null CHECK (phone IS NOT NULL) NOT VALID;
-
--- Step 4: Validate — takes only SHARE UPDATE EXCLUSIVE (reads and writes continue during the scan; never ACCESS EXCLUSIVE)
-ALTER TABLE user_accounts VALIDATE CONSTRAINT chk_phone_not_null;
-
--- Step 5: now make the column itself NOT NULL — PG12+ uses the already-validated CHECK to skip a second full scan
-ALTER TABLE user_accounts ALTER COLUMN phone SET NOT NULL;
--- Step 6 (optional): drop the helper CHECK so the catalog shows only NOT NULL
-ALTER TABLE user_accounts DROP CONSTRAINT chk_phone_not_null;
-
--- Rollback
-ALTER TABLE user_accounts ALTER COLUMN phone DROP NOT NULL;
-ALTER TABLE user_accounts DROP CONSTRAINT IF EXISTS chk_phone_not_null;
-```
-Under live writes — once the deployed code sets the column on every write — adding the `NOT VALID` constraint *before* the backfill (Step 3 ahead of Step 2) also stops new NULLs arriving while the backfill runs, so `VALIDATE` can't fail on rows written mid-backfill.
-
-The CHECK-helper path above works on every supported version. **PG18+** adds a shorter one — a `NOT NULL` constraint can itself be added `NOT VALID` (enforced for new and updated rows at once, existing rows not scanned) and validated later:
-```sql
--- Brief ACCESS EXCLUSIVE, no scan (run under the preamble's lock_timeout)
-ALTER TABLE user_accounts ADD CONSTRAINT nn_user_accounts_phone NOT NULL phone NOT VALID;
--- Backfill NULLs in batches, then validate (scans under SHARE UPDATE EXCLUSIVE; DML continues)
-ALTER TABLE user_accounts VALIDATE CONSTRAINT nn_user_accounts_phone;
-
--- Rollback
-ALTER TABLE user_accounts DROP CONSTRAINT nn_user_accounts_phone;
-```
-
-### Adding a Foreign Key (large table)
-```sql
--- Step 0: index the child FK column first (PostgreSQL does not auto-index FK columns)
-CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders (user_id);
-
--- Step 1: add the constraint NOT VALID (brief lock, skips the full validation scan)
+CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders (user_id);  -- child side; never automatic
 ALTER TABLE orders ADD CONSTRAINT fk_orders_user
-    FOREIGN KEY (user_id) REFERENCES user_accounts (id) NOT VALID;
-
--- Step 2: validate separately (scans under SHARE UPDATE EXCLUSIVE; does not block DML)
-ALTER TABLE orders VALIDATE CONSTRAINT fk_orders_user;
+    FOREIGN KEY (user_id) REFERENCES users (id) NOT VALID;         -- SRE on both, brief
+ALTER TABLE orders VALIDATE CONSTRAINT fk_orders_user;             -- SUE; DML continues
 ```
-Pair Step 1 with `SET lock_timeout` (above): the NOT VALID add still takes a brief exclusive lock on both tables.
+Down: `DROP CONSTRAINT fk_orders_user` (AE on both tables, brief).
 
-### Renaming a Column (Expand-Contract Pattern)
+### Change a column's type
+Binary-coercible (lock table): one metadata-only statement. Otherwise:
+1. **Expand**: `ALTER TABLE products ADD COLUMN price_cents bigint;`
+2. **Sync** before any backfill, or rows updated during it drift. A trigger stays right whichever code version writes:
+   ```sql
+   CREATE FUNCTION products_sync_price() RETURNS trigger LANGUAGE plpgsql AS $$
+   BEGIN NEW.price_cents := round(NEW.price * 100); RETURN NEW; END $$;
+   CREATE TRIGGER products_sync_price BEFORE INSERT OR UPDATE ON products
+       FOR EACH ROW EXECUTE FUNCTION products_sync_price();
+   ```
+3. **Backfill** in batches, rechecking `price_cents IS DISTINCT FROM round(price * 100)`.
+4. **Verify**: `SELECT count(*) FROM products WHERE price_cents IS DISTINCT FROM round(price * 100);` = 0.
+5. **Switch reads**: deploy code that reads the new column and writes both.
+6. **Stop old writes**: drop the trigger, drop NOT NULL on the old column, then deploy code that writes only the new one.
+7. **Contract** after the verification window: drop the old column.
 
-Never rename directly in production — it breaks running application code.
+Keep the new name: a closing `RENAME` breaks every reader switched in step 5 (map the name in the ORM if it matters). Down until step 6: drop the trigger, function and new column.
 
-```sql
--- Phase 1: EXPAND — add new column
-ALTER TABLE user_accounts ADD COLUMN full_name TEXT;
+### Rename a column or table
+First ask whether a rename is worth four deploys; an ORM mapping costs nothing. A column rename is the type-change recipe without the cast. A table renames in one transaction with a view under the old name: `ALTER TABLE old RENAME TO new; CREATE VIEW old WITH (security_invoker = true) AS SELECT * FROM new;` (PG15+). The simple view is updatable, so old code keeps working; `security_invoker` keeps RLS applying to the caller.
 
--- Phase 2: Dual-write — application writes to both columns
-UPDATE user_accounts SET full_name = name WHERE full_name IS NULL;
+### Drop a column or table
+- **Column**: deploy code that neither reads nor writes it (ORMs select every mapped column: unmap it), archive it, record the PITR target, then `DROP COLUMN`. Prepared `SELECT *` statements then fail until the pools reconnect (`references/postgresql/production-ops.md`, Pooling).
+- **Table**: evidence first: no scans on the primary or any replica over a business cycle (`seq_scan`/`idx_scan` deltas), no dependents (`pg_depend`), no publication (`pg_publication_tables`). Archive, then `DROP TABLE` without `CASCADE`, which silently drops dependent views and FKs.
 
--- Phase 3: Deploy code that reads from full_name
-
--- Phase 4: CONTRACT — drop old column (after all code is migrated)
-ALTER TABLE user_accounts DROP COLUMN name;
-
--- Rollback (Phase 1)
-ALTER TABLE user_accounts DROP COLUMN full_name;
-```
-
-### Changing a Column Type
-
-```sql
--- Phase 1: Add new column with target type
-ALTER TABLE products ADD COLUMN price_new NUMERIC(15, 2);
-
--- Phase 2: Batch-copy data
-UPDATE products SET price_new = price::NUMERIC(15, 2) WHERE price_new IS NULL;
-
--- Phase 3: Deploy dual-write code (writes to both columns)
-
--- Phase 4: Switch reads to new column
-
--- Phase 5: Drop old column
-ALTER TABLE products DROP COLUMN price;
-ALTER TABLE products RENAME COLUMN price_new TO price;
-
--- Rollback (Phase 1)
-ALTER TABLE products DROP COLUMN price_new;
-```
-
-### Dropping a Column (Expand-Contract)
-
-```sql
--- Phase 1: Deprecate — stop writing to the column in application code
--- Phase 2: Deploy code that no longer reads the column
--- Phase 3: Wait for all old code versions to be replaced
--- Phase 4: Drop
-ALTER TABLE user_accounts DROP COLUMN legacy_field;
-
--- Rollback: Cannot easily undo a DROP COLUMN
--- This is why you wait and verify before dropping
-```
-
-### Dropping a Table
-
-```sql
--- Phase 1: Rename (soft-deprecate)
-ALTER TABLE old_feature RENAME TO _deprecated_old_feature;
-
--- Phase 2: Monitor for errors (1-2 weeks)
-
--- Phase 3: Drop
-DROP TABLE _deprecated_old_feature;
-
--- Rollback (Phase 1)
-ALTER TABLE _deprecated_old_feature RENAME TO old_feature;
-```
-
-## Strangler Fig Pattern (Table Migration)
-
-Replace an old table with a new one without downtime.
-
-```
-Phase 1: Create new table alongside old
-Phase 2: Dual-write to both tables
-Phase 3: Batch-migrate historical data from old → new
-Phase 4: Switch reads to new table
-Phase 5: Stop writing to old table
-Phase 6: Drop old table (after verification period)
-```
-
-```sql
--- Phase 1
-CREATE TABLE user_accounts_v2 (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    email TEXT NOT NULL,
-    name TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Phase 3: Batch migrate (preserve original ids if cross-table FKs reference them;
--- otherwise let DEFAULT uuidv7() generate new ones).
-INSERT INTO user_accounts_v2 (id, email, name, created_at, updated_at)
-SELECT id, email, name, created_at, updated_at
-FROM user_accounts
-WHERE id > $last_migrated_id
-ORDER BY id
-LIMIT 10000;
-
--- Phase 6
-DROP TABLE user_accounts;
--- (optionally then: ALTER TABLE user_accounts_v2 RENAME TO user_accounts;)
-```
+### Replace a table (strangler)
+New table → sync writes (trigger or dual-write) → keyset backfill → verify counts and checksums → switch reads → stop old writes → re-point every referencing FK (`ADD … NOT VALID` → `VALIDATE`, then drop the old FK) → after the verification window, drop the old table without `CASCADE`. Keep the new name or put a view under the old one.
 
 ## Large Table Migrations
 
-For tables with millions+ rows, batch all data modifications: a single full-table `UPDATE` is one long transaction that holds row locks on every touched row for its whole duration, blocks VACUUM, and bloats the table and WAL.
+Batch every data change on a table with millions of rows. A single full-table `UPDATE` is one long transaction: it locks every row it touches, pins the xmin horizon so VACUUM cleans nothing, and bloats the table and the WAL.
 
-⚠️ **Commit per batch — outside any wrapping transaction.** In-database options are a **`PROCEDURE` invoked via `CALL`** or a **top-level `DO` block** — both may `COMMIT`/`ROLLBACK` between batches (PostgreSQL 11+). That works only when the `CALL`/`DO` is *not* itself inside an explicit transaction block: under `BEGIN…COMMIT`, `psql -1` / `--single-transaction`, or a migration tool that wraps each file in a transaction, a `COMMIT` inside raises `ERROR: invalid transaction termination` (SQLSTATE 2D000). It is also illegal inside a PL/pgSQL block that has an `EXCEPTION` clause (that block is a subtransaction). The out-of-database option is a script/app loop that runs each batch in its own transaction. Either way, backfills live in a separate idempotent script, not the transactional migration file.
+**Commit per batch, outside any wrapping transaction.** A `PROCEDURE` run with `CALL`, or a top-level `DO` block, may `COMMIT` between batches only outside a transaction block: under `BEGIN…COMMIT`, `psql -1` or a tool that wraps each file, the `COMMIT` raises `invalid transaction termination`, as it does inside a PL/pgSQL block with an `EXCEPTION` clause. A job running each batch in its own transaction is the alternative, and the better one when you need a per-batch timeout. Either way the backfill is its own script, not part of the transactional migration file.
 
-**No `FOR UPDATE`, no `SKIP LOCKED`** in the batch select: the `UPDATE` takes its own row locks, and the idempotent `IS NULL` recheck makes a concurrently-modified row safe to skip. `SKIP LOCKED` in particular is for competing-worker queues, never exhaustive backfills — it silently omits locked rows, and combined with an "exit when 0 rows" loop can end the backfill with rows still unprocessed.
+**Every backfill is:**
+- **keyset-walked** by primary key: never `OFFSET`, and never re-scanning `WHERE new_col IS NULL`, which re-reads the processed, now dead, pages every batch (quadratic on a big table);
+- **idempotent**: the `UPDATE` rechecks its own condition, so a re-run or overlap is a no-op;
+- **resumable**: it commits the last key with each batch and restarts from it;
+- **bounded**: each batch commits in well under a second (start at 1–5k rows; adjust to measured time);
+- **throttled**: it pauses between batches, longer when `pg_stat_replication.replay_lag` grows; a backfill is a WAL storm, and lagging replicas break read-after-write traffic.
 
-Walk the table by **primary-key keyset**, not by re-scanning a `WHERE new_column IS NULL` predicate (and never by `OFFSET`): the predicate scan re-reads already-processed (now dead) pages on every batch — quadratic page reads on a big table unless you add a partial index just for the backfill. The keyset cursor visits each page once.
+**No `FOR UPDATE`, no `SKIP LOCKED`** in the batch select: the `UPDATE` takes its own row locks, and the recheck makes a concurrently modified row safe. `SKIP LOCKED` is for competing queue workers: in a backfill it silently skips locked rows, and an "exit when 0 rows" loop can finish with rows unprocessed.
 
 ```sql
--- Batch update pattern (keyset walk by primary key) — a PROCEDURE, because it COMMITs per batch.
--- (A top-level DO block with the same body also works on PG11+; both must run outside any
--- explicit transaction block.)
-CREATE PROCEDURE backfill_user_phone()
+-- Keyset backfill as a PROCEDURE, because it COMMITs per batch; the cursor commits with each batch.
+CREATE TABLE backfill_progress (job text PRIMARY KEY, last_key uuid NOT NULL);
+INSERT INTO backfill_progress VALUES ('full_name', '00000000-0000-0000-0000-000000000000');
+
+CREATE PROCEDURE backfill_full_name()
 LANGUAGE plpgsql AS $$
 DECLARE
-    batch_size INT := 5000;
-    rows_scanned INT;
-    last_id UUID := '00000000-0000-0000-0000-000000000000';
+    batch_size int := 5000;
+    cur uuid := (SELECT last_key FROM backfill_progress WHERE job = 'full_name');
 BEGIN
     LOOP
-        -- Walk forward by primary key with a stable ORDER BY cursor.
-        -- (Do NOT use FOR UPDATE SKIP LOCKED here — that is only for concurrent
-        -- queue consumers; a single-writer backfill would silently skip rows.)
         WITH batch AS (
             SELECT id FROM user_accounts
-            WHERE id > last_id
+            WHERE id > cur
             ORDER BY id
             LIMIT batch_size
         ), updated AS (
             UPDATE user_accounts u
-            SET phone = 'unknown'
+            SET full_name = u.name
             FROM batch
-            WHERE u.id = batch.id AND u.phone IS NULL
-            RETURNING u.id
+            WHERE u.id = batch.id AND u.full_name IS NULL   -- idempotent recheck
         )
-        -- Carry the cursor forward from the ordered batch. Do NOT use max(id): PostgreSQL has no
-        -- max(uuid)/min(uuid) aggregate (UUID has btree comparison operators, so id > last_id and
-        -- ORDER BY id work, but the aggregate does not exist — max(uuid) raises an error).
-        SELECT count(*), (SELECT id FROM batch ORDER BY id DESC LIMIT 1)
-        INTO rows_scanned, last_id FROM batch;
-
-        EXIT WHEN last_id IS NULL;  -- no more rows past the cursor
-
-        RAISE NOTICE 'Scanned % rows', rows_scanned;
-        COMMIT;                 -- legal here: a PROCEDURE run via CALL, not inside an outer transaction
-        PERFORM pg_sleep(0.1);  -- brief pause to reduce load
+        -- No max(uuid) aggregate exists: take the cursor from the ordered batch.
+        SELECT (SELECT id FROM batch ORDER BY id DESC LIMIT 1) INTO cur;
+        EXIT WHEN cur IS NULL;
+        UPDATE backfill_progress SET last_key = cur WHERE job = 'full_name';
+        COMMIT;   -- legal only because the CALL runs outside any transaction block
+        PERFORM pg_sleep(0.1);
     END LOOP;
 END $$;
 
--- Run it with the CALL un-wrapped (psql without -1), then drop it:
-CALL backfill_user_phone();
-DROP PROCEDURE backfill_user_phone();
+SET statement_timeout = 0;    -- it would cover the whole CALL
+SET lock_timeout = '1s';      -- a batch blocked by an app transaction fails fast
+CALL backfill_full_name();    -- psql without -1; after any failure, CALL again to resume
+DROP PROCEDURE backfill_full_name(); DROP TABLE backfill_progress;
 ```
 
-**Throttle against replication lag**: batch backfills are WAL storms — on a replicated setup, check `pg_stat_replication` (`replay_lag`) between batches and pause/raise the sleep when replicas fall behind, or read-after-write traffic on replicas starts failing while the backfill runs.
+From application code, run the same batch statement in a loop, one transaction per batch with its own `statement_timeout`, committing the last key with the batch; stop when a batch returns no rows. Finish every backfill with `ANALYZE`.
 
-**Alternative (simple loop from application code)** — if your migration framework doesn't support procedures, run the same keyset batch from the app, each iteration in its own transaction, carrying `last_id` forward and stopping when the batch comes back empty.
+## Verify and finish
 
-Finish every backfill with `ANALYZE` on the table (Post-Migration Checklist below).
+After each step, before the next: no invalid index (query above); no unvalidated constraint (`SELECT conrelid::regclass, conname FROM pg_constraint WHERE NOT convalidated`); `ANALYZE` the touched tables and `EXPLAIN` their hot queries; error rates, lock waits and replica lag steady; the previous code still deployable until the contract step; `COMMENT ON` updated.
 
-## Post-Migration Checklist
+## Worked example: int4 key to bigint
 
-1. ✅ Run `ANALYZE` on affected tables (refresh planner statistics)
-2. ✅ Verify index usage with `EXPLAIN ANALYZE` on key queries
-3. ✅ Check for invalid indexes: `SELECT * FROM pg_index WHERE NOT indisvalid;` — drop any INVALID one (`DROP INDEX CONCURRENTLY`) before retrying its build (the OID-join query under "Creating an Index" names it with its schema)
-4. ✅ Monitor application error rates for 24-48 hours
-5. ✅ Verify constraint validity
-6. ✅ Update COMMENT ON TABLE / COLUMN if schema changed
+An `integer` key fed by a sequence stops at 2,147,483,647 (`scripts/schema_review.sql` §4 shows the headroom). `ALTER COLUMN id TYPE bigint` rewrites the table and every index under AE; this path never rewrites.
+1. Expand and sync: `ALTER TABLE orders ADD COLUMN id_new bigint;` plus a `BEFORE INSERT OR UPDATE` trigger `orders_sync_id` setting `NEW.id_new := NEW.id`.
+2. Keyset backfill `id_new = id`; verify no `id_new IS NULL` remains.
+3. `CREATE UNIQUE INDEX CONCURRENTLY orders_id_new_key ON orders (id_new);`
+4. `ADD CONSTRAINT orders_id_new_nn CHECK (id_new IS NOT NULL) NOT VALID`, then `VALIDATE` it.
+5. Swap in one short metadata-only transaction under `lock_timeout` (AE on `orders` and each child whose FK it drops):
+```sql
+BEGIN;
+ALTER TABLE order_items DROP CONSTRAINT order_items_order_id_fkey;  -- every referencing FK
+ALTER TABLE orders DROP CONSTRAINT orders_pkey;
+ALTER TABLE orders ALTER COLUMN id_new SET NOT NULL;                -- no scan: the CHECK proves it
+ALTER TABLE orders ADD CONSTRAINT orders_pkey PRIMARY KEY USING INDEX orders_id_new_key;
+ALTER TABLE orders DROP CONSTRAINT orders_id_new_nn;
+ALTER TABLE orders ALTER COLUMN id DROP DEFAULT, ALTER COLUMN id DROP NOT NULL;
+ALTER SEQUENCE orders_id_seq AS bigint OWNED BY orders.id_new;      -- an int4 sequence stops at 2^31-1
+ALTER TABLE orders ALTER COLUMN id_new SET DEFAULT nextval('orders_id_seq');
+DROP TRIGGER orders_sync_id ON orders;
+ALTER TABLE orders RENAME COLUMN id TO id_old;
+ALTER TABLE orders RENAME COLUMN id_new TO id;
+ALTER TABLE order_items ADD CONSTRAINT order_items_order_id_fkey
+    FOREIGN KEY (order_id) REFERENCES orders (id) NOT VALID;
+COMMIT;
+```
+6. `VALIDATE` each re-added FK, reconnect the pools, and drop `id_old` after the verification window.
+
+For an identity key, replace the sequence lines with `DROP IDENTITY` on the old column, `ADD GENERATED BY DEFAULT AS IDENTITY` on the new one, and `setval()` to the current maximum. Done means two more things: every child FK column is widened the same way before the sequence passes 2^31-1, or child inserts fail (`schema_review.sql` §4 lists them); and every client driver reads int8 correctly (some return strings; JavaScript numbers lose precision above 2^53).

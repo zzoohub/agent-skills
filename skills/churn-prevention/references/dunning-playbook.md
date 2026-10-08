@@ -1,140 +1,80 @@
 # Dunning Playbook
 
-Complete payment recovery strategy for involuntary churn prevention.
+Read when designing or reviewing failed-payment recovery or billing-event notices (card expiry, renewal). Notice windows: `compliance.md`; the copywriting capability, if available, writes trial-end and price-change notices inside them. Write the result to `biz/growth/dunning.md` (default; caller may redirect), ≤700 words plus the paste-ready notices, sections a menu: what each tool already does · do-now steps (precondition, risk, rollback) · decline routing · the clock · state × recipients × channel × content · metrics.
 
-## Table of Contents
+## Inventory and trace
 
-1. [The Dunning Stack](#the-dunning-stack)
-2. [Pre-Dunning (Prevent Failures)](#pre-dunning-prevent-failures)
-3. [Smart Retry Logic](#smart-retry-logic)
-4. [Dunning Email Sequence](#dunning-email-sequence)
-5. [Recovery Benchmarks](#recovery-benchmarks)
-6. [Chargeback / Dispute Risk](#chargeback--dispute-risk)
-7. [Billing Provider Capabilities](#billing-provider-capabilities)
-8. [Tool Integrations](#tool-integrations)
+List what each tool already does before designing anything:
+- **Billing provider:** adaptive retries, card updater, network tokens, a hosted payment-update or invoice page, its own dunning emails, the end-of-retry action (cancel, mark unpaid, pause, suspend), exposed decline and advice codes, portal retention offers.
+- **Messaging tool:** which billing events start journeys; native waits, branches, exit conditions (exit when the invoice is paid), suppression.
+- **CRM, support, in-app:** tasks, banners and access rules keyed to billing status.
 
----
+No-build first: switch on missing provider features, point every notice at the hosted page, let native waits and exits run the sequence. Build only gaps, by recovered MRR per effort-week; a scheduled job or custom update link needs a requirement the native version cannot meet.
 
-## The Dunning Stack
+**Trace every change first:** list what fires on the events it changes and fix those; report it as a do-now step with precondition, risk and rollback. Common multipliers:
+- More retries mean more `payment failed` events, and a journey keyed to that event sends once per attempt: key notices to deduplicated state transitions (first failure, final attempt scheduled, suspended, recovered).
+- Provider emails switched on beside a messaging journey send twice: one sender per notice.
+- A new end-of-retry status changes what deprovisioning, win-back, the CRM and revenue reports see.
 
-```
-Pre-dunning → Smart retry → Dunning emails → Grace period → Hard cancel
-```
+When a merchant of record or an app store bills, configure theirs (§ App store and merchant of record).
 
-Failed payments cause roughly 20-40% of all churn (industry estimates, Recurly/Zuora) but are the most recoverable.
+## Pre-dunning
 
----
+- **Tokens and updater:** run both; neither saves a closed account with no replacement card.
+- **Expiry alerts:** lead time is what the payer needs to act: days for a consumer, weeks for a company card behind finance or an approval. Default: email ~30 and ~7 days before the first charge the card cannot cover, plus an in-app banner for admins; skip cards the updater has refreshed. Never suppress alerts to keep forgetful subscribers billing: that revenue returns as refunds, disputes and complaints.
+- **Before large charges:** annual renewals get the notice inside the `compliance.md` window plus a heads-up ~3-7 days before the charge (amount, date, card brand and last four, how to update or cancel); where the processor supports it, a zero-amount card check 2-4 weeks before, a failure opening the update flow.
+- **Strong customer authentication** (EU, UK): authenticate the mandate at signup so renewals run as merchant-initiated payments.
+- **Backup method:** offer one in billing settings and at the first failure, not at signup.
 
-## Pre-Dunning (Prevent Failures)
+## Decline routing
 
-- **Card expiry alerts**: Email 30, 15, and 7 days before card expires
-- **Backup payment method**: Prompt for a second payment method at signup
-- **Network tokens** (Visa Token Service, Mastercard MDES, Amex tokenization): the network keeps the token's underlying card-on-file current when the issuer reissues or re-numbers a card (new PAN/expiry) — covering expired, reissued, AND lost/stolen-then-reissued cards, so stored credentials self-heal with no customer action. Network tokens **complement, they do NOT replace,** the older Account Updater batch programs (Visa VAU / Mastercard ABU): issuer/processor participation in token programs is still incomplete, and you need an up-to-date underlying PAN to fall back to — mature billing stacks run **both**. Stripe requests network tokens automatically for Stripe Payments accounts (out of the box); Adyen, Braintree, and Checkout.com also provision tokens for stored cards. Typical impact: ~2-7 percentage-point CNP authorization-rate lift (Visa cites ~4.6%, Mastercard ~2.1%) and a meaningful cut in card-credential-staleness declines. (Does not recover a permanently closed account with no replacement card.)
-- **Pre-billing notification**: Email 3-5 days before charge for annual plans
+Route on the decline code and the network's advice code:
 
----
+| Response | Route |
+|---|---|
+| Revocation or stop-payment, checked first: Mastercard advice code 21, Visa R0, R1 or R3, ACH R07 or R08 | Self-serve: the customer cancelled through their bank; process a voluntary cancellation and never send "update your card". Contracted terms: the payment method ended, not the contract; hand to the account owner or collections |
+| Soft: insufficient funds, issuer unavailable, generic decline | Adaptive retries within the network cap |
+| Hard or do-not-retry: closed account, lost or stolen card, Visa's other never-approve codes, Mastercard advice code 03 | Never retry that credential; request a new payment method (the updater or a token may refresh a reissued card) |
+| Authentication required | The customer, on-session, in an authenticated update flow; never another retry |
 
-## Smart Retry Logic
+Without adaptive retries: about three soft-decline retries in week one, then weekly to the window's end, with insufficient-funds retries just after common paydays in the customer's time zone. Card networks cap reattempts per card per 30 days and charge for the excess; take the current cap from your processor. Each payment rail gets its own schedule: ACH may re-present an R01 or R09 return (insufficient or uncollected funds) at most twice within 180 days of the original settlement.
 
-Not all failures are the same:
+## The clock
 
-| Decline Type | Examples | Retry Strategy |
-|-------------|----------|----------------|
-| Soft decline (temporary) | Insufficient funds, processor timeout | ML-driven retry (Stripe Smart Retries, Adyen Auto Rescue) or static 3-5 retries over 7-10 days |
-| Hard decline (permanent) | Account closed, card reported lost/stolen with no reissue | Don't retry the failed card — request a new card (a *reissued* card is auto-followed by network tokens / Account Updater) |
-| Authentication required (SCA) | 3D Secure 2 challenge required | Send customer to update payment via authenticated flow — automatic retries fail without consumer challenge |
+- The retry window is the provider's; never end a subscription while retries are pending.
+- One deadline, set at the first failure: the window's end, or the access cutoff if earlier. Every notice states it; moving it is a logged decision, never drift.
+- Each notice names the next attempt, if any; the final notice lands days before the final attempt or the deadline.
+- Keep access during the window, but cap costly metered usage (AI inference, for example).
+- At the end: B2B → suspend, keep the data, offer one-click reactivation; low-value consumer plans → cancel with a reactivation link. Data is kept for the reactivation window (`cancel-flow-patterns.md` § Offer mechanics), the same number everywhere. To customers, say "suspend", never "pause": pause is a save offer.
 
-### Retry Timing — Prefer ML over Static Schedule
+## Notifications
 
-Static schedule (**soft declines only** — hard declines skip retries and go straight to a card-update request):
-- Retry 1: 24 hours after failure (day 1)
-- Retry 2: day 3
-- Retry 3: day 5
-- Retry 4: day 7 (with dunning email escalation)
-- Grace period through day 10, then hard cancel with reactivation path
+Every failure notice carries: what failed (plan, amount, card brand and last four); the fix this decline needs (a new card, the bank's approval, authentication); the next attempt, if any; the deadline and what is lost then; one call to action, the hosted update page unless it cannot meet a requirement; a support contact; and trust cues (your usual sender and domain, no request for card details by email or reply, the same fix reachable by signing in).
 
-The terminal hard-cancel (day 10) lands **after** the final dunning email (day 10), so the retry track and the email track below stay on one clock. **Trigger dunning emails off retry/billing-state events** (e.g., "retry 3 failed", "entering grace", "grace expired → cancel"), not a fixed calendar, so the two never drift.
+| State transition | Recipients · channel | Adds |
+|---|---|---|
+| Renewal ahead, inside the `compliance.md` window | Billing contact and every admin · email | Renewal date, amount, term, how to cancel (direct link); annual: a value recap |
+| First failure | Billing contact · email; every admin · in-app | — |
+| Unpaid after the first retry (B2B: ~3 days) | Every admin · email and in-app | Any admin can update the method |
+| Final attempt or deadline days away | Billing contact and admins · email, in-app, SMS where consented | What is lost on the deadline |
+| Suspended or cancelled | Billing contact and admins · email | Data kept until [date]; one-click reactivation |
+| Recovered | Everyone notified | "Payment received; nothing changes"; banners cleared; the sequence exits |
 
-**ML-driven retry (preferred for >$10k MRR):** Stripe Smart Retries (within Stripe Billing; Stripe's recommended default policy is 8 tries within 2 weeks, configurable from 1 week to 2 months), Stripe Authorization Boost (across Stripe, which includes Adaptive Acceptance), Adyen Auto Rescue (part of RevenueAccelerate), or churn-recovery tools (Churnkey, Baremetrics Recover, Stunning) pick retry timing per card / per issuer / per failure code. Lifts recovery 10-30% over static schedules in industry benchmarks. **The day-10 clock above is for the static schedule.** With ML retry, set the grace period and hard cancel to the end of the configured retry window (e.g. day 14 on Stripe's default) and stretch the email track to match — never hard-cancel while scheduled retries are still pending.
+In B2B the card owner has often left, so admins hear early, not last.
 
-### SCA / 3DS notes (EU enforced end-2020 through 2021, phased by country; UK fully enforced from 14 March 2022)
+## Disputes
 
-> Not legal/payments advice — verify current requirements with your billing provider and against current law per region.
+Retrying unfamiliar or disputed charges, or hard declines, raises chargebacks; hard declines recover through card updates, not retries. Track dispute and fraud ratios against the thresholds your acquirer states in writing and alarm at half the lowest: dispute rate is the guardrail on retry aggressiveness.
 
-- Failed retries on SCA-required transactions don't recover without explicit consumer authentication
-- Bring the customer back **on-session** to an authenticated card-update flow — Stripe's Payment Element / Checkout render and complete the 3DS challenge automatically once the customer is present (when integrated via Setup/Payment Intents), but the off-session → on-session hand-off (detecting `requires_payment_method` / authentication-required, then notifying and routing the customer back) is merchant integration work, not automatic
-- Excluding low-value or recurring exemptions is provider-specific — verify with your billing provider
+## Metrics
 
----
+- Prevention first: the first-attempt authorization rate on renewals, by rail and card type.
+- Recovery rate = failed-invoice value recovered within the window ÷ failed-invoice value, split by decline category, payment rail and cure (customer update or retry), so retries get credit only for retry cures.
+- Outcome: involuntary churn as a share of MRR, against the prior period or a split of the change (retry policy, notice content or timing; never notice presence).
+- Recovery up, involuntary churn flat → more failures: check the failed-invoice rate, repeat failures per account and the debit or prepaid mix. Total churn flat → recovered accounts cancelling within 60 days (passive voluntary churn): stop escalating dunning and fix value.
+- Notices sent, recovery flat → they miss the payer or land too late: check cures by recipient role and the days from each notice to the deadline.
 
-## Dunning Email Sequence
+## App store and merchant of record
 
-This email track shares the same day-0 to day-10 clock as the retry/grace schedule in § Smart Retry Logic above — both are triggered off billing-state events (not the calendar), so the two tracks never drift.
-
-| Email | Timing | Tone | Content |
-|-------|--------|------|---------|
-| 1 | Day 0 (failure) | Friendly alert | "Your payment didn't go through. Update your card." |
-| 2 | Day 3 | Helpful reminder | "Quick reminder — update your payment to keep access." |
-| 3 | Day 7 | Urgency | "Your account will be paused in 3 days. Update now." |
-| 4 | Day 10 | Final warning | "Last chance to keep your account active." |
-
-(Timings track the retry/grace schedule above — Email 4 lands the same day grace expires, just before hard cancel.)
-
-### Email Best Practices
-- Direct link to payment update page (no login required if possible)
-- Show what they'll lose (their data, their team's access)
-- Don't blame ("your payment failed" not "you failed to pay")
-- Include support contact for help
-- Plain text performs better than designed emails for dunning
-
----
-
-## Recovery Benchmarks
-
-| Metric | Poor | Average | Good |
-|--------|------|---------|------|
-| Soft decline recovery | <40% | 50-60% | 70%+ |
-| Hard decline recovery\* | <10% | 20-30% | 40%+ |
-| Overall payment recovery | <30% | 40-50% | 60%+ |
-| Pre-dunning prevention | None | 10-15% | 20-30% |
-| Dispute / chargeback rate (guardrail) | above network threshold | — | well under threshold |
-
-\* Hard-decline recovery comes from card-update prompts and network token / Account Updater refreshes (see Pre-Dunning), **not** from retrying the failed card — retrying hard declines wastes retry budget and inflates disputes. Tune recovery against the dispute-rate guardrail, not gross recovery alone.
-
----
-
-## Chargeback / Dispute Risk
-
-Recovery tactics optimize gross revenue, but retry aggressiveness directly drives cardholder disputes:
-
-- Retrying unfamiliar or disputed charges (and retrying hard declines) raises chargebacks
-- Excessive dispute rates trigger card-network monitoring programs (Visa VDMP, Mastercard Excessive Chargeback) that carry fines and merchant-account jeopardy
-- Keep dispute rate well under the network threshold (commonly ~0.65-0.9% depending on program — verify current values with your processor)
-- Track dispute rate as a **guardrail** alongside recovery rate; tune retry cadence against disputes, not just gross recovery
-
----
-
-## Billing Provider Capabilities
-
-| Provider | Smart Retries | Dunning Emails | Card Updater |
-|----------|:------------:|:--------------:|:------------:|
-| **Stripe** | Built-in (Smart Retries) | Built-in | Automatic |
-| **Chargebee** | Built-in | Built-in | Via gateway |
-| **Paddle** | Built-in (Paddle Retain — algorithmic "Tactical Retries") | Built-in (Paddle Retain — email + SMS + in-app) | Managed (MoR) |
-| **Recurly** | Built-in | Built-in | Built-in |
-| **Braintree** | Manual config | Manual | Via gateway |
-
-Paddle Retain (formerly ProfitWell Retain, acquired by Paddle in 2022) is Paddle's named, algorithm-driven recovery product. Because Paddle is the merchant of record, it owns the payment relationship and card-on-file on the seller's behalf — which is why card updating is "Managed" rather than gateway-dependent.
-
----
-
-## Tool Integrations
-
-| Tool | Use For |
-|------|---------|
-| Stripe | Subscription management, dunning config, payment retries |
-| Customer.io | Dunning email sequences, retention campaigns |
-| Churnkey | Full cancel flow + dunning, AI-powered adaptive offers |
-| Baremetrics Recover | Failed-payment / dunning recovery (add-on to Baremetrics analytics) |
-| ProsperStack | Cancel flows with analytics, Stripe/Chargebee integration |
-| Raaft | Simple cancel flow builder |
+- App stores retry and send their own payment notices: Apple for up to 60 days; Google Play puts the subscription on account hold, by default for 60 days minus any grace period. Turn on grace periods (Apple's is opt-in in App Store Connect; Google Play's is on by default) and show an in-app message linking to the store's payment settings.
+- A merchant of record (Paddle, for example) runs retries and dunning: configure its settings and copy; don't rebuild them.

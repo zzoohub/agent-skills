@@ -1,305 +1,33 @@
-# Copy Editing: The Seven Sweeps Framework
-
-Systematic editing through seven sequential passes, each focusing on one dimension (adapted from Copyhackers' "Seven Sweeps" editing method — Joanna Wiebe). After each sweep, loop back to check previous sweeps aren't compromised.
-
-## Table of Contents
-
-1. [Sweep 1: Clarity](#sweep-1-clarity)
-2. [Sweep 2: Voice and Tone](#sweep-2-voice-and-tone)
-3. [Sweep 3: So What](#sweep-3-so-what)
-4. [Sweep 4: Prove It](#sweep-4-prove-it)
-5. [Sweep 5: Specificity](#sweep-5-specificity)
-6. [Sweep 6: Heightened Emotion](#sweep-6-heightened-emotion)
-7. [Sweep 7: Zero Risk](#sweep-7-zero-risk)
-8. [Quick-Pass Editing Checks](#quick-pass-editing-checks)
-9. [Copy Editing Checklist](#copy-editing-checklist)
-10. [Common Copy Problems & Fixes](#common-copy-problems--fixes)
-11. [Working with Copy Sweeps](#working-with-copy-sweeps)
-
----
-
-## Sweep 1: Clarity
-
-**Focus:** Can the reader understand what you're saying?
-
-**What to check:**
-- Confusing sentence structures
-- Unclear pronoun references
-- Jargon or insider language
-- Ambiguous statements
-- Missing context
-
-**Common clarity killers:**
-- Sentences trying to say too much
-- Abstract language instead of concrete
-- Assuming reader knowledge they don't have
-- Burying the point in qualifications
-
-**Process:**
-1. Read through quickly, highlighting unclear parts
-2. Don't correct yet — just note problem areas
-3. After marking issues, recommend specific edits
-4. Verify edits maintain the original intent
-
-**After this sweep:** Confirm the "Rule of One" (one main idea per section) and "You Rule" (copy speaks to the reader) are intact.
-
----
-
-## Sweep 2: Voice and Tone
-
-**Focus:** Is the copy consistent in how it sounds?
-
-**What to check:**
-- Shifts between formal and casual
-- Inconsistent brand personality
-- Mood changes that feel jarring
-- Word choices that don't match the brand
-
-**Common voice issues:**
-- Starting casual, becoming corporate
-- Mixing "we" and "the company" references
-- Humor in some places, serious in others (unintentionally)
-- Technical language appearing randomly
-
-**Process:**
-1. Read aloud to hear inconsistencies
-2. Mark where tone shifts unexpectedly
-3. Recommend edits that smooth transitions
-4. Ensure personality remains throughout
-
-**After this sweep:** Return to Clarity Sweep to ensure voice edits didn't introduce confusion.
-
----
-
-## Sweep 3: So What
-
-**Focus:** Does every claim answer "why should I care?"
-
-**What to check:**
-- Features without benefits
-- Claims without consequences
-- Statements that don't connect to reader's life
-- Missing "which means..." bridges
-
-**The So What test:**
-For every statement, ask "Okay, so what?" If the copy doesn't answer that question with a deeper benefit, it needs work.
-
-- Bad: "Our platform uses AI-powered analytics"
-- Good: "Our AI-powered analytics surface insights you'd miss manually — so you can make better decisions in half the time"
-
-**Common So What failures:**
-- Feature lists without benefit connections
-- Impressive-sounding claims that don't land
-- Technical capabilities without outcomes
-- Company achievements that don't help the reader
-
-**Process:**
-1. Read each claim and literally ask "so what?"
-2. Highlight claims missing the answer
-3. Add the benefit bridge or deeper meaning
-4. Ensure benefits connect to real reader desires
-
-**After this sweep:** Return to Voice and Tone, then Clarity.
-
----
-
-## Sweep 4: Prove It
-
-**Focus:** Is every claim supported with evidence?
-
-**What to check:**
-- Unsubstantiated claims
-- Missing social proof
-- Assertions without backup
-- "Best" or "leading" without evidence
-
-**Types of proof:**
-- Testimonials with names and specifics
-- Case study references
-- Statistics and data
-- Third-party validation
-- Guarantees and risk reversals
-- Customer logos
-- Review scores
-
-**Common proof gaps:**
-- "Trusted by thousands" (which thousands?)
-- "Industry-leading" (according to whom?)
-- "Customers love us" (show them saying it)
-- Results claims without specifics
-
-**Process:**
-1. Identify every claim that needs proof
-2. Check if proof exists nearby
-3. Flag unsupported assertions
-4. Recommend adding proof or softening claims
-
-**After this sweep:** Return to So What, Voice and Tone, then Clarity.
-
----
-
-## Sweep 5: Specificity
-
-**Focus:** Is the copy concrete enough to be compelling?
-
-**What to check:**
-- Vague language ("improve," "enhance," "optimize")
-- Generic statements that could apply to anyone
-- Round numbers that feel made up
-- Missing details that would make it real
-
-**Specificity upgrades:**
-
-| Vague | Specific |
-|-------|----------|
-| Save time | Save 4 hours every week |
-| Many customers | 2,847 teams |
-| Fast results | Results in 14 days |
-| Improve your workflow | Cut your reporting time in half |
-| Great support | Response within 2 hours |
-
-**Process:**
-1. Highlight vague words and phrases
-2. Ask "Can this be more specific?"
-3. Add numbers, timeframes, or examples
-4. Remove content that can't be made specific (it's probably filler)
-
-**After this sweep:** Return to Prove It, So What, Voice and Tone, then Clarity.
-
----
-
-## Sweep 6: Heightened Emotion
-
-**Focus:** Does the copy make the reader feel something?
-
-**What to check:**
-- Flat, informational language
-- Missing emotional triggers
-- Pain points mentioned but not felt
-- Aspirations stated but not evoked
-
-**Emotional dimensions:**
-- Pain of the current state
-- Frustration with alternatives
-- Fear of missing out
-- Desire for transformation
-- Pride in making smart choices
-- Relief from solving the problem
-
-**Techniques for heightening emotion:**
-- Paint the "before" state vividly
-- Use sensory language
-- Tell micro-stories
-- Reference shared experiences
-- Ask questions that prompt reflection
-
-**Process:**
-1. Read for emotional impact — does it move you?
-2. Identify flat sections that should resonate
-3. Add emotional texture while staying authentic
-4. Ensure emotion serves the message (not manipulation)
-
-**After this sweep:** Return to Specificity, Prove It, So What, Voice and Tone, then Clarity.
-
----
-
-## Sweep 7: Zero Risk
-
-**Focus:** Have we removed every barrier to action?
-
-**What to check:**
-- Friction near CTAs
-- Unanswered objections
-- Missing trust signals
-- Unclear next steps
-- Hidden costs or surprises
-
-**Risk reducers:**
-- Money-back guarantees
-- Free trials
-- "No credit card required"
-- "Cancel anytime"
-- Social proof near CTA
-- Clear expectations of what happens next
-- Privacy assurances
-
-**Process:**
-1. Focus on sections near CTAs
-2. List every reason someone might hesitate
-3. Check if the copy addresses each concern
-4. Add risk reversals or trust signals as needed
-
-**After this sweep:** Return through ALL previous sweeps one final time.
-
----
-
-## Quick-Pass Editing Checks
-
-For faster reviews when a full seven-sweep process isn't needed.
-
-### Word-Level
-- Cut: very, really, extremely, incredibly, just, actually, basically, in order to, that, things, stuff
-- Watch for: adverbs (usually unnecessary), passive voice, nominalizations ("make a decision" → "decide")
-
-### Sentence-Level
-- One idea per sentence
-- Vary sentence length
-- Front-load important information
-- Max 3 conjunctions per sentence
-- Keep most sentences short — aim well under ~13 words for scannability; treat ~25 words as the outer bound (see `transitions.md` → Scannable Flow)
-
-### Paragraph-Level
-- One topic per paragraph
-- Short paragraphs (2-4 sentences for web)
-- Strong opening sentences
-- Logical flow between paragraphs
-- White space for scannability
-
----
-
-## Copy Editing Checklist
-
-### Before You Start
-- [ ] Understand the goal of this copy
-- [ ] Know the target audience
-- [ ] Identify the desired action
-- [ ] Read through once without editing
-
-### Per Sweep
-- [ ] Clarity: Every sentence immediately understandable
-- [ ] Voice: Consistent formality and personality
-- [ ] So What: Every feature connects to a benefit
-- [ ] Prove It: Claims substantiated with evidence
-- [ ] Specificity: Vague words replaced with concrete ones
-- [ ] Emotion: Copy evokes feeling, not just information
-- [ ] Zero Risk: Objections addressed, trust signals present
-
-### Final Checks
-- [ ] No typos or grammatical errors
-- [ ] Consistent formatting
-- [ ] Core message preserved through all edits
-
----
-
-## Common Copy Problems & Fixes
-
-| Problem | Symptom | Fix |
-|---------|---------|-----|
-| Wall of Features | List of what product does without why | Add "which means..." after each feature |
-| Corporate Speak | "Leverage synergies to optimize outcomes" | Ask "How would a human say this?" |
-| Weak Opening | Starts with company history or vague statements | Lead with reader's problem or desired outcome |
-| Buried CTA | Ask comes after too much buildup | Make CTA obvious, early, and repeated |
-| No Proof | "Customers love us" with no evidence | Add specific testimonials, numbers, cases |
-| Generic Claims | "We help businesses grow" | Specify who, how, and by how much |
-| Mixed Audiences | Speaks to everyone, resonates with no one | Pick one audience and write directly to them |
-| Feature Overload | Lists every capability | Focus on 3-5 key benefits that matter most |
-
----
-
-## Working with Copy Sweeps
-
-1. **Run a sweep and present findings** — Show what you found, why it's an issue
-2. **Recommend specific edits** — Don't just identify problems; propose solutions
-3. **Request the updated copy** — Let the author make final decisions
-4. **Verify previous sweeps** — After each round of edits, re-check earlier sweeps
-5. **Repeat until clean** — Continue until a full sweep finds no new issues
+# Editing
+
+Read after `SKILL.md` §5 has ranked the findings. Fix Critical and High first, then run each lens below once and re-read the whole piece once. No loop-backs: revisit an earlier lens only if a fix touched what it covers. Proportion: a line or a single string gets Prove it, Zero risk and the word level; a page gets every lens.
+
+## Symptom → cause → first move
+
+| Symptom | Usual cause | First move |
+|---|---|---|
+| Reads generic | No differentiator, or no proof | Back to the reader's alternative and the proof inventory, not to word choice |
+| Clear, but doesn't convert | Message mismatch, an unanswered anxiety, a weak offer | The traffic source's promise, then the line beside the CTA, then the offer (cro, pricing) |
+| Long and unread | Sections answer questions nobody has asked yet | Reorder by the reader's questions (`references/copy-frameworks.md`); cut what answers none |
+| Clever, but readers ask what it is | Wit before meaning | Headline and subhead say what, for whom and why better; wit only after that |
+| Every claim sounds like hype | Proof missing, or far from its claim | Move proof beside the claim; rewrite what can't be proved to what can (`SKILL.md` §1); tag the gaps |
+| Reassurance reads like fine print | Billing terms repeated at every CTA | Terms only where money or consent is taken; each CTA answers its moment's hesitation |
+| Voice drifts | No term list or tone map | Build them first (`references/copy-frameworks.md` § Brand voice) |
+
+## The Seven Sweeps, as lenses
+
+Each lens asks one question, in this order, once each.
+
+1. **Clarity.** One read tells a first-time reader what this is and does: fix unclear pronouns, missing context, several ideas in one sentence.
+2. **Voice and tone.** One register, matched to the moment by the Brand Voice tone map.
+3. **So what.** Every feature reaches its "which means" for this reader.
+4. **Prove it.** Every claim, and what each line implies, has proof beside it or a tag. "Trusted by thousands": which thousands? "Industry-leading": by whose measure? "Works with your stack": which tools? No proof: rewrite to the strongest true claim doing the same job (`SKILL.md` §1), keeping the author's words where a stated condition makes them true; cut only when nothing true does the job, and say so.
+5. **Specificity.** Replace vague words with a fact you hold: "Save time" becomes "Matches bank transactions overnight, so month-end starts reconciled". A number you don't hold becomes `[SOURCE NEEDED: …]`, never a precise-looking guess. What can't be made specific is usually filler.
+6. **Heightened emotion.** The reader's real stakes, in a concrete scene from their week ("the Sunday night before payroll"); never invented pain, fear or anecdotes. Around health, money or distress, plain beats vivid.
+7. **Zero risk.** Near each CTA, name what makes the reader hesitate at that moment (effort, risk, fit with their tools, what happens next) and answer the top one or two with a true risk reducer: the setup time, no card needed, a free trial, a guarantee, cancel anytime, their data stays theirs, proof from someone like them. Each CTA gets the line its moment needs. Billing terms are disclosure, not reassurance: they go where money or consent is taken (`SKILL.md` Guardrails). A guarantee, trial term or "no card needed" the owner hasn't confirmed reads `[VERIFY: …]`.
+
+## Word level
+
+- Split a sentence that carries two claims or runs past about 25 words; keep web paragraphs to five sentences or fewer, point first (both GOV.UK thresholds); merge runs of fragments.
+- Plain verbs, active voice where the actor matters, no intensifiers or filler; at most one exclamation mark per piece, for real news.
+- Swapping a buzzword for a vaguer synonym fixes nothing: find the fact (`SKILL.md` §3, reject on sight).

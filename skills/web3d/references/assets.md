@@ -1,125 +1,71 @@
-# glTF 2.0 Asset Pipeline Reference
+# glTF Asset Pipeline
 
-glTF is the only asset format. All 3D models, animations, and scenes use `.glb` (binary glTF).
+## Inspect, then optimize
 
-## Table of Contents
-
-1. [Optimization Pipeline](#optimization-pipeline)
-2. [Loading with Three.js](#loading-with-threejs)
-3. [Texture Best Practices](#texture-best-practices)
-4. [Animation](#animation)
-5. [Dispose Pattern](#dispose-pattern)
-
-
-## Optimization Pipeline
-
-1. **Author** in Blender/Maya/etc, export as `.glb`
-2. **Optimize** with `gltf-transform` CLI or `gltfjsx --transform` (meshoptimizer compression, texture optimization, deduplication)
-3. **Load** with Three.js `GLTFLoader` + `MeshoptDecoder` (auto meshoptimizer decompression)
-4. **Preload** in module scope or during loading screen
-
-### gltf-transform CLI
+1. **Inspect first:** `npx @gltf-transform/cli inspect model.glb` lists scenes, meshes, materials, textures with a `gpuSize` (VRAM) estimate, and animations; it does not list nodes. Budget against these numbers, not the file size.
+2. **Optimize:**
 
 ```bash
-npx @gltf-transform/cli optimize input.glb output.glb \
-  --compress meshopt \
-  --texture-compress webp
+npx @gltf-transform/cli optimize in.glb out.glb --compress meshopt --texture-compress ktx2 --texture-size 2048
 ```
 
-### gltfjsx (React projects)
+   `ktx2` needs KTX-Software's `ktx` tool installed; it encodes UASTC for normal, occlusion and metal-rough maps and ETC1S for the rest. `optimize` also flattens the scene graph, joins meshes (named ones too), builds texture palettes, simplifies geometry, replaces 5+ nodes sharing a mesh with one instanced node, and prunes empty nodes by default. Anything code addresses by name (configurator parts, animated or pickable nodes) needs `--flatten false --join false --palette false --instance false`, plus `--prune false` when code addresses empty nodes (anchors, mount points) and `--simplify false` for hero assets. Then load the output and assert `getObjectByName` for every name the code uses.
+3. **Catalogs** gate this in CI: run `inspect()` from `@gltf-transform/functions` on every asset and fail any over its budget (triangles from `glPrimitives`, texture count, size and `gpuSize`), plus the name check.
+4. **gltfjsx `--transform`** always flattens the graph and prunes empty nodes, and by default joins meshes, palette-merges materials and writes Draco geometry with WebP textures at 1024 px. Its Draco output needs a `DRACOLoader` outside drei. For name-addressed assets, optimize with gltf-transform as above and run gltfjsx without `--transform`, with `--keepnames --keepgroups`.
 
-```bash
-npx gltfjsx model.glb --transform --types --shadows
+## Loading (vanilla; R3F: `react/setup.md`)
+
+```ts
+const manager = new THREE.LoadingManager()
+manager.onError = (url) => showFallback(url)                // a failed asset is otherwise silent
+const ktx2 = new KTX2Loader(manager).setTranscoderPath('/basis/').detectSupport(renderer) // after await renderer.init()
+const loader = new GLTFLoader(manager).setMeshoptDecoder(MeshoptDecoder).setKTX2Loader(ktx2)
+// Draco files only; without this line GLTFLoader throws "No DRACOLoader instance provided":
+// loader.setDRACOLoader(new DRACOLoader(manager).setDecoderPath('/draco/'))
+const gltf = await loader.loadAsync('/model.glb')           // rejects on 404 or decode failure: catch and fall back
 ```
 
-`--transform` produces a **Draco-compressed**, texture-resized (webp), deduplicated, instanced `.glb` (often 70–90% smaller). Draco needs a WASM decoder at load time, but `useGLTF`/`GLTFLoader` wire it automatically (Draco binaries via CDN). If you want meshopt instead, use `gltf-transform optimize --compress meshopt` (above) and `loader.setMeshoptDecoder(...)`.
+Self-host the Basis transcoder and Draco decoder of the installed three (`examples/jsm/libs/`) for availability, version pinning and COEP. That is a rule for loaders you add: on a working app, repointing the shared loader is a separate change, never part of a feature; deploy the files first, then re-test every existing model. Runtime third-party fetches a change adds (drei `<Environment preset>`, XR controller and hand models, CDN decoders) are self-hosted or listed in the report.
 
-## Loading with Three.js
+## Textures
 
-```typescript
-import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
+- Pack occlusion, roughness and metalness into one ORM texture (R occlusion, G roughness, B metalness); glTF's `metallicRoughnessTexture` already reads G and B.
+- Color maps (base color, emissive) are `SRGBColorSpace`; data maps (normal, ORM) stay `NoColorSpace`, the default. `LinearSRGBColorSpace` is the renderer's working space, not a tag for data textures.
+- KTX2 dimensions must be multiples of 4; power of two matters only for full mip chains.
 
-const loader = new GLTFLoader()
-loader.setMeshoptDecoder(MeshoptDecoder)
+## Configurators
 
-const gltf = await loader.loadAsync('/model.glb')
-scene.add(gltf.scene)
-```
+- Options, price and selection live in the app's store and DOM controls, so the page still configures and sells without WebGL; the scene subscribes and never owns them.
+- A color option is a material parameter (`color`, `roughness`) over one near-neutral albedo and one ORM. A texture set per color multiplies download and VRAM by the option count.
+- Material options (finishes, prints) ship in one file as `KHR_materials_variants`: `<model-viewer>` switches them natively (`variant-name`); three needs a separately registered plugin (three's `webgl_loader_gltf_variants` example).
+- Geometry options are separate files, fetched on first selection and compiled before they show (Pre-warm).
+- Hero color, gradients and printed labels band in ETC1S, which `optimize` uses for base color. Encode them first with `gltf-transform uastc --slots baseColorTexture --resize 2048` (or `--pattern` by texture name); `optimize` skips textures already in KTX2.
 
-## Texture Best Practices
+## Splats
 
-- Use KTX2/Basis Universal for GPU-compressed textures (significantly smaller, faster upload)
-- WebP (`--texture-compress webp`) shrinks **download** size but decodes to a full uncompressed GPU texture; KTX2/Basis stays GPU-compressed in VRAM. Prefer KTX2 for VRAM-bound/large scenes, WebP for quick download wins.
-- For KTX2/GPU-compressed textures keep dimensions a multiple of 4 (block-compression requirement); power-of-2 mainly matters for full mip chains, not as an NPOT-sampling restriction on WebGPU/WebGL 2
-- Separate PBR maps: albedo, normal, roughness, metalness, AO
-- Use `SRGBColorSpace` for color data (albedo/emissive); use `NoColorSpace` (the default) for non-color data maps (normal/roughness/metalness/AO). `LinearSRGBColorSpace` is the renderer's working space, not a value you assign to a data texture.
+Photoreal captures: three's `GaussianSplat` addon (r186+, `three/addons/objects/GaussianSplat.js`; `WebGPURenderer` only, either backend); Spark (`@sparkjsdev/spark`) under `WebGLRenderer` or for splat editing and animation.
 
-```typescript
-import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
+## Pre-warm
 
-// .detectSupport(renderer) must run AFTER the WebGPU renderer's async init()
-const ktx2Loader = new KTX2Loader()
-  .setTranscoderPath('/basis/')
-  .detectSupport(renderer)
+Behind the poster, after loading: `await renderer.compileAsync(scene, camera)` compiles the materials the scene needs, and `renderer.initTexture(texture)` uploads each texture. Compile skips invisible objects (and, on `WebGPURenderer`, objects outside the camera's frustum), so make hidden variants such as configurator options visible during the compile, or compile each as it becomes reachable.
 
-const texture = await ktx2Loader.loadAsync('/texture.ktx2')
+## Dispose
 
-// To transcode KTX2 textures embedded in a .glb (KHR_texture_basisu), wire it INTO GLTFLoader
-// (otherwise the load fails with "no KTX2Loader"):
-//   gltfLoader.setKTX2Loader(ktx2Loader)
-//   gltfLoader.setMeshoptDecoder(MeshoptDecoder)
-```
+GPU resources are never garbage-collected. `material.dispose()` frees the program, not its textures, and textures are often shared, so collect them deduplicated and dispose once:
 
-## Animation
-
-```typescript
-const mixer = new THREE.AnimationMixer(gltf.scene)
-const action = mixer.clipAction(gltf.animations[0])
-action.play()
-
-// In render loop:
-mixer.update(delta)
-
-// Crossfade between animations (clips live on gltf.animations)
-const idleAction = mixer.clipAction(THREE.AnimationClip.findByName(gltf.animations, 'Idle'))
-const runAction = mixer.clipAction(THREE.AnimationClip.findByName(gltf.animations, 'Run'))
-idleAction.play()
-
-// Transition
-idleAction.fadeOut(0.5)
-runAction.reset().fadeIn(0.5).play()
-```
-
-## Dispose Pattern
-
-WebGL/WebGPU resources are NOT garbage-collected. Always dispose when removing from scene:
-
-```typescript
-function disposeModel(object: THREE.Object3D) {
-  // Textures are usually the biggest VRAM consumer and are NOT freed by material.dispose()
-  // (which only releases the shader program). Collect them — deduped, since textures are
-  // frequently shared across materials — and dispose once after traversal.
+```ts
+function disposeModel(root: THREE.Object3D) {
   const textures = new Set<THREE.Texture>()
-
-  const disposeMaterial = (m: THREE.Material) => {
-    for (const value of Object.values(m)) {
-      if (value instanceof THREE.Texture) textures.add(value)
-    }
-    m.dispose()
-  }
-
-  object.traverse((child) => {
-    if (child instanceof THREE.Mesh) {
-      child.geometry.dispose()
-      const mats = Array.isArray(child.material) ? child.material : [child.material]
-      mats.forEach(disposeMaterial)
+  root.traverse((o) => {
+    if (!(o instanceof THREE.Mesh)) return
+    o.geometry.dispose()
+    for (const m of Array.isArray(o.material) ? o.material : [o.material]) {
+      for (const v of Object.values(m)) if (v instanceof THREE.Texture) textures.add(v)
+      m.dispose()
     }
   })
-
   textures.forEach((t) => t.dispose())
 }
-// Still the caller's responsibility: scene.environment/background, render targets,
-// PMREM env maps, post-processing buffers, and renderer.dispose() on teardown.
-// removeFromParent() only drops JS scene-graph refs — it frees no GPU memory.
 ```
+
+Still yours: `scene.environment` and `background`, render targets, PMREM environment maps, post-processing buffers, loader caches (`useGLTF.clear`), workers, and last the renderer (`await renderer.dispose()` on `WebGPURenderer`). `removeFromParent()` drops scene-graph references only; it frees no GPU memory.

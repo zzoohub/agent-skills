@@ -41,40 +41,7 @@ function ForwardMessageDialog() {
 }
 ```
 
-**Incorrect (useEffect to sync state up):**
-
-```tsx
-function ForwardMessageDialog() {
-  const [input, setInput] = useState('')
-  return (
-    <Dialog>
-      <ForwardMessageComposer onInputChange={setInput} />
-      <MessagePreview input={input} />
-    </Dialog>
-  )
-}
-
-function ForwardMessageComposer({ onInputChange }) {
-  const [state, setState] = useState(initialState)
-  useEffect(() => {
-    onInputChange(state.input) // Sync on every change 😬
-  }, [state.input])
-}
-```
-
-**Incorrect (reading state from ref on submit):**
-
-```tsx
-function ForwardMessageDialog() {
-  const stateRef = useRef(null)
-  return (
-    <Dialog>
-      <ForwardMessageComposer stateRef={stateRef} />
-      <ForwardButton onPress={() => submit(stateRef.current)} />
-    </Dialog>
-  )
-}
-```
+Syncing the state up with `useEffect`, or reading it from a ref on submit, patches the symptom.
 
 **Correct (state lifted to provider):**
 
@@ -116,10 +83,5 @@ function ForwardButton() {
 }
 ```
 
-The ForwardButton lives outside the Composer.Frame but still has access to the
-submit action because it's within the provider. Even though it's a one-off
-component, it can still access the composer's state and actions from outside the
-UI itself.
-
-**Key insight:** Components that need shared state don't have to be visually
-nested inside each other—they just need to be within the same provider.
+`ForwardButton` sits outside `Composer.Frame` but inside the provider, so it reads
+state and calls `submit`.

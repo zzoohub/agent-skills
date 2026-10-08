@@ -1,73 +1,37 @@
 ---
-title: Use useRef for Transient Values
-impact: MEDIUM
-impactDescription: avoids unnecessary re-renders on frequent updates
-tags: rerender, useref, state, performance
+title: Keep Scroll, Pointer and Resize Values Out of React State
+tags: rerender, useRef, scroll, pointer, passive-listeners
 ---
 
-## Use useRef for Transient Values
+Scroll, pointer, resize and per-frame values change dozens of times a second; storing them in state re-renders the subtree on every event. Decide by what the value drives:
 
-When a value changes frequently and you don't want a re-render on every update (e.g., mouse trackers, intervals, transient flags), store it in `useRef` instead of `useState`. Keep component state for UI; use refs for temporary DOM-adjacent values. Updating a ref does not trigger a re-render.
+| The value drives | Use |
+|---|---|
+| Nothing rendered (last position, velocity) | A ref |
+| A style (position, transform) | A ref plus a `requestAnimationFrame` write, or CSS (`position: sticky`; scroll-driven animations where supported) |
+| A threshold (past the header, in view) | An IntersectionObserver, or a `matchMedia` boolean through `useSyncExternalStore`; it changes rarely |
+| Layout by viewport size | CSS media or container queries, no JavaScript |
 
-**Incorrect (renders every update):**
+**Incorrect:** `setX(e.clientX)` in a `pointermove` listener, rendered as `style={{ transform: ... }}`: the subtree re-renders on every move.
 
-```tsx
-function Tracker() {
-  const [lastX, setLastX] = useState(0)
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => setLastX(e.clientX)
-    window.addEventListener('mousemove', onMove)
-    return () => window.removeEventListener('mousemove', onMove)
-  }, [])
-
-  return (
-    <div
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: lastX,
-        width: 8,
-        height: 8,
-        background: 'black',
-      }}
-    />
-  )
-}
-```
-
-**Correct (no re-render for tracking):**
+**Correct (no re-render; at most one write per frame):**
 
 ```tsx
-function Tracker() {
-  const lastXRef = useRef(0)
-  const dotRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      lastXRef.current = e.clientX
-      const node = dotRef.current
-      if (node) {
-        node.style.transform = `translateX(${e.clientX}px)`
-      }
-    }
-    window.addEventListener('mousemove', onMove)
-    return () => window.removeEventListener('mousemove', onMove)
-  }, [])
-
-  return (
-    <div
-      ref={dotRef}
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        width: 8,
-        height: 8,
-        background: 'black',
-        transform: 'translateX(0px)',
-      }}
-    />
-  )
-}
+const dot = useRef<HTMLDivElement>(null)
+useEffect(() => {
+  let frame = 0
+  const onMove = (e: PointerEvent) => {
+    cancelAnimationFrame(frame)
+    frame = requestAnimationFrame(() => {
+      if (dot.current) dot.current.style.transform = `translateX(${e.clientX}px)`
+    })
+  }
+  window.addEventListener('pointermove', onMove)
+  return () => { cancelAnimationFrame(frame); window.removeEventListener('pointermove', onMove) }
+}, [])
+return <div ref={dot} className="dot" />
 ```
+
+**Passive listeners:** `wheel`, `touchstart` and `touchmove` listeners on `window`, `document` and `body` are already passive; pass `{ passive: true }` on other scroll containers. React's `onWheel`, `onTouchStart` and `onTouchMove` props are passive too, so `preventDefault()` in them does nothing; to cancel scrolling for a custom gesture, add a native listener with `{ passive: false }` through a ref.
+
+Sources: https://developer.mozilla.org/en-US/docs/Web/API/EventTarget/addEventListener · https://github.com/facebook/react/pull/19654

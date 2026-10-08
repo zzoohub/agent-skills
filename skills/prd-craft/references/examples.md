@@ -1,215 +1,57 @@
-# PRD Section Examples
+# PRD Examples
 
-Concrete good/bad examples for the PRD sections where calibration matters most.
-Reference this when writing a PRD to calibrate quality and depth. (§9 Open
-Questions and the §10 Appendix are mechanical and have no examples.)
+Near-miss pairs from one product, a post-deploy verifier for teams that ship daily.
 
-## Table of Contents
+## §1 Problem: precise but unsourced
+**Weak:** "40% of deploys go unchecked, and unchecked deploys cause 70% of user-found incidents."
+**Better:** "After each deploy an engineer spends 10–15 min (measured: 6 timed deploys) on dashboards, logs and staging, and skips it under pressure [Said: 4 of 5 engineers, last retro]. Last quarter customers reported 6 deploy-caused incidents before we saw them (measured: incident log). Share of deploys checked: (unknown → measure by v0.1 start, over 30 deploys)."
 
-1. [Section 1: Problem / Opportunity](#section-1-problem--opportunity)
-2. [Section 2: Target Users](#section-2-target-users)
-3. [Section 3: Proposed Solution](#section-3-proposed-solution)
-4. [Section 4: Success Metrics](#section-4-success-metrics)
-5. [Section 5: Feature Overview](#section-5-feature-overview)
-6. [Section 6: Dev Order](#section-6-dev-order)
-7. [Section 7: Scope & Non-Goals](#section-7-scope--non-goals)
-8. [Section 8: Assumptions, Constraints & Risks](#section-8-assumptions-constraints--risks)
+## §4 Metrics: an output metric, nothing traded against it
+**Weak:** `| % of deploys auto-verified | — | 95% | 3 months |`, met the day the feature ships, even by a verdict that is always green.
+**Better:**
 
----
+| Metric | Baseline | Target | By | Counter-metric (floor) | Data source |
+|---|---|---|---|---|---|
+| Primary: deploy-caused incidents customers report first, per quarter | 6 (measured: incident log) | ≤2 (target: the manager's bar for keeping the tool) | checkpoint + 1 quarter | deploys per week stay at today's rate: fewer incidents from shipping less is no win | incident log, tagged by deploy |
+| Leading: share of a team's green deploys whose verdict is opened within 10 min, with no dashboard session in the next 30 | 0 (measured: no verdict exists yet) | ≥70% (target: judgment, review at checkpoint) | checkpoint | green verdicts later tied to an incident: ≤1 per team | verdict-open event (built in v0.1), dashboard log |
+| Also: minutes an engineer spends checking a deploy | 10–15 (measured: 6 timed deploys) | ≤3 (target: time to read a verdict and open one graph) | checkpoint | covered by the leading row's floor | timed deploys, 6 per team |
 
-## Section 1: Problem / Opportunity
+Dropped: the manager's "fewer night pages"; off-hours deploys are too rare for any checkpoint to read.
 
-**Good:**
+The leading metric measures the bet itself, the verdict replacing the manual pass; its counter-metric catches a verdict that is trusted but wrong.
 
-> "Engineers run a 3-step manual process after every deploy: check the metrics
-> dashboard, scan error logs, and verify key user flows in staging. This takes
-> 10-15 minutes and is skipped under time pressure — roughly 40% of deploys
-> go unchecked. Unchecked deploys account for 70% of production incidents
-> discovered by users rather than the team.
+## §6 Dev order: modules with MoSCoW as releases
+**Weak:** v0.1 `health-checker` [Must], `error-rate-monitor` [Must]; v0.2 `notifier` [Should]; v0.3 `dashboard` [Could].
+**Better:**
+
+> ### v0.1 — Verdict — tests whether a verdict replaces the manual pass
+> **Tests:** engineers act on a green verdict instead of the manual pass (value).
+> **Audience:** 3 design-partner teams from the buyer's network.
+> **Checkpoint:** week 6.
+> **Build bar:** the tech lead connects services and adds or removes engineers by hand, same day (past 10 services, setup must be built); read-only metrics access and the stored log excerpts are production-grade.
+> **Decision** (the PM): continue if ≥2 of 3 teams hit the leading target in weeks 4–6; change if 1 does; stop if none, and then each team's excerpts are deleted within 2 weeks.
+> **Transition:** a team keeps its manual pass until the verdict matches it on 20 deploys in a row, then drops it, by week 4 at the latest, so weeks 4–6 measure the verdict alone.
+> 1. deploy-verdict — the bet itself [Must] (4–5 engineer-weeks)
+> 2. verdict-alerts — an unseen verdict tests nothing [Must] (1.5–2) (depends on: deploy-verdict)
+> 3. delete-team-data — the partners' data terms require it [Must] (0.5) (depends on: deploy-verdict)
 >
-> **Why Now:** The team has grown from 3 to 8 engineers in the last quarter.
-> Deploy frequency doubled, but the manual verification process didn't scale.
-> Last month, two P1 incidents were caught by customers hours after deploy."
-
-**Bad:**
-
-> "Deploys sometimes cause problems. We should add monitoring to catch issues
-> faster."
+> **Musts:** 6–7.5 of 12 engineer-weeks (est., the team's): tight at the high end; if it slips, alerts go by email only.
 >
-> (No numbers. No evidence. Solution stated as fact. No "why now.")
-
----
-
-## Section 2: Target Users
-
-**Good:**
-
-> **Who and when:** Backend engineers deploying 2-5 times per day to a shared
-> staging/production environment. They need confidence that each deploy didn't
-> break anything, but can't afford 15 minutes of manual checks every time.
+> *Cut line*
 >
-> **JTBD:** "When I've just deployed, I want to know within 30 seconds if
-> anything broke, so I can fix it immediately instead of context-switching
-> back hours later."
+> 4. per-service-thresholds — fewer false alarms [Should] (depends on: deploy-verdict)
 
-**Good (lightweight, personal tool):**
+Features are what a user does; the rule reads the leading indicator (incidents can't move in six weeks), counted in teams (three teams are the sample). Setup stays manual because three teams don't need self-serve; deletion is a feature because partners won't sign without it.
 
-> Me — I maintain 12 git repos across 3 machines and lose track of which
-> have uncommitted changes or unpushed branches.
+## §7 Non-goals: filler
+**Weak:** "Out of scope: mobile apps, AI features, blockchain."
+**Better:**
+- Automatic rollback [later: verdicts trusted for 4 weeks]: the manager asked, but acting on an untrusted verdict multiplies the damage.
+- Pre-deploy checks [never]: CI already owns them.
+- Self-serve sign-up [later: a fourth team]: three invited teams are set up by hand.
+- Self-hosted install [later: a customer's security review requires it] ⚠ arch: it changes how we ship and update.
 
-**Bad:**
-
-> "Target users: developers. Use case: deploy better."
->
-> (No specificity. No pain point. No current journey. "Better" means nothing.)
-
----
-
-## Section 3: Proposed Solution
-
-**Good:**
-
-> **Elevator pitch:** A post-deploy verification tool that automatically runs
-> health checks, scans error rates, and reports pass/fail within 30 seconds
-> of deploy completion.
->
-> **Value propositions:**
-> 1. Instant deploy confidence → eliminates the 15-minute manual check (Section 1)
-> 2. Catches regressions before users do → reduces user-reported incidents (Section 1)
-> 3. Runs automatically → no more skipped verifications under time pressure (Section 1)
->
-> **Mental model:** Think of it as a "post-deploy smoke test" — like CI, but
-> for production. It watches the first few minutes after deploy and tells you
-> if anything looks wrong.
-
-**Bad:**
-
-> "We will build a Node.js service using WebSockets to monitor Datadog metrics
-> and send Slack alerts via their API."
->
-> (This is a technical spec. Names specific technologies. Doesn't describe the
-> user experience or connect to problems.)
-
----
-
-## Section 4: Success Metrics
-
-**Good (lightweight):**
-
-> I use this after every deploy instead of doing manual checks. Deploy
-> verification time drops from 10-15 minutes to under 30 seconds.
-
-**Good (full table):**
-
-> | Goal | Metric | Counter-metric | Target | Timeframe |
-> |------|--------|----------------|--------|-----------|
-> | Eliminate manual checks | % deploys auto-verified | False positive rate | 95% auto-verified | 3 months |
-> | Faster incident detection | Time-to-detection after deploy | Alert fatigue (ignored alerts) | <2 min avg | 3 months |
-> | Reduce user-reported incidents | User-reported bugs from deploys | Total bug detection rate | 70%→20% | 6 months |
-
-**Bad:**
-
-> "Goals: Improve deploy quality. Increase confidence. Make deploys safer."
->
-> (No metrics. No targets. No timeframe. Not measurable. "Safer" is not a KPI.)
-
----
-
-## Section 5: Feature Overview
-
-**Good:**
-
-> | Feature | Description | Spec |
-> |---------|-------------|------|
-> | health-checker | Run configured health checks after deploy and report pass/fail | [features/health-checker.md](features/health-checker.md) |
-> | error-rate-monitor | Compare post-deploy error rate against baseline | [features/error-rate-monitor.md](features/error-rate-monitor.md) |
->
-> (Crisp one-liners. Kebab-case names that double as filenames. Detail lives in the spec, not the table.)
-
-**Bad:**
-
-> | Feature | Description |
-> |---------|-------------|
-> | Health Checking | The system will provide a comprehensive health-checking capability that runs a configurable battery of checks including HTTP probes, TCP probes, and custom scripts, with retry and backoff... |
->
-> (Mixed-case name that won't match a filename. The description is a feature spec crammed into a table cell.)
-
----
-
-## Section 6: Dev Order
-
-**Good:**
-
-> Ordered riskiest-assumption-first: the error baseline is the part we're least
-> sure works, so v0.1 exists to prove it — health-checker sits ahead of it only
-> because the monitor depends on it.
->
-> **v0.1 — Core**
-> 1. health-checker — nothing reports without checks [Must]
-> 2. error-rate-monitor — carries the core "did we catch a regression" risk [Must] (depends on: health-checker)
->
-> **v0.2 — Workflow**
-> 3. notifier — push pass/fail to Slack/CLI [Should] (depends on: health-checker)
-
-**Bad:**
-
-> 1. notifier
-> 2. health-checker
-> 3. error-rate-monitor
->
-> (No versions, no rationale, no dependency notes — and the notifier is listed before the thing it notifies about. Just a list, no reasoning.)
-
----
-
-## Section 7: Scope & Non-Goals
-
-**Good:**
-
-> **In scope:**
-> - Post-deploy health checks for web services
-> - Error rate monitoring against baseline
-> - Pass/fail reporting via CLI and notifications
-> - Configuration per project
->
-> **Out of scope:**
-> - Pre-deploy checks (different problem — belongs in CI, not post-deploy)
-> - Performance profiling (adjacent but separate tool; would require different instrumentation)
-> - Multi-cloud support (start with single provider; abstract later if demand exists)
-> - Mobile app monitoring (different signals; revisit after core tool proves value)
-
-**Bad:**
-
-> "Out of scope: things we're not building."
->
-> (Says nothing. The purpose is to name specific temptations and explain why
-> you're deliberately not pursuing them.)
-
----
-
-## Section 8: Assumptions, Constraints & Risks
-
-**Good:**
-
-> **Assumptions:**
-> - Services expose a health endpoint or have observable error metrics.
->   If not, the tool degrades to log-based detection only.
-> - Deploy events are programmatically detectable (webhook, CI event, or CLI
->   trigger). If manual deploys exist, users must trigger verification manually.
->
-> **Constraints:**
-> - Must work with existing CI pipeline — cannot require migration.
-> - Verification must complete within 60 seconds to avoid blocking the next deploy.
->
-> **Risks:**
-> | Risk | Severity | Likelihood | Mitigation |
-> |------|----------|------------|------------|
-> | High false positive rate erodes trust | High | Medium | Tune thresholds per-project; allow snooze; show confidence score |
-> | Format changes in input data break parsing | Medium | Medium | Validate schema on read; report specific location of malformed data |
-> | Tool adds latency to deploy pipeline | Medium | Low | Run async; never block deploy completion |
-
-**Bad:**
-
-> "Risks: There might be some technical challenges. We'll handle them as they
-> come up."
->
-> (No specifics. No severity. No mitigation. This adds zero information.)
+## §8 Duties: a citation, not a requirement
+**Weak:** "Privacy: GDPR may apply; check with legal."
+**Better:** Alerts quote log lines, and partners' logs can hold their own customers' emails and IP addresses: the output is personal data even though a verdict isn't.
+- Excerpts masked (emails, IPs, tokens), kept 30 days, deleted within 2 weeks of a lead's request — each partner's data-processing terms (contract, signed before v0.1 starts) — met by deploy-verdict REQ-004 and delete-team-data REQ-001 in v0.1.

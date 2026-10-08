@@ -12,9 +12,6 @@ Define a **generic interface** for your component context with three parts:
 can implement—enabling the same UI components to work with completely different
 state implementations.
 
-**Core principle:** Lift state, compose internals, make state
-dependency-injectable.
-
 **Incorrect (UI coupled to specific state implementation):**
 
 ```tsx
@@ -55,7 +52,7 @@ const ComposerContext = createContext<ComposerContextValue | null>(null)
 ```
 
 Because the context defaults to `null`, production code reads it through a guard
-hook; the examples below destructure `use(ComposerContext)` directly for brevity:
+hook; the rules' examples destructure `use(ComposerContext)` directly for brevity:
 
 ```tsx
 function useComposer() {
@@ -65,31 +62,13 @@ function useComposer() {
 }
 ```
 
-**UI components consume the interface, not the implementation:**
+Parts read the context, as `ComposerInput` does in `architecture-compound-components`,
+so any provider that implements the interface drives them.
+
+**A provider implements the interface:**
 
 ```tsx
-function ComposerInput() {
-  const {
-    state,
-    actions: { update },
-    meta,
-  } = use(ComposerContext)
-
-  // This component works with ANY provider that implements the interface
-  return (
-    <TextInput
-      ref={meta.inputRef}
-      value={state.input}
-      onChangeText={(text) => update((s) => ({ ...s, input: text }))}
-    />
-  )
-}
-```
-
-**Different providers implement the same interface:**
-
-```tsx
-// Provider A: Local state for ephemeral forms
+// Local state for an ephemeral form
 function ForwardMessageProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState(initialState)
   const inputRef = useRef<TextInput>(null)
@@ -107,97 +86,10 @@ function ForwardMessageProvider({ children }: { children: React.ReactNode }) {
     </ComposerContext>
   )
 }
-
-// Provider B: Global synced state for channels
-function ChannelProvider({ channelId, children }: Props) {
-  const { state, update, submit } = useGlobalChannel(channelId)
-  const inputRef = useRef<TextInput>(null)
-
-  return (
-    <ComposerContext
-      value={{
-        state,
-        actions: { update, submit },
-        meta: { inputRef },
-      }}
-    >
-      {children}
-    </ComposerContext>
-  )
-}
 ```
 
-**The same composed UI works with both:**
+A `ChannelProvider` backed by a global synced store implements the same interface, and
+the same `<Composer.Frame>` tree renders inside either provider.
 
-```tsx
-// Works with ForwardMessageProvider (local state)
-<ForwardMessageProvider>
-  <Composer.Frame>
-    <Composer.Input />
-    <Composer.Submit />
-  </Composer.Frame>
-</ForwardMessageProvider>
-
-// Works with ChannelProvider (global synced state)
-<ChannelProvider channelId="abc">
-  <Composer.Frame>
-    <Composer.Input />
-    <Composer.Submit />
-  </Composer.Frame>
-</ChannelProvider>
-```
-
-**Custom UI outside the component can access state and actions:**
-
-The provider boundary is what matters—not the visual nesting. Components that
-need shared state don't have to be inside the `Composer.Frame`. They just need
-to be within the provider.
-
-```tsx
-function ForwardMessageDialog() {
-  return (
-    <ForwardMessageProvider>
-      <Dialog>
-        {/* The composer UI */}
-        <Composer.Frame>
-          <Composer.Input placeholder="Add a message, if you'd like." />
-          <Composer.Footer>
-            <Composer.Formatting />
-            <Composer.Emojis />
-          </Composer.Footer>
-        </Composer.Frame>
-
-        {/* Custom UI OUTSIDE the composer, but INSIDE the provider */}
-        <MessagePreview />
-
-        {/* Actions at the bottom of the dialog */}
-        <DialogActions>
-          <CancelButton />
-          <ForwardButton />
-        </DialogActions>
-      </Dialog>
-    </ForwardMessageProvider>
-  )
-}
-
-// This button lives OUTSIDE Composer.Frame but can still submit based on its context!
-function ForwardButton() {
-  const {
-    actions: { submit },
-  } = use(ComposerContext)
-  return <Button onPress={submit}>Forward</Button>
-}
-
-// This preview lives OUTSIDE Composer.Frame but can read composer's state!
-function MessagePreview() {
-  const { state } = use(ComposerContext)
-  return <Preview message={state.input} attachments={state.attachments} />
-}
-```
-
-The `ForwardButton` and `MessagePreview` are not visually inside the composer
-box, but they can still access its state and actions. This is the power of
-lifting state into providers.
-
-The UI is reusable bits you compose together. The state is dependency-injected
-by the provider. Swap the provider, keep the UI.
+The provider boundary is what matters, not the visual nesting: a component inside the provider
+but outside `Composer.Frame` can read state and call actions (see `state-lift-state`).

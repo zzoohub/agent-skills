@@ -1,166 +1,96 @@
-# View Transitions in Next.js
+# View transitions in Next.js (App Router)
 
-## Setup
+## Setup by version
 
-`<ViewTransition>` works in the App Router with no configuration: route navigations run as React Transitions, so `<Link>` navigations animate too. Do **not** add the old `experimental.viewTransition` flag — it was removed in Next.js 16.3 (on older Next.js versions, follow that version's docs). Any VT with `default="auto"` fires on **every** link click — use `default="none"` to prevent competing animations.
+Read the installed version (`npm ls next`, or the lockfile; on a canary, check the API: `grep -rl transitionTypes node_modules/next/dist`) and build within it. Leave `package.json`, the lockfile and `next.config.*` alone unless the request asks: an upgrade or a stale flag goes in the report as a proposal, with the exact change and what it buys.
 
-Do **not** install `react@canary` — see SKILL.md "Availability" for details.
+- **16.2+:** the App Router bundles a React canary that exports `<ViewTransition>`: install no React runtime (`npm ls react` showing a stable version is expected). Type links with `<Link transitionTypes>` and pushes with `router.push/replace(href, { transitionTypes })`. A leftover `experimental.viewTransition` is inert (nothing read it in 16.x; 16.3 dropped it from the config schema): leave it and list it as removable.
+- **16.0–16.1:** `<ViewTransition>` works without config, but `transitionTypes` doesn't exist yet: type links through `onNavigate` (below). Typed links alone don't justify an upgrade; mention 16.2 as an option.
+- **15.x:** only behind `experimental.viewTransition`, which switches the app to experimental React and its `unstable_` exports (`unstable_ViewTransition`, `unstable_addTransitionType`). If the flag is on, build with those and `onNavigate` (15.3+); if not, don't add it: propose the flag or the upgrade with its risk (experimental React in production) and ask.
 
----
+## Typed links and programmatic navigation
 
-## Next.js Implementation Additions
-
-When following `implementation.md`, apply these additions:
-
-**Step 4:** Use `transitionTypes` on `<Link>` — see "The `transitionTypes` Prop" section below for usage and availability.
-
-**After Step 6:** For same-route dynamic segments (e.g., `/collection/[slug]`), use the `key` + `name` + `share` pattern — see Same-Route Dynamic Segment Transitions below.
-
----
-
-## Layout-Level ViewTransition
-
-**Do NOT add a layout-level VT wrapping `{children}` if pages have their own VTs.** Nested VTs never fire enter/exit when inside a parent VT — page-level enter/exit will silently not work. Remove the layout VT entirely.
-
-A bare `<ViewTransition>` in layout works only if pages have **no** VTs of their own.
-
-**Layouts persist across navigations** — `enter`/`exit` only fire on initial mount, not on route changes. Don't use type-keyed maps in layouts.
-
----
-
-## The `transitionTypes` Prop on `next/link`
-
-No wrapper component needed, works in Server Components:
+16.2+:
 
 ```tsx
-<Link href="/products/1" transitionTypes={['transition-to-detail']}>View Product</Link>
+<Link href={`/photo/${id}`} transitionTypes={['nav-forward']}>Open</Link>
+<button onClick={() => router.push(href, { transitionTypes: ['nav-forward'] })}>Next</button> {/* router = useRouter() */}
 ```
 
-Replaces the manual pattern of `onNavigate` + `startTransition` + `addTransitionType` + `router.push()`. Reserve manual `startTransition` for non-link interactions (buttons, forms).
+`router.push` and `router.replace` start their own Transition, so `router.replace('?sort=price', { transitionTypes: ['list-change'] })` re-sorts a server-rendered list with its gated items gliding, no wrapper needed. `<ViewTransition>` and `<Link transitionTypes>` work in Server Components; `addTransitionType`, `startTransition`, `useRouter` and `onNavigate` need a Client Component.
 
-**Availability:** `transitionTypes` on `<Link>` shipped in Next.js 16.2.0; since 16.3 (which removed `experimental.viewTransition`) it needs no config flag — on 16.2, keep that version's flag setup. `useRouter().push()` / `.replace()` accept a `transitionTypes` option too in current Next.js. If unavailable (older versions), use `startTransition` + `addTransitionType` + `router.push()` (see Programmatic Navigation below). To check: `grep -r "transitionTypes" node_modules/next/dist/` — if no results, fall back to programmatic navigation.
-
----
-
-## Programmatic Navigation
-
-On current Next.js, pass the types directly: `router.push(href, { transitionTypes: ['nav-forward'] })`. On older versions, wrap the push yourself:
+Before 16.2, or when the push must first wait for its destination (`patterns.md` § Wait for the destination), take the push over in `onNavigate`. It runs only for client-side navigations, so the link keeps its `href`, prefetching, and Cmd/Ctrl-click to a new tab:
 
 ```tsx
 'use client';
-
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { startTransition, addTransitionType } from 'react';
 
-function handleNavigate(href: string) {
+type Props = Omit<React.ComponentProps<typeof Link>, 'href'> & { href: string; type: string };
+
+export function TypedLink({ href, type, replace, scroll, ...props }: Props) {
   const router = useRouter();
-  startTransition(() => {
-    addTransitionType('nav-forward');
-    router.push(href);
-  });
+  return (
+    <Link href={href} replace={replace} scroll={scroll} {...props}
+      onNavigate={(e) => {
+        e.preventDefault(); // cancels only Link's own push
+        startTransition(() => {
+          addTransitionType(type);
+          if (replace) router.replace(href, { scroll });
+          else router.push(href, { scroll });
+        });
+      }} />
+  );
 }
 ```
 
----
+A wait goes inside this Transition, before the push, guarded as in `patterns.md`. For a pending cue around it, take `startTransition` from `useTransition` and show `isPending`.
 
-## Server-Side Filtering with `router.replace`
+## Back and forward
 
-For search/sort/filter that re-renders on the server (via URL params), use `startTransition` + `router.replace`. VTs activate because the state update is inside `startTransition`:
+Back and forward commit unanimated, morphs included, whatever the Next.js guide says: through 16.4 the App Router runs them in a `popstate` listener, and React renders `popstate` updates synchronously with view transitions off. For an animated return, see SKILL.md "Back vs up".
 
-```tsx
-'use client';
+## Layouts
 
-import { useRouter } from 'next/navigation';
-import { startTransition } from 'react';
+Layouts persist across navigations, so enter/exit never fire there: put `DirectionalTransition` in each page, or in the segment's `template.tsx` (§ `loading.tsx`). A layout VT around `{children}` doesn't block page VTs, but a bare one cross-fades whenever a navigation resizes it; give it `default="none"` or remove it.
 
-function handleSort(sort: string) {
-  const router = useRouter();
-  startTransition(() => {
-    router.replace(`?sort=${sort}`);
-  });
-}
-```
+## Readiness for morphs
 
-List items wrapped in `<ViewTransition key={item.id}>` will animate reorder. This is the server-component alternative to the client-side `useDeferredValue` pattern in `patterns.md`.
+A pair forms only when the destination renders in the navigation's own commit with its image painted.
 
----
+- **Data.** With the default `prefetch`, a dynamic route prefetches only down to its nearest `loading.js`, so the navigation commits that loading state first: no pair forms, and the content arrives with its reveal. `prefetch={true}` on the morphing links fetches each visible link's full route, a server and bandwidth cost on a large grid to report; with `partialPrefetching` on, it carries only the App Shell and cached content, so the morphing element's data must be cached too. Otherwise a pair forms only if the navigation waits for the server (no `loading.js` above the morphing element): the click then shows nothing until the data arrives, so report the wait and add a pending cue (`useLinkStatus` under a plain `<Link>`), or keep the skeleton and the enter fallback.
+- **Image.** `next/image` renders its `<img>` with an `onLoad` handler and lazy by default, so React never waits for it: unless the hero's exact URL is already decoded, the morph lands on an empty box. Make the hero eager (`loading="eager"`) and decode it before the push (`patterns.md` § Wait for the destination, with `srcSet` and `sizes` from `getImageProps()`).
+- Prefetching runs only in production builds, so test morphs with `next build && next start`.
 
-## Two-Layer Pattern (Directional + Suspense)
+## Shared elements across routes
 
-Directional slides + Suspense reveals coexist because they fire at different moments. Place the directional VT in the **page component** (not layout):
+Wrap the list thumbnail (inside its `<Link transitionTypes={['nav-morph']}>`) and the detail hero in `` <ViewTransition name={`product-${p.id}`} share="image-morph" default="none"> `` when both show the same picture (`share="morph"` when they differ), around boxes of the same aspect ratio. With `next/image`, two sizes are two image URLs: see § Readiness for morphs. Intercepting `@modal` routes: `patterns.md` § Modal over a mounted source.
 
-```tsx
-<ViewTransition
-  enter={{ "nav-forward": "slide-from-right", default: "none" }}
-  exit={{ "nav-forward": "slide-to-left", default: "none" }}
-  default="none"
->
-  <div>
-    <Suspense fallback={<ViewTransition exit="slide-down"><Skeleton /></ViewTransition>}>
-      <ViewTransition enter="slide-up" default="none"><Content /></ViewTransition>
-    </Suspense>
-  </div>
-</ViewTransition>
-```
+## `loading.tsx`
 
----
-
-## `loading.tsx` as Suspense Boundary
-
-Next.js `loading.tsx` is an implicit `<Suspense>` boundary. Wrap the skeleton in `<ViewTransition exit="...">` in `loading.tsx`, and the content in `<ViewTransition enter="..." default="none">` in the page:
+`loading.tsx` is a Suspense boundary around the page, so use the split reveal: the skeleton VT in `loading.tsx`, the content VT in the page. React's reveal would have to wrap the whole segment (in the layout or `template.tsx`), where every refresh and search-param change would cross-fade it.
 
 ```tsx
 // loading.tsx
-<ViewTransition exit="slide-down"><PhotoGridSkeleton /></ViewTransition>
-
+<ViewTransition exit="slide-down" default="none"><PhotoGridSkeleton /></ViewTransition>
 // page.tsx
 <ViewTransition enter="slide-up" default="none"><PhotoGrid photos={photos} /></ViewTransition>
 ```
 
-Same rules as explicit `<Suspense>`: use simple string props (not type maps) since Suspense reveals fire without transition types.
+A `DirectionalTransition` in that page swallows the reveal, because the whole page suspends (SKILL.md § Wire it). Put the wrapper in the segment's `template.tsx` instead: it wraps `loading.tsx` and remounts when the segment or its params change, so it takes the navigation's enter and exit. Or drop `loading.tsx` and put `<Suspense>` in the page, below the wrapper.
 
----
+## Same-route swaps
 
-## Shared Elements Across Routes
-
-```tsx
-// List page
-{products.map((product) => (
-  <Link key={product.id} href={`/products/${product.id}`} transitionTypes={['nav-forward']}>
-    <ViewTransition name={`product-${product.id}`}>
-      <Image src={product.image} alt={product.name} width={400} height={300} />
-    </ViewTransition>
-  </Link>
-))}
-
-// Detail page — same name
-<ViewTransition name={`product-${product.id}`}>
-  <Image src={product.image} alt={product.name} width={800} height={600} />
-</ViewTransition>
-```
-
----
-
-## Same-Route Dynamic Segment Transitions
-
-When navigating between dynamic segments of the same route (e.g., `/collection/[slug]`), the page stays mounted — enter/exit never fire. Use `key` + `name` + `share`:
+The App Router keys each segment by its param values, so `/collection/a` → `/collection/b` replaces the page (unmounted, or hidden in `<Activity>` under Cache Components). Page VTs see exit and enter, never an update, and the page's own `<Suspense>` is new, so it shows its fallback unless the data is prefetched or cached. A constant name pairs old and new content into a cross-fade:
 
 ```tsx
 <Suspense fallback={<Skeleton />}>
-  <ViewTransition key={slug} name={`collection-${slug}`} share="auto" default="none">
+  <ViewTransition name="collection-content" share="auto" enter="auto" default="none">
     <Content slug={slug} />
   </ViewTransition>
 </Suspense>
 ```
 
-- `key={slug}` forces unmount/remount on change
-- `name` + `share="auto"` creates a shared element crossfade
-- VT inside `<Suspense>` (without keying Suspense) keeps old content visible during loading
-
----
-
-## Server Components
-
-- `<ViewTransition>` works in both Server and Client Components
-- `<Link transitionTypes>` works in Server Components — no `'use client'` needed
-- `addTransitionType` and `startTransition` for programmatic nav require Client Components
+- The pair forms only when old and new render in one commit; otherwise `enter="auto"` fades the content in after the fallback.
+- A VT that stays mounted (in a layout, or switching on client state) needs `key={slug}` to swap rather than update.

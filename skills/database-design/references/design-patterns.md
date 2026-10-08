@@ -1,384 +1,189 @@
-# PostgreSQL Design Patterns
+# Design Patterns
 
-> Examples use the skill's PK default `UUID DEFAULT uuidv7()` (PG18+); on PG ≤17 generate v7 at the application layer — see SKILL.md.
+The shapes that SKILL.md Stage 1–2 decisions take, each with the trap that breaks it. Examples use the PG18 `uuidv7()` default; before 18 the application supplies v7 ids.
 
-## Table of Contents
+## 1. Duplicated and derived data
 
-1. [Table Inheritance](#1-table-inheritance)
-2. [Soft Delete](#2-soft-delete)
-3. [Audit Trail](#3-audit-trail)
-4. [Event Sourcing](#4-event-sourcing)
-5. [CQRS (Command Query Responsibility Segregation)](#5-cqrs-command-query-responsibility-segregation)
-6. [Multi-Tenant Patterns](#6-multi-tenant-patterns)
-7. [Polymorphic Association](#7-polymorphic-association)
-8. [Temporal Data](#8-temporal-data)
-9. [Auto-Updated Timestamps](#9-auto-updated-timestamps)
+Denormalize only for a cost you measured; a snapshot (SKILL.md Stage 1) is not a duplicate.
+- **A true duplicate** names its source, staleness bound and sync mechanism, cheapest first: a STORED generated column (same row) → a write in the same transaction → a trigger (writers you don't control; hidden cost) → an async projection from the outbox or CDC (cross-service; seconds stale). Pair it with a drift query: `SELECT count(*) FROM t WHERE dup IS DISTINCT FROM <recomputed>`.
+- **Stored aggregates** (counters, materialized views) pay on every write or refresh: fixes in `references/postgresql/query-patterns.md` (hot rows). **Read models** (CQRS) only when read and write shapes truly diverge.
 
-## 1. Table Inheritance
+## 2. Subtypes, polymorphic references and hierarchies
 
-Model multiple entity types that share common attributes.
+- **Subtypes.** Few type-specific columns: one table with per-type CHECKs (`CHECK (type <> 'card' OR card_last4 IS NOT NULL)`). Many: a shared table plus a table per type keyed by the parent's id. Never native `INHERITS`: UNIQUE and FKs do not span child tables.
+- **Polymorphic references** (a comment on an article or a product): never a `(parent_type, parent_id)` pair, which no FK enforces. For a few parent types, an exclusive arc: one nullable FK column per parent, `CONSTRAINT chk_comments_one_parent CHECK (num_nonnulls(article_id, product_id) = 1)`, and a partial index per FK (`WHERE article_id IS NOT NULL`). For many, a supertype: `commentables (id)`, each parent holding `commentable_id uuid NOT NULL UNIQUE REFERENCES commentables (id)`, comments referencing `commentables`. Or one comment table per parent.
+- **Hierarchies.** An adjacency list (`parent_id`) walked by a recursive CTE by default; a closure table or `ltree` path only when subtree reads dominate and moves are rare. No CHECK prevents a cycle: the statement that moves a node, or a trigger, must.
 
-### Single Table Inheritance (STI)
-All types in one table. Simple but may accumulate many NULL columns.
+## 3. Soft delete and erasure
 
+Default to a hard delete plus an audit or archive copy. Use `deleted_at` only when deleted rows must stay referenceable or restore is a product feature, and then:
+- every UNIQUE becomes partial `WHERE deleted_at IS NULL`, and hot indexes do too;
+- children of a deleted parent get a decided fate: hidden, cascaded or kept;
+- reads filter in the query or a view, never through an RLS SELECT policy `USING (deleted_at IS NULL)`: an UPDATE's new row must pass the SELECT policy, so the soft delete itself fails;
+- erasure keeps a hard-delete or anonymizing path.
+
+*Break when* "deleted" is really a domain state (cancelled, archived): model it as a status.
+
+**Erasure vs immutable history.** Soft-deleted rows, audit payloads and event stores keep personal data by design, which collides with erasure duties (GDPR Art. 17). Decide before adopting them:
+- **Crypto-shredding**: encrypt the subject's personal data under a per-subject key stored elsewhere; destroying the key erases it everywhere at once.
+- **No personal data in immutable payloads**: audit rows and events carry a pseudonymous subject id only.
+- **Tombstone**: overwrite the personal columns, keep the row and its FKs.
+- **Backups** expire on their retention schedule; keep an erasure log and re-apply it after any restore.
+
+## 4. Audit trail
+
+The actor is the person, not the database role (`current_user` is always the shared app role), and the app role can neither read nor rewrite the trail.
 ```sql
-CREATE TABLE payments (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    type TEXT NOT NULL CHECK (type IN ('credit_card', 'bank_transfer', 'paypal')),
-    amount NUMERIC(15, 2) NOT NULL,
-    -- credit_card only
-    card_last_four CHAR(4),
-    card_brand TEXT,
-    -- bank_transfer only
-    bank_name TEXT,
-    account_number TEXT,
-    -- paypal only
-    paypal_email TEXT,
-    -- common
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE SCHEMA audit AUTHORIZATION app_owner;            -- no grants to the app role
+CREATE TABLE audit.changes (
+    id         bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    table_name text        NOT NULL,
+    row_id     text        NOT NULL,
+    action     text        NOT NULL,
+    actor_id   text,                                     -- from app.actor_id, set per transaction
+    old_row    jsonb,
+    new_row    jsonb,
+    changed_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE INDEX idx_changes_row ON audit.changes (table_name, row_id);
+CREATE INDEX idx_changes_changed_at ON audit.changes USING brin (changed_at);
 
--- Per-type constraints
-ALTER TABLE payments ADD CONSTRAINT chk_credit_card
-    CHECK (type != 'credit_card' OR (card_last_four IS NOT NULL AND card_brand IS NOT NULL));
-```
-
-**When to use**: 3-5 types with few type-specific columns each.
-
-### Class Table Inheritance (CTI)
-Shared table + type-specific tables. Normalized but requires joins.
-
-```sql
-CREATE TABLE payments (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    type TEXT NOT NULL,
-    amount NUMERIC(15, 2) NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE TABLE payment_credit_cards (
-    payment_id UUID PRIMARY KEY REFERENCES payments(id) ON DELETE CASCADE,
-    card_last_four CHAR(4) NOT NULL,
-    card_brand TEXT NOT NULL,
-    expiry_month SMALLINT NOT NULL,
-    expiry_year SMALLINT NOT NULL
-);
-
-CREATE TABLE payment_bank_transfers (
-    payment_id UUID PRIMARY KEY REFERENCES payments(id) ON DELETE CASCADE,
-    bank_name TEXT NOT NULL,
-    account_number TEXT NOT NULL,
-    routing_number TEXT
-);
-```
-
-**When to use**: Many type-specific columns, or types are added frequently.
-
-### PostgreSQL Native Inheritance (reference only)
-```sql
-CREATE TABLE payment_credit_cards () INHERITS (payments);
-```
-⚠️ **Not recommended in production**: FK constraints don't apply to child tables, UNIQUE is per-table only.
-
-## 2. Soft Delete
-
-```sql
-CREATE TABLE user_accounts (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    email TEXT NOT NULL,
-    name TEXT NOT NULL,
-    deleted_at TIMESTAMPTZ,  -- NULL = active
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- View for active users only
-CREATE VIEW active_users AS
-SELECT * FROM user_accounts WHERE deleted_at IS NULL;
-
--- Partial unique index (active users only)
-CREATE UNIQUE INDEX uq_user_email_active ON user_accounts (email) WHERE deleted_at IS NULL;
-
--- Delete operation
-UPDATE user_accounts SET deleted_at = now() WHERE id = '...';
-```
-
-**Caveats**:
-- Every query needs `WHERE deleted_at IS NULL` → solve with views or Row-Level Security
-- Deleted data accumulates → schedule periodic archiving
-
-### Erasure vs. immutable history (GDPR/CCPA right-to-erasure)
-
-Soft delete, the audit trail (§3), and event sourcing (§4) all **retain personal data by design** — the row stays physically present, whole-row snapshots land in `audit_logs`, and events are immutable. That collides head-on with a data-subject erasure request (GDPR Art. 17), and it is expensive to retrofit because it touches every table's delete story plus the audit and event payload shapes. Decide the reconciliation *before* adopting these patterns at scale:
-
-- **Crypto-shredding (preferred)** — store the subject's PII encrypted under a per-subject key (separate key store) and *destroy the key* on erasure. The soft-deleted rows and immutable events stay structurally intact for integrity/audit, but the PII inside them becomes permanently unreadable — one action satisfies soft-delete, audit, and event-sourcing immutability at once.
-- **Keep PII out of immutable payloads** — put only a pseudonymous subject id in `audit_logs` / event `event_data`, never name/email/etc. (the same redaction the Audit Trail warning below already requires), so erasure never has to rewrite history.
-- **Tombstone / pseudonymize** — on erasure, overwrite the subject's PII columns with a sentinel while keeping the row and its FKs for referential integrity.
-- When none is possible, record the retention/erasure obligation as an ADR. Pairs with the "classify sensitive columns" step in SKILL.md.
-
-## 3. Audit Trail
-
-### Trigger-based automatic audit logging
-
-```sql
--- BIGINT IDENTITY here per SKILL.md mixed strategy: high-volume internal append-only
--- table where 8-byte savings cascade through every audit row. record_id is TEXT to
--- accommodate any PK type (UUID, BIGINT, composite).
-CREATE TABLE audit_logs (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    table_name TEXT NOT NULL,
-    record_id TEXT NOT NULL,
-    action TEXT NOT NULL CHECK (action IN ('INSERT', 'UPDATE', 'DELETE')),
-    old_data JSONB,
-    new_data JSONB,
-    changed_by TEXT,
-    changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX idx_audit_logs_table_record ON audit_logs (table_name, record_id);
-
--- For triggers below: NEW.id and OLD.id are typed per the source table (UUID, BIGINT, etc.).
--- Cast to TEXT when inserting into audit_logs.record_id.
-CREATE INDEX idx_audit_logs_changed_at ON audit_logs USING BRIN (changed_at);
-
--- Generic audit trigger function
-CREATE OR REPLACE FUNCTION fn_audit_trigger()
-RETURNS TRIGGER AS $$
+CREATE FUNCTION audit.capture() RETURNS trigger
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
-    IF TG_OP = 'INSERT' THEN
-        INSERT INTO audit_logs (table_name, record_id, action, new_data, changed_by)
-        VALUES (TG_TABLE_NAME, NEW.id::TEXT, 'INSERT', to_jsonb(NEW), current_user);
-    ELSIF TG_OP = 'UPDATE' THEN
-        INSERT INTO audit_logs (table_name, record_id, action, old_data, new_data, changed_by)
-        VALUES (TG_TABLE_NAME, NEW.id::TEXT, 'UPDATE', to_jsonb(OLD), to_jsonb(NEW), current_user);
-    ELSIF TG_OP = 'DELETE' THEN
-        INSERT INTO audit_logs (table_name, record_id, action, old_data, changed_by)
-        VALUES (TG_TABLE_NAME, OLD.id::TEXT, 'DELETE', to_jsonb(OLD), current_user);
-    END IF;
-    RETURN COALESCE(NEW, OLD);
-END;
-$$ LANGUAGE plpgsql;
-
--- ⚠️ to_jsonb(OLD/NEW) serializes the WHOLE row with no redaction. Applied to tables holding
--- password hashes, MFA secrets, API tokens, or regulated PII, this silently copies those into
--- audit_logs — which usually carries broader read access and longer retention than the source
--- table. Strip sensitive keys before storing, e.g. to_jsonb(NEW) - 'password_hash' - 'mfa_secret'
--- (the jsonb "- text" operator drops a key), or keep a per-table column allowlist. audit_logs must
--- inherit at least the access restrictions and retention/redaction policy of the most sensitive
--- column it records.
-
--- Apply trigger to a table
-CREATE TRIGGER trg_orders_audit
-    AFTER INSERT OR UPDATE OR DELETE ON orders
-    FOR EACH ROW EXECUTE FUNCTION fn_audit_trigger();
+    INSERT INTO audit.changes (table_name, row_id, action, actor_id, old_row, new_row)
+    VALUES (TG_TABLE_NAME, CASE TG_OP WHEN 'DELETE' THEN OLD.id ELSE NEW.id END::text, TG_OP,
+            current_setting('app.actor_id', true),
+            CASE WHEN TG_OP <> 'INSERT' THEN to_jsonb(OLD) - 'password_hash' END,   -- strip classified columns
+            CASE WHEN TG_OP <> 'DELETE' THEN to_jsonb(NEW) - 'password_hash' END);
+    RETURN NULL;
+END $$;
+CREATE TRIGGER trg_orders_audit AFTER INSERT OR UPDATE OR DELETE ON app.orders
+    FOR EACH ROW EXECUTE FUNCTION audit.capture();
 ```
+- `to_jsonb(row)` copies every column: strip each column whose class forbids it, or keep a per-table allowlist. The trail inherits the access rules and retention of the most sensitive column it records.
+- A row trigger doubles its table's write volume: on write-hot tables, capture changes from logical decoding (CDC) instead. CDC cannot see `app.actor_id`: write the actor into an `updated_by` column, or, to cover deletes too, emit it with `pg_logical_emit_message(true, 'actor', $1)` in the same transaction.
 
-> **Erasure:** whole-row `to_jsonb` payloads retain PII in `audit_logs` indefinitely. Keep PII out of the payload (pseudonymous id only) or crypto-shred — see "Erasure vs. immutable history" under §2.
+## 5. Event sourcing, ledgers and temporal data
 
-## 4. Event Sourcing
+- **Event sourcing** only when the events are the domain and projections are rebuilt from them; "we need history" is an audit trail (§4). An event store keeps `UNIQUE (aggregate_id, version)` for optimistic concurrency, and its readers follow a commit-ordered cursor (§7).
+- **Money movement** is a double-entry ledger: immutable entries `(txn_id, account_id, amount_minor, currency)` that sum to zero per transaction and currency, written together by one function or checked at commit by a deferred constraint trigger. Corrections are reversing entries, never UPDATEs; balances are derived, or maintained by a guarded statement (`references/acid-transactions.md`).
+- **Validity periods** (prices, policies, assignments) need an overlap guard, or "the price at time T" becomes ambiguous:
+  ```sql
+  CREATE EXTENSION IF NOT EXISTS btree_gist;     -- GiST equality for the scalar column
+  CREATE TABLE product_prices (
+      product_id  uuid      NOT NULL REFERENCES products (id),
+      valid       tstzrange NOT NULL,
+      price_minor bigint    NOT NULL,
+      CONSTRAINT ex_product_prices_overlap EXCLUDE USING gist (product_id WITH =, valid WITH &&)
+  );
+  -- current price: WHERE product_id = $1 AND valid @> now()
+  ```
+  PG18+ can declare `PRIMARY KEY (product_id, valid WITHOUT OVERLAPS)` instead (empty ranges rejected; still needs btree_gist), and a referencing table can demand coverage for its whole period: `FOREIGN KEY (product_id, PERIOD valid) REFERENCES product_prices (product_id, PERIOD valid)`.
 
-Store every state change as an event. Derive current state by replaying events.
+## 6. Tenancy and RLS wiring
 
+Behind your own API, the application connects as a role that owns nothing, and RLS backs up the `tenant_id` predicate every query still carries: the planner needs that predicate to choose indexes and prune partitions at plan time.
 ```sql
--- BIGINT IDENTITY here per SKILL.md mixed strategy: append-only event store can
--- accumulate billions of rows; 8-byte PKs save measurable space cumulatively.
-CREATE TABLE event_stores (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    aggregate_type TEXT NOT NULL,
-    aggregate_id UUID NOT NULL,
-    event_type TEXT NOT NULL,
-    event_data JSONB NOT NULL,
-    metadata JSONB DEFAULT '{}',
-    version INT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (aggregate_id, version)  -- optimistic concurrency control
-);
+CREATE ROLE app_owner NOLOGIN;                 -- owns schemas and tables; migrations' DDL runs as it
+CREATE ROLE app_rw LOGIN PASSWORD '…';         -- the application: not owner, not superuser, no BYPASSRLS
+CREATE ROLE app_maint NOLOGIN BYPASSRLS;       -- data migrations and cross-tenant jobs (purges) only
+CREATE SCHEMA app AUTHORIZATION app_owner;
+REVOKE CREATE ON SCHEMA public FROM PUBLIC;    -- the default since PG15; upgraded clusters keep the old grant
+GRANT USAGE ON SCHEMA app TO app_rw, app_maint;
+ALTER DEFAULT PRIVILEGES FOR ROLE app_owner IN SCHEMA app
+    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO app_rw, app_maint;
 
--- UNIQUE (aggregate_id, version) already creates an implicit B-tree index on those columns — no separate index needed.
-CREATE INDEX idx_event_stores_type ON event_stores (aggregate_type, created_at);
-
--- Current state via projection table
-CREATE TABLE order_projections (
-    id UUID PRIMARY KEY,
-    status TEXT NOT NULL,
-    total_amount NUMERIC(15, 2) NOT NULL DEFAULT 0,
-    item_count INT NOT NULL DEFAULT 0,
-    last_event_version INT NOT NULL,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+ALTER TABLE app.orders ENABLE ROW LEVEL SECURITY, FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON app.orders
+    USING (tenant_id = (SELECT NULLIF(current_setting('app.current_tenant', true), '')::uuid));
 ```
+- **FORCE**, or the table owner bypasses the policy; superusers and BYPASSRLS roles (`app_maint`) always do. `ALTER DEFAULT PRIVILEGES` without `FOR ROLE` covers only objects created by the role running it, so name the migration role.
+- **The policy** reads the setting in a scalar subquery, evaluated once per query rather than per row; `NULLIF(…, '')` turns an unset or empty setting into zero rows instead of an error. With no `WITH CHECK`, the USING expression also checks inserted and updated rows.
+- **Set the context per transaction**, as its first statement: `SELECT set_config('app.current_tenant', $1, true), set_config('app.actor_id', $2, true);`. It takes bind parameters, which `SET LOCAL` cannot. A session `SET` survives into the next client's transaction under transaction pooling, and NULLIF catches an unset value, not a stale one.
+- **Views** over RLS tables: `CREATE VIEW … WITH (security_invoker = true)` (PG15+); otherwise they apply the view owner's policies and bypass RLS whenever the owner does.
+- **Generated APIs** (PostgREST, the Supabase Data API): an exposed table without RLS is open to every role granted on it. Keep what the API must not serve in an unexposed schema; give every exposed table RLS, per-role policies with `WITH CHECK` on writes, the caller's identity in a scalar subquery (`(SELECT auth.uid())` on Supabase), and column grants for columns users must not change.
+- **Test** each tenant-scoped table as the app role with tenant A set (behind a generated API, as its role with A's claims): zero rows of tenant B, and an insert carrying B's id fails.
 
-**When to use**: Finance, inventory, or any domain requiring complete change history for legal/business reasons.
+## 7. Reliability tables
 
-> **Erasure:** events are immutable by design — reconcile with right-to-erasure up front via crypto-shredding or PII-free payloads (see §2 "Erasure vs. immutable history"), not by rewriting the event store later.
+Physical forms of software-architecture's reliability patterns, if that capability is in use: its logical fields are the contract; column names may follow the backend adapter (`locked_until` for `lease_expires`, `completed_at` set for `state = 'completed'`, one `scope` column for tenant + principal).
 
-## 5. CQRS (Command Query Responsibility Segregation)
-
+**Idempotency keys**
 ```sql
--- Write Model (normalized, integrity-focused)
-CREATE TABLE orders (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    user_id UUID NOT NULL REFERENCES user_accounts(id),
-    status order_status NOT NULL DEFAULT 'pending',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE idempotency_keys (
+    tenant_id      uuid        NOT NULL,
+    principal_id   uuid        NOT NULL,
+    key            text        NOT NULL,          -- client-chosen, one per intent
+    request_hash   text        NOT NULL,
+    state          text        NOT NULL DEFAULT 'in_flight'
+                   CONSTRAINT chk_idempotency_keys_state CHECK (state IN ('in_flight', 'completed')),
+    lease_token    uuid        NOT NULL DEFAULT gen_random_uuid(),   -- fencing: new on every acquire and takeover
+    lease_expires  timestamptz NOT NULL,
+    recovery_point text,                          -- last committed phase of an external side effect
+    response       jsonb,                         -- status and body, replayed on repeat
+    expires_at     timestamptz NOT NULL,          -- past the longest sender's retry horizon
+    PRIMARY KEY (tenant_id, principal_id, key)
 );
-
-CREATE TABLE order_items (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    order_id UUID NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
-    product_id UUID NOT NULL REFERENCES products(id),
-    quantity INT NOT NULL CHECK (quantity > 0),
-    unit_price NUMERIC(12, 2) NOT NULL
-);
-
--- Read Model (denormalized, query performance-focused)
-CREATE MATERIALIZED VIEW mv_order_summary AS
-SELECT
-    o.id AS order_id,
-    o.user_id,
-    u.name AS user_name,
-    u.email AS user_email,
-    o.status,
-    COUNT(oi.id) AS item_count,
-    SUM(oi.quantity * oi.unit_price) AS total_amount,
-    o.created_at
-FROM orders o
-JOIN user_accounts u ON u.id = o.user_id
-JOIN order_items oi ON oi.order_id = o.id
-GROUP BY o.id, o.user_id, u.name, u.email, o.status, o.created_at;
-
-CREATE UNIQUE INDEX idx_mv_order_summary_id ON mv_order_summary (order_id);
-CREATE INDEX idx_mv_order_summary_user ON mv_order_summary (user_id);
+CREATE INDEX idx_idempotency_keys_expires_at ON idempotency_keys (expires_at);   -- batched purge
 ```
-
-## 6. Multi-Tenant Patterns
-
-### Schema-per-Tenant (strong isolation)
+Acquire with `INSERT … ON CONFLICT DO NOTHING RETURNING lease_token`: only a returned row grants execution, under that token. Otherwise read the row: another `request_hash` → reject; `completed` → replay; a live lease → retryable conflict. Commit the in-flight row before any external call. Every later write (each recovery point as it commits, then the completion) adds `AND lease_token = $token AND state = 'in_flight'`; zero rows means the lease was taken over, so stop. Take over an expired lease conditionally under a new token, extending `expires_at` so the purge cannot delete a live row:
 ```sql
-CREATE SCHEMA tenant_acme;
-CREATE TABLE tenant_acme.user_accounts ( ... );
-CREATE TABLE tenant_acme.orders ( ... );
+UPDATE idempotency_keys
+SET lease_token = gen_random_uuid(), lease_expires = now() + $5,
+    expires_at = greatest(expires_at, now() + $6)                -- $5 lease, $6 TTL
+WHERE (tenant_id, principal_id, key) = ($1, $2, $3) AND request_hash = $4
+  AND state = 'in_flight' AND lease_expires < now()
+RETURNING lease_token, recovery_point;
 ```
 
-### Row-Level Security (flexible isolation)
+**Outbox**
 ```sql
-CREATE TABLE orders (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    tenant_id UUID NOT NULL,
-    -- ... other columns
+CREATE TABLE outbox (
+    id               uuid        PRIMARY KEY DEFAULT uuidv7(),   -- debugging only, never order
+    aggregate_type   text        NOT NULL,
+    aggregate_id     uuid        NOT NULL,
+    aggregate_seq    integer     NOT NULL,          -- per-aggregate order: the aggregate's new version
+    event_type       text        NOT NULL,
+    payload          jsonb       NOT NULL,
+    headers          jsonb       NOT NULL DEFAULT '{}',
+    created_at       timestamptz NOT NULL DEFAULT now(),
+    published_at     timestamptz,                   -- NULL = pending
+    next_attempt_at  timestamptz NOT NULL DEFAULT now(),   -- backoff, and the relay's claim lease
+    attempts         integer     NOT NULL DEFAULT 0,
+    last_error       text,
+    dead_lettered_at timestamptz,
+    CONSTRAINT uq_outbox_aggregate_seq UNIQUE (aggregate_id, aggregate_seq)
 );
-
-ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
-ALTER TABLE orders FORCE ROW LEVEL SECURITY;  -- without FORCE, the table owner bypasses RLS; superusers and BYPASSRLS roles always bypass. Have the app connect as a non-owner, non-superuser role.
-
-CREATE POLICY tenant_isolation ON orders
-    -- Scalar subquery → current_setting() evaluates once per query, not per row (it is STABLE,
-    -- not IMMUTABLE). NULLIF(..., '') degrades an unset OR empty-string GUC to NULL, so the
-    -- predicate fails CLOSED (zero rows) instead of erroring on ''::UUID.
-    USING (tenant_id = (SELECT NULLIF(current_setting('app.current_tenant', true), ''))::UUID);
+CREATE INDEX idx_outbox_pending ON outbox (created_at)
+    WHERE published_at IS NULL AND dead_lettered_at IS NULL;
+CREATE INDEX idx_outbox_published_at ON outbox (published_at)   -- batched purge
+    WHERE published_at IS NOT NULL;
 ```
+Insert in the state change's transaction. The relay claims only each aggregate's oldest pending row (`NOT EXISTS` an earlier pending `aggregate_seq`) with `FOR UPDATE SKIP LOCKED`, pushes `next_attempt_at` forward as its lease, publishes outside the transaction, then marks the row published; a failing row holds back its aggregate until dead-lettered after N attempts. Alert on the age of the oldest pending row; purge published rows after the replay window.
 
-## 7. Polymorphic Association
+**Inbox**: `PRIMARY KEY (consumer, message_id)` plus `received_at`, where `message_id` is the producer's event id (for a webhook, the provider's). In the handler's transaction, `INSERT … ON CONFLICT DO NOTHING RETURNING message_id`: no row means a duplicate, so skip the effect. Purge after the sender's redelivery horizon.
 
-One table needs to reference multiple different parent tables.
-
+**Jobs**: `jobs (id, kind, payload, state, run_at, lease_token, lease_expires, attempts)` with a partial index `(run_at) WHERE state IN ('queued', 'running')`. Claim in a short transaction committed before the work starts:
 ```sql
--- Approach 1: Separate FK columns (recommended — FK constraints enforced)
-CREATE TABLE comments (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    body TEXT NOT NULL,
-    article_id UUID REFERENCES articles(id),
-    product_id UUID REFERENCES products(id),
-    CONSTRAINT chk_one_parent CHECK (
-        (article_id IS NOT NULL)::INT + (product_id IS NOT NULL)::INT = 1
-    ),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
--- Approach 2: Intermediate table (more extensible)
-CREATE TABLE commentables (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    commentable_type TEXT NOT NULL,
-    commentable_id UUID NOT NULL,
-    UNIQUE (commentable_type, commentable_id)
-);
-
-CREATE TABLE comments (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    commentable_id UUID NOT NULL REFERENCES commentables(id),
-    body TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
+WITH c AS MATERIALIZED (   -- runs once; an IN (subquery) may run again and claim more than $1 rows
+    SELECT id FROM jobs
+    WHERE run_at <= now()
+      AND (state = 'queued' OR (state = 'running' AND lease_expires < now()))
+    ORDER BY run_at LIMIT $1
+    FOR UPDATE SKIP LOCKED)
+UPDATE jobs j SET state = 'running', lease_token = gen_random_uuid(),
+       lease_expires = now() + $2, attempts = j.attempts + 1
+FROM c WHERE j.id = c.id
+RETURNING j.id, j.lease_token, j.payload;
 ```
+Complete with `UPDATE jobs SET state = 'done' WHERE id = $1 AND lease_token = $2`: zero rows means the lease expired and another worker owns the job. Jobs must be idempotent, since a lease can expire mid-run; dead-letter after N attempts. A queue lives on vacuum: per-table `autovacuum_vacuum_scale_factor = 0` with a fixed `autovacuum_vacuum_threshold`, finished rows purged, and no long transaction in the database, or dead rows at the head of the index slow every claim.
 
-## 8. Temporal Data
+**Change feeds** (sync, replay, polling consumers). Identity values, UUIDv7 and `now()` are assigned before commit, so a reader paging by `id > cursor` permanently skips a row whose transaction commits after a later row was read. Cursor on commit order instead:
+- logical decoding (CDC), which emits changes in commit order;
+- a commit horizon: `txid xid8 NOT NULL DEFAULT pg_current_xact_id()`, an index on `(txid, id)`, and reads of `WHERE (txid, id) > ($1, $2) AND txid < pg_snapshot_xmin(pg_current_snapshot()) ORDER BY txid, id`. Nothing commits below the oldest running transaction, so no row can appear behind the cursor; a long transaction delays the feed but loses nothing;
+- a per-scope counter taken as the transaction's last statement (`UPDATE feed_heads SET seq = seq + 1 WHERE scope = $1 RETURNING seq`), which serializes that scope's writers.
 
-```sql
--- Data with validity periods (prices, policies, etc.)
-CREATE TABLE product_prices (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    product_id UUID NOT NULL REFERENCES products(id),
-    price NUMERIC(12, 2) NOT NULL,
-    valid_from TIMESTAMPTZ NOT NULL DEFAULT now(),
-    valid_until TIMESTAMPTZ,
-    CONSTRAINT chk_valid_range CHECK (valid_until IS NULL OR valid_until > valid_from)
-);
+## 8. `updated_at`
 
--- Current price view
-CREATE VIEW current_product_price AS
-SELECT DISTINCT ON (product_id)
-    product_id, price, valid_from
-FROM product_prices
-WHERE valid_from <= now() AND (valid_until IS NULL OR valid_until > now())
-ORDER BY product_id, valid_from DESC;
-
--- Range type with exclusion constraint (prevent overlapping reservations)
-CREATE EXTENSION IF NOT EXISTS btree_gist;  -- required to combine a scalar = with a range && in a GiST exclusion constraint
-CREATE TABLE room_reservations (
-    id UUID NOT NULL PRIMARY KEY DEFAULT uuidv7(),
-    room_id UUID NOT NULL REFERENCES rooms(id),
-    reserved_period TSTZRANGE NOT NULL,
-    EXCLUDE USING GIST (room_id WITH =, reserved_period WITH &&)
-);
-```
-
-## 9. Auto-Updated Timestamps
-
-The `updated_at TIMESTAMPTZ NOT NULL DEFAULT now()` column from the SKILL.md DDL skeleton only fires the default on INSERT. To keep `updated_at` accurate on every UPDATE, attach a trigger.
-
-```sql
--- Reusable trigger function (define once per database)
-CREATE OR REPLACE FUNCTION fn_set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW.updated_at = now();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Attach per entity table
-CREATE TRIGGER trg_user_accounts_updated_at
-    BEFORE UPDATE ON user_accounts
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-
-CREATE TRIGGER trg_orders_updated_at
-    BEFORE UPDATE ON orders
-    FOR EACH ROW EXECUTE FUNCTION fn_set_updated_at();
-```
-
-**Alternative**: Manage `updated_at` at the application/ORM layer. Either is valid — pick one and apply consistently. Mixed strategies cause inconsistent `updated_at` values when one path forgets.
-
-**Skip-update optimization**: The trigger above runs on every UPDATE even when the row didn't actually change. To skip no-op updates:
-
-```sql
-CREATE OR REPLACE FUNCTION fn_set_updated_at()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW IS DISTINCT FROM OLD THEN
-        NEW.updated_at = now();
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-```
-
-⚠️ This only suppresses the `updated_at` bump; the UPDATE still rewrites the row and produces a dead tuple. It also never fires if the application already sets `updated_at` explicitly in the UPDATE (then `NEW.updated_at` always differs from `OLD`). To avoid the write entirely, don't issue no-op UPDATEs (or use the built-in `suppress_redundant_updates_trigger`).
+Either a `BEFORE UPDATE` trigger (`NEW.updated_at := now()`) or the ORM sets it, never both: mixed writers leave some updates unstamped. A no-op UPDATE still writes a row version: skip it in the statement (`WHERE col IS DISTINCT FROM $1`), or add `suppress_redundant_updates_trigger()` under a name that sorts before the `updated_at` trigger (triggers fire in name order; after the stamp, every row differs).
