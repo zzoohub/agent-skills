@@ -24,10 +24,11 @@ This repo is **not an application** — it is a **portable skill library + a Cla
 There is no product source code here. It ships three things:
 
 - **`skills/`** — **29** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 21 skills), `rules/` (per-rule guideline files —
-  `react-best-practices`, `react-native-skills`), `templates/` (output scaffolds
-  — `qa`, `software-architecture`), `scripts/` (helpers — `database-design` only; two `.sql` files),
-  and `evals/` (`review-checklists` only). Not counted: the untracked `skills/synced/` folder, a
+  `references/` (deep-dive docs loaded on demand — 21 skills), `rules/` (guideline files:
+  `react-best-practices` per rule, `react-native-skills` per decision area), `templates/`
+  (output scaffolds — `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
+  `database-design` only; two `.sql` files), `evals/` (`review-checklists` only) and the vendored
+  forks' `UPSTREAM.md` records (see below). Not counted: the untracked `skills/synced/` folder, a
   local sync cache that is not part of the library.
   A `SKILL.md` runs on any Agent-Skills-compatible runtime; only `name` + `description` frontmatter
   is load-bearing.
@@ -52,6 +53,8 @@ Vercel-infrastructure coupling so they are self-contained and host-agnostic. Thr
 skill: its guide and `rules/` library now live in `design-system/references/composition/` (provenance
 note kept there). They replaced four dangling symlinks into an external Vercel/Expo store, so every
 skill under `skills/` is a real, repo-owned directory — no symlinks.
+**Vendored content is a frozen fork** (these four and `browse`): never re-clone over it; merge
+upstream changes selectively by hand, per its `UPSTREAM.md` (provenance, divergence, re-apply list).
 (The Vercel-Labs `web-design-guidelines` / `writing-guidelines` skills were deliberately **not**
 internalized; `design-system` remains the UI-guidance authority — see **Known gaps** in `REFERENCE.md`.)
 
@@ -66,7 +69,9 @@ step** (no root `package.json`, Makefile, `justfile`, or CI). Skills and agents 
 are exactly two exceptions:
 
 **`skills/browse`** — the only buildable/testable component: a TypeScript + Playwright tool that Bun
-compiles into a ~63MB standalone binary. `dist/` is gitignored, so it must be rebuilt after clone.
+compiles into a ~63MB binary, not standalone: it starts its daemon with `bun run src/server.ts`, so
+it needs `bun` and the built skill folder at runtime. `dist/` is gitignored, so it must be rebuilt
+after clone.
 Run from `skills/browse/`:
 
 ```bash
@@ -79,14 +84,13 @@ bun test           # Bun's runner auto-discovers test/*.test.ts (there is no `te
 
 Requires `bun` (`curl -fsSL https://bun.sh/install | bash`) and `git`. `skills/qa` *drives* this
 binary (resolved via `$BROWSE_BIN` or the bundled `bin/find-browse`) but has no build of its own.
-See `skills/browse/UPSTREAM.md` for its frozen-fork posture.
 
-**SQL helper scripts** — psql-ready diagnostics, run by hand against a target Postgres DB (not a
-script runner):
+**SQL helper scripts** — read-only, psql-ready diagnostics, run by hand against a target Postgres DB
+(not a script runner):
 
 ```bash
-psql <conn> -f skills/database-design/scripts/query_diagnostics.sql  # slow queries/locks/bloat (needs pg_stat_statements)
-psql <conn> -f skills/database-design/scripts/schema_review.sql  # unindexed FKs, unused indexes, missing constraints
+psql <conn> -f skills/database-design/scripts/query_diagnostics.sql  # runtime: waits, blocker tree, xmin horizon and wraparound, top statements (pg_stat_statements), replica lag
+psql <conn> -f skills/database-design/scripts/schema_review.sql  # structural: unindexed FKs, unused-index candidates, key headroom, risky types, RLS gaps
 ```
 
 `.gitignore` uses an ignore-all-then-whitelist pattern (comments are in Korean) and excludes build
@@ -147,11 +151,17 @@ Claude Code, by design.
   lines in place ("Lean-inline"). A blind A/B (6-0) showed a dedicated section adds
   body surface that competes for the model's attention and *lowers craft-output
   quality* — quality, not token cost, is the reason.
-- **Body cross-references are soft** ("via the X capability, if available"). The
-  `description` block's "use the Y skill" routing text is harmless metadata other
-  runtimes ignore — leave it.
+- **Body cross-references are soft** ("via the X capability, if available").
+- **Descriptions are routing contracts with a budget** (≤700 characters here): Claude Code's skill
+  listing gets ~1% of the context window and on overflow drops whole descriptions, least-invoked
+  first, so the Intent table below also carries each skill's key intents. Lead with what the skill
+  does and when; Do-NOT clauses only for nearest neighbors that misroute (finer routing goes in the
+  body). A boundary change edits both neighbors' descriptions together.
+- **Draft gap tags.** Marketing drafts mark `[VERIFY: claim]` and `[SOURCE NEEDED: what]` (competitor-pages
+  also writes `[TODO: …]` for caller input and a bare `[VERIFY]` on an unchecked date); grep
+  `\[(VERIFY|SOURCE NEEDED|TODO)` before publishing.
 - **Host-coupled skills declare it** via the standard `compatibility:` frontmatter
-  (e.g. `browse`/`qa` ship a binary; resolve it via `${BROWSE_BIN}`, not a fixed path).
+  (e.g. `browse` ships a binary and `qa` drives it; resolve it via `${BROWSE_BIN}`, not a fixed path).
 
 ### Agent conventions (own the orchestration the skills don't)
 
@@ -201,32 +211,35 @@ call that agent.
 
 | You want to… | Skill(s) or agent | Kind |
 |---|---|---|
-| Validate a new product idea / write a one-pager (the *why*) | `product-brief` | skill |
-| Write a full PRD | `prd-craft` | skill |
-| Spec a single feature on an existing PRD | `feature-spec` | skill |
+| Validate a new product idea or direction / write a one-pager (the *why* and *whether*) | `product-brief` | skill |
+| Write or review a full PRD, or record a release checkpoint | `prd-craft` | skill |
+| Spec, revise or review one feature on an existing product | `feature-spec` | skill |
 | Design the system architecture | `software-architecture` | skill |
 | Modernize, re-architect or migrate an existing system (as-is recovery, transition plan) | `software-architecture` (Build Mode on an existing system) | skill |
-| Record a single architecture decision (ADR) on an existing system | `arch-decision` | skill |
-| Design a DB schema | `database-design` (its PostgreSQL operations part covers lock-safe execution and query tuning) | skill |
+| Record or review one architecture decision (ADR) on an existing system | `arch-decision` | skill |
+| Design or review a DB schema; tune queries, run lock-safe migrations or upgrade a live Postgres | `database-design` | skill |
 | Design an LLM/AI feature or app | `software-architecture` (AI Feature Mode) | skill |
-| Design app-wide UX/IA, or audit existing UX | `ux-design` | skill |
-| Design a single screen | `screen-design` | skill |
+| Design app-wide UX/IA, a new multi-screen flow or 3D/XR UX; recover or audit a shipped app's UX | `ux-design` | skill |
+| Design or redesign one screen, with or without a UX doc | `screen-design` | skill |
 | Implement 3D / XR on the web | `web3d` | skill |
 | Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge) + `database-design` (incl. PostgreSQL operations) | skill |
-| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-best-practices`, `react-view-transitions`, `design-system` (incl. component composition), `i18n` | skill |
+| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-best-practices`, `react-view-transitions` (route and shared-element transitions), `design-system` (incl. component composition), `i18n` | skill |
+| Design tokens, theming or dark mode, a visual refresh ("looks dated"), component APIs; set up or audit a design system | `design-system` | skill |
 | Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | `react-native-skills` (+ `design-system`, `i18n`) | skill |
-| Pre-landing code review: security + correctness + maintainability | `reviewer` | agent |
-| Verify behavior in a real browser / smoke-test endpoints before merge | `verifier` | agent |
+| Add a language, fix a locale bug (plurals, RTL, time zones), audit i18n | `i18n` | skill |
+| Pre-landing code review: security + correctness + maintainability | `reviewer` (method in `review-checklists`) | agent |
+| Verify behavior in a real browser / smoke-test endpoints before merge | `verifier` (method in `qa` + `browse`) | agent |
 | Red-team a high-risk change: reproduce exploits against a running app in an isolated env | `adversary` (method in `adversarial-execution`) | agent |
 | Ship to production: deploy, env/secrets, migrations, CI/CD, rollback | the deploy platform's own skills/CLI (e.g. `vercel:*`, `cloudflare:wrangler`, Supabase) + `database-design` (PostgreSQL operations) for lock-safe migration execution | platform skill |
-| Positioning, launch, pricing strategy, ad creative, competitor pages | `pricing`, `competitor-pages`, `ad-creative`, `copywriting` (incl. persuasion psychology) | skill |
-| Ongoing content: social, email sequences, blog/SEO, changelog, build-in-public | `copywriting` (incl. its social and email sections), `search-visibility` | skill |
-| Conversion (CRO), referral/viral loops, churn/retention, paywall/upgrade | `cro`, `growth-loops`, `churn-prevention` | skill |
-| Analytics: tracking plan, funnels, retention/PMF, weekly reports, A/B analysis | `data-analyst` (method in `product-analytics`) | agent |
+| Marketing and launch copy (landing, home and pricing pages, headlines, CTAs, brand voice), pricing, ad creative and creative tests, competitor pages | `copywriting` (page and launch-day copy, persuasion psychology; drafts positioning for the main session's `strategy.md`), `pricing`, `ad-creative`, `competitor-pages` | skill |
+| Ongoing content: social, email, changelog, build-in-public, blog articles | `copywriting` (social, email, changelog), `search-visibility` (blog) | skill |
+| SEO or AI-visibility audit, organic-traffic drop, keyword research, technical SEO, AI citations | `search-visibility` | skill |
+| Conversion (CRO), A/B test design, referral/viral loops, affiliate programs, churn (cancel flows, failed payments), paywall/upgrade | `cro`, `growth-loops`, `churn-prevention` | skill |
+| Analytics: tracking plan, funnels, retention/PMF, weekly reports, "why did X drop", test readouts | `data-analyst` (method in `product-analytics`) | agent |
 
 For a plan review *before* writing code, the main agent can invoke the `plan-review` skill
 directly — in scope mode (scope/vision, while scope is negotiable) or execution mode (locked-scope
-execution rigor) — it is not owned by an agent. The review returns its structured issue list,
+execution rigor) — it is not owned by an agent. The review returns its verdict, ranked issue list,
 proposed follow-ups and any unresolved decisions to the main session, which asks the user (with
 its question UI when it has one) and decides what to act on.
 

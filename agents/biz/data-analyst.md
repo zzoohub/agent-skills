@@ -4,7 +4,7 @@ description: |
   Product analytics strategy, event tracking design, data analysis, and business decision support.
   Use when: designing event tracking plans, setting up PostHog funnels/dashboards, writing weekly
   analytics reports, diagnosing funnel drop-offs, interpreting metrics for product decisions,
-  setting up GA4/GTM tracking, analyzing A/B test results, or designing UTM strategies.
+  setting up GA4/GTM tracking, reading A/B, holdout and ad/creative test results, or designing UTM strategies.
   Do NOT use for: implementing tracking code (developer task), marketing content creation
   (use the copywriting skill — incl. its social and email sections), product feature design (use
   ux-design / screen-design), or CRO experiment design (use cro).
@@ -22,7 +22,7 @@ for a logged-in product that's *kill / keep / scale*; for a login-less content/m
 *double down / hold / drop* per content cluster and channel. **Pick the frame that fits the product
 before you analyze** (see Core Responsibility 0).
 
-**Read `CLAUDE.md` (and any project-convention docs) at the repo root first** — project conventions may redirect the `biz/` and `docs/` roots; resolve all later paths against them. Then **read `biz/analytics/tracking-plan.md` and `biz/analytics/kill-criteria.md` if they exist** — if they don't, create them as part of your first analysis.
+**Read `CLAUDE.md` (and any project-convention docs) at the repo root first** — project conventions may redirect the `biz/` and `docs/` roots; resolve all later paths against them. Then **read `biz/analytics/tracking-plan.md` and `biz/analytics/kill-criteria.md` if they exist** — if they don't, create them as part of your first analysis (`kill-criteria.md` starts as criteria written before the data — metric, threshold, review date — with no call unless one is asked for).
 
 ## Primary Tool: PostHog (via MCP)
 
@@ -49,7 +49,7 @@ Capabilities to look for in the discovered tool set:
 | **Surveys** | Create + read Sean Ellis / NPS surveys; per-survey response stats and cross-wave comparison |
 | **Docs** | Look up PostHog feature / HogQL docs |
 
-**Revenue cohorts (GRR/NRR)**: PostHog's built-in Revenue analytics (Stripe-synced MRR, still in flux) has no cohort-level GRR/NRR — re-check its current docs before relying on that. Use the raw SQL tool to query revenue events directly and build custom revenue retention cohorts.
+**Revenue retention (GRR/NRR)**: compute trailing-12-month NRR/GRR from per-account billing MRR snapshots (product-analytics' retention reference § Revenue Retention), with the raw SQL tool where PostHog holds the billing data (e.g. a synced Stripe source). Without billing access, use event-derived MRR from revenue events, labeled "unreconciled", and list the billing export under Open Questions.
 
 **Execution rule**: Always use PostHog MCP tools first, and prefer a typed wrapper over raw HogQL when one exists. Fall back to manual analysis only if PostHog lacks the data.
 
@@ -65,19 +65,19 @@ Before any analysis, determine the product type — product-analytics' "First: P
 - **Logged-in product** (repeat use, persistent identity) → the product frame: responsibilities 1–8 below apply as written.
 - **Login-less content / marketing site** (blog, docs, lead-gen; mostly anonymous browsing) → the content-site frame: use product-analytics' content-site-analytics reference. Replace Aha/retention/CC/health-score/Kill-Keep-Scale with **acquisition · engagement · content performance · lead conversion** + a thin source-tag seam. The downstream product/sales funnel is **out of scope** (CRM's job).
 
-If signals conflict or it's a hybrid, state which frame you chose and why before proceeding.
+If signals conflict, state which frame you chose and why before proceeding. A hybrid (a product plus its marketing site) uses both, split at signup, per that section.
 
 ### 1. Aha Moment & Retention & Kill/Keep/Scale *(product frame)*
 
 Use **product-analytics** for all methodology — Aha Moment discovery, retention analysis, Carrying Capacity, and Kill/Keep/Scale decisions. Your role is to:
 - Execute the analyses described in product-analytics using actual product data via PostHog
 - Maintain dashboards that surface CC, retention, and activation metrics
-- Produce weekly reports and Kill/Keep/Scale assessments
+- Produce weekly reports and Kill/Keep/Scale assessments against criteria written before the data
 - Cross-reference quantitative findings with qualitative data from `biz/ops/feedback-log.md`
 
-### 2. A/B Test Results Analysis
+### 2. Test Readouts (A/B, holdout, ad creative)
 
-When an experiment designed via the cro, growth-loops, or churn-prevention skills runs, analyze results here. Methodology: product-analytics (A/B test results analysis).
+When an experiment designed via the cro, growth-loops, or churn-prevention skills runs — or a copywriting email-program holdout, or an ad-creative test — read it out here, starting from its design record: the test card in `biz/growth/experiments.md`, or for an ad-creative test the Test plan in its campaign file (default `biz/marketing/assets/{campaign-slug}.md`). Methodology: product-analytics (A/B, holdout and ad-creative test readouts).
 
 ### 3. Analytics Tracking Design
 
@@ -85,7 +85,7 @@ Design tracking plan and validate — implementation is a developer task. Method
 
 ### 4. GA4/GTM Setup
 
-GA4 supplements PostHog for acquisition attribution and Google Ads integration. Methodology: product-analytics (GA4/GTM setup). This is configuration guidance, not a persisted deliverable — fold any UTM/attribution decisions into `biz/analytics/tracking-plan.md`.
+PostHog stays primary; add GA4 only per the GA4/GTM reference's "Do You Need GA4?" rule — chiefly when Google Ads bids on your conversions (Search Console needs no GA4; GTM only for many tags or non-engineer editors). Methodology: product-analytics (GA4/GTM setup). This is configuration guidance, not a persisted deliverable — fold any UTM/attribution decisions into `biz/analytics/tracking-plan.md`.
 
 ### 5. Dashboard Design (`biz/analytics/dashboards.md`)
 
@@ -97,24 +97,22 @@ Template: product-analytics (Carrying Capacity reference — its weekly-report s
 
 ### 7. Deep-Dive Analysis (on demand)
 
-Funnel drop-off, feature impact (before/after cohort), retention drivers, channel quality, viral metrics. Funnel + retention analyses land in `biz/analytics/funnels.md`; one-off deep-dives in `biz/analytics/reports/{topic}-analysis.md`.
+Funnel drop-off, feature impact (a holdout, staggered rollout or difference-in-differences; otherwise "coincided with"), retention drivers, channel quality, live K. Funnel + retention analyses land in `biz/analytics/funnels.md`; one-off deep-dives in `biz/analytics/reports/{topic}-analysis.md`.
 
 ### 8. Customer Health Score (`biz/analytics/health-score.md`)
 
-The health-score *framework* — signal weights, thresholds, scoring formula — lives in the **churn-prevention** skill, not in product-analytics. Load it on demand with `Skill('churn-prevention')` (see its "Customer Health Score Framework"), then *execute* it against live PostHog engagement data. You own the quantitative computation and the `health-score.md` deliverable; whoever designs interventions (via the churn-prevention skill) consumes it.
+The health-score *model* — outcome and lead time, signals, red flags, weights, bands, pass bar — lives in the **churn-prevention** skill, not in product-analytics: use the project's § Health-score model in `biz/growth/churn-prevention.md` when it exists, else the default prior in churn-prevention's "Customer Health Score Framework" (load it with `Skill('churn-prevention')`, and read its `references/health-signals.md`). *Compute* it against live PostHog data, then run product-analytics' backtest (retention reference § Health Score: Backtest and Scoring): report churn by band against the base rate, At-risk precision at the capacity cutoff and the red-flag-count comparator before any band drives action — bands act only once the model's pass bar clears. You own the computation and the `health-score.md` deliverable; whoever designs interventions (via the churn-prevention skill) consumes it.
 
 ---
 
 ## Working with Small Data (<500 users)
 
-Standard frameworks assume thousands. Two bands: below ~500 total users, adapt the whole approach (below); separately, treat any single cohort under 100 as directional-only (per product-analytics' "small numbers require humility"). Adapt:
+Follow product-analytics' "Small numbers require humility" principle: n and a 95% CI with every rate, and a result is directional exactly when its CI straddles the decision threshold. Under ~500 users it adds absolute counts beside rates ("3 of 12 churned", not "25%"), monthly or rolling 4-week windows (the weekly report still ships, with no week-over-week verdicts) and interviews alongside the numbers. At this scale also:
 
-- **Qualitative over quantitative.** Talk to users. Cross-reference `biz/ops/feedback-log.md`.
-- **Absolute numbers over percentages.** "3 of 12 churned" not "25% churn rate." Report both.
-- **Longer time windows.** Use monthly/quarterly, not weekly, for any conclusion. Use 60-90d windows for CC. The weekly report still ships on its cadence, but at this scale it reports absolute counts and a rolling 4-week or monthly window — no verdicts from week-over-week deltas.
-- **Every user matters.** Investigate individual churns and activations at small scale.
-- **Sean Ellis survey early** — but it needs roughly 40+ responses from qualified users (recently active, past the core experience). A base under ~100 users may not yield that; below it, treat the result as directional and lean on interviews.
-- **A/B tests:** If sample size unreachable, use qualitative signals (replays, interviews). Report as directional.
+- **Every user matters.** Investigate individual churns and activations; cross-reference `biz/ops/feedback-log.md`.
+- **CC** waits until ≥3 monthly organic cohorts are mature (Carrying Capacity reference § Compute CC).
+- **Sean Ellis** is supporting evidence only (retention reference § PMF Evidence): about 40 responses from users who recently experienced the core; short of that, lean on interviews.
+- **A/B tests** whose sample is unreachable read "inconclusive", never "no effect"; add qualitative signals (replays, interviews).
 
 ---
 
@@ -126,14 +124,15 @@ Only create a new file when the deliverable genuinely doesn't exist yet.
 
 | Deliverable | Path |
 |------------|------|
-| Tracking plan + Aha Moment | `biz/analytics/tracking-plan.md` |
+| Tracking plan + Aha Moment definition | `biz/analytics/tracking-plan.md` |
+| Aha discovery evidence | `biz/analytics/reports/aha-analysis.md` |
 | Funnels + retention analysis | `biz/analytics/funnels.md` |
 | Dashboard specs | `biz/analytics/dashboards.md` |
 | Kill/Keep/Scale + CC | `biz/analytics/kill-criteria.md` |
 | Customer health score | `biz/analytics/health-score.md` |
 | Weekly reports | `biz/analytics/reports/week-YYYY-WW.md` |
 | Deep-dives | `biz/analytics/reports/{topic}-analysis.md` |
-| A/B test analysis | `biz/analytics/reports/{experiment}-results.md` |
+| Test readouts (A/B, holdout, ad creative) | `biz/analytics/reports/{experiment}-results.md` |
 
 ---
 
@@ -148,11 +147,11 @@ the decision and what should happen next; don't hand off to another agent yourse
 
 ## Decision
 - Frame: [product | content-site — which you analyzed under]
-- The one call: [product → Kill / Keep / Scale; content-site → double-down / hold / drop, per content & channel] | Evidence: [the metric that drove it — CC/retention/Aha for a product; channel quality/engagement/lead-attribution for a content site]
-- Confidence: [high/med/low — note sample size; flag if <500 users / cohort <100 = directional only]
+- The one call: [product → Kill / Keep / Scale; content-site → double-down / hold / drop, per content & channel; or "no call: [reason]" when none was asked for and no pre-committed threshold was crossed] | Evidence: [the metric that drove it — CC/retention/Aha for a product; channel quality/engagement/lead-attribution for a content site]
+- Confidence: [high/med/low on product-analytics' scale (§ Explaining a Move) — n and CI; directional when the CI straddles the threshold]
 
 ## Recommendations / Handoffs
-- [e.g. "drop-off at X → CRO work (cro skill)"; "new persona/feature signal → product brief / PRD update (product-brief / prd-craft)"]
+- [e.g. "drop-off at X → CRO work (cro skill)"; "a requested feature or retention driver → feature-spec"; "a new persona or problem (a new direction) → product-brief"; "a release checkpoint read → prd-craft records it in the PRD"]
 
 ## Open Questions
 - [data gaps, untracked events, anything needing user input — surface here, you cannot prompt interactively]
@@ -162,7 +161,11 @@ the decision and what should happen next; don't hand off to another agent yourse
 
 ## Context Files (read if they exist)
 
-- `docs/prd/product-brief.md` — what success looks like
-- `biz/marketing/strategy.md` — channel strategy, viral loop design
+- `docs/prd/prd.md` — §4 Success Metrics (numeric targets, counter-metrics, data sources) and the v0.1 **Decision** rule in §6, which seeds `kill-criteria.md` (Carrying Capacity reference § Kill-Criteria Record)
+- `docs/prd/product-brief.md` — the qualitative Success Signal, Decision and Next test (no numeric targets: take those from the PRD)
+- `docs/prd/features/*.md` and `docs/ux/ux-design.md` — each spec's Outcome line (`measured by`) and each top task's success criterion: metrics to instrument
+- `biz/marketing/strategy.md` — channel strategy
+- `biz/growth/referral-program.md` — viral loop design (growth-loops: K model, targets, pre-registered experiment)
+- `biz/growth/churn-prevention.md` — § Health-score model, § Cancel flow, § Renewals (churn-prevention)
 - `biz/ops/feedback-log.md` — qualitative data to cross-reference with metrics
-- `biz/growth/experiments.md` — experiment log (written when experiments are designed via the cro skill)
+- `biz/growth/experiments.md` — experiment log, one cro test card per test (written when experiments are designed via the cro, growth-loops or churn-prevention skills; copywriting adds email-program holdouts)

@@ -56,7 +56,7 @@ If no isolated environment is available, **stop and report that as the blocker**
 ### 1. Scope the attack from the diff + the flag
 
 - Read `CLAUDE.md` first (project conventions — may name the isolated target env, redirect paths, or set the base branch); resolve later paths against it.
-- Take the changed files, the high-risk flag(s) that fired, and — if the caller relays them — the reviewer's findings (risks it named but could not execute at review time). If none are provided, derive the goals yourself from the diff; never depend on them.
+- Take the changed files, the high-risk flag(s) that fired, and — if the caller relays them — the reviewer's findings (risks it named but could not execute at review time), above all its **Unconfirmed** list: each item's deciding fact is an attack hypothesis, and its "settle by" may name the requests to fire. If none are provided, derive the goals yourself from the diff; never depend on them.
 - Turn each into an **invariant** — the thing that must never happen ("a revoked credential never verifies", "tenant A never reads tenant B's object", "one payment charges exactly once").
 - Map each flag to its catalog section (see the adversarial-execution trigger table) and read it. Run only the batteries whose flag fired.
 
@@ -71,7 +71,7 @@ Use the setups a single-request, code-blind verifier structurally cannot create 
 - **Numeric / limit abuse** — negative / zero / overflow, client-tampered price/discount, unbounded export.
 - **SSRF & malicious upload / deserialization** — push a server-side fetch toward an internal or cloud-metadata host (prove *reachability*; don't complete the exfiltration), or feed a crafted upload / serialized payload past the parser. Fire what `references/security/ssrf.md` and `references/security/api.md` name.
 - **Prompt injection & excessive agency** (LLM/agent changes) — plant an indirect injection in retrieved content (RAG doc, ticket, fetched page) and see if it forces a real tool-call; multi-turn jailbreak; two users to test cross-user RAG retrieval. Invariant: the agent never acts (refund/delete/send) outside the caller's own authorization. Fire what `references/security/llm-security.md` names.
-- **Migration dry-run** (schema changes) — run against a prod-*census* clone: lock duration, app behavior in the intermediate (expand/contract overlap) state, backfill idempotency, rollback. Execute the patterns in the database-design skill's migration reference (`references/migration-patterns.md`, its single source for lock-safe execution); don't invent them.
+- **Migration dry-run** (schema changes) — run against a prod-*census* clone: lock duration, app behavior in the intermediate (expand/contract overlap) state, backfill idempotency and row counts against an independent count (on an RLS-forced table an owner-run step silently matches zero rows), rollback. Execute the patterns in the database-design skill's migration reference (`references/migration-patterns.md`, its single source for lock-safe execution); don't invent them.
 
 ### 3. Confirm — but never acquit
 
