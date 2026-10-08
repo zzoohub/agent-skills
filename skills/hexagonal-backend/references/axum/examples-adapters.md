@@ -932,7 +932,7 @@ Handlers use only these, never axum's `Json`, `Path` or `Query`.
 //! Extractors whose rejections are problems: axum's own `Json`, `Path` and `Query` reject with
 //! text/plain bodies that never pass through `ApiError`.
 use axum::body::Bytes;
-use axum::extract::rejection::{PathRejection, QueryRejection};
+use axum::extract::rejection::{BytesRejection, PathRejection, QueryRejection};
 use axum::extract::{FromRequest, FromRequestParts, Request};
 use axum::http::{StatusCode, header, request::Parts};
 use domain::Actor;
@@ -977,18 +977,32 @@ impl<S: Send + Sync, T: DeserializeOwned> FromRequest<S> for AppJson<T> {
         if !(mime == "application/json" || (mime.starts_with("application/") && mime.ends_with("+json"))) {
             return Err(ApiError::new(ProblemType::UnsupportedMediaType, "Send Content-Type: application/json"));
         }
-        let bytes = Bytes::from_request(req, state).await.map_err(|r| match r.status() {
-            StatusCode::PAYLOAD_TOO_LARGE => {
-                ApiError::new(ProblemType::PayloadTooLarge, "The request body is too large")
-            }
-            _ => ApiError::malformed("The request body could not be read"),
-        })?;
+        let bytes = Bytes::from_request(req, state).await.map_err(body_rejection)?;
         let de = &mut serde_json::Deserializer::from_slice(&bytes);
         match serde_path_to_error::deserialize(&mut *de) {
             Ok(value) if de.end().is_ok() => Ok(Self(value)),
             Err(e) if e.inner().is_data() => Err(ApiError::validation(vec![field_error(&e)])),
             _ => Err(ApiError::malformed("The request body is not valid JSON")),
         }
+    }
+}
+
+/// The raw body, for a signature that covers the bytes as sent (webhooks): its rejections are
+/// problems too, before any signature check runs.
+pub struct RawBody(pub Bytes);
+
+impl<S: Send + Sync> FromRequest<S> for RawBody {
+    type Rejection = ApiError;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, ApiError> {
+        Bytes::from_request(req, state).await.map(Self).map_err(body_rejection)
+    }
+}
+
+fn body_rejection(r: BytesRejection) -> ApiError {
+    match r.status() {
+        StatusCode::PAYLOAD_TOO_LARGE => ApiError::new(ProblemType::PayloadTooLarge, "The request body is too large"),
+        _ => ApiError::malformed("The request body could not be read"),
     }
 }
 
@@ -1578,7 +1592,7 @@ An internal router outside public auth and OpenAPI: signature first, then the us
 use std::sync::Arc;
 
 use axum::http::{HeaderMap, StatusCode, header};
-use axum::{Router, body::Bytes, extract::DefaultBodyLimit, extract::State, routing::post};
+use axum::{Router, extract::DefaultBodyLimit, extract::State, routing::post};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use domain::{Actor, ArticleId, Articles, TenantId};
 use hmac::{Hmac, KeyInit, Mac};
@@ -1586,7 +1600,7 @@ use secrecy::{ExposeSecret, SecretSlice};
 use serde::Deserialize;
 use uuid::Uuid;
 
-use super::http::{MAX_BODY, problem::ApiError, problem::ProblemType};
+use super::http::{MAX_BODY, extract::RawBody, problem::ApiError, problem::ProblemType};
 
 struct WebhookState<A> {
     articles: Arc<A>,
@@ -1616,7 +1630,7 @@ struct Verdict {
 async fn moderation<A: Articles>(
     State(state): State<WebhookState<A>>,
     headers: HeaderMap,
-    body: Bytes, // the raw bytes: the signature covers them exactly as sent
+    RawBody(body): RawBody, // the raw bytes: the signature covers them exactly as sent
 ) -> Result<StatusCode, ApiError> {
     let message_id = verify(&state.secrets, &headers, &body, chrono::Utc::now().timestamp())?;
     let event = match serde_json::from_slice::<Verdict>(&body) {

@@ -722,7 +722,7 @@ from starlette.routing import Match
 from newsroom.domain import kernel
 
 log = logging.getLogger(__name__)
-REGISTRY = {  # slug -> status; the title derives from the slug
+REGISTRY = {  # slug -> status; the title is the capitalized slug unless _TITLES says otherwise
     "malformed-request": 400,
     "unauthenticated": 401,
     "forbidden": 403,
@@ -740,6 +740,12 @@ REGISTRY = {  # slug -> status; the title derives from the slug
     "rate-limited": 429,
     "internal": 500,
     "unavailable": 503,
+}
+_TITLES = {  # registry titles that are not the capitalized slug
+    "idempotency-in-flight": "Request in progress",
+    "rate-limited": "Too many requests",
+    "internal": "Internal error",
+    "unavailable": "Service unavailable",
 }
 _HTTP = {  # what the framework raises; other statuses keep their phrase
     400: "malformed-request",
@@ -794,9 +800,12 @@ class Problem(Exception):
 
 
 def render(base_uri: str, path: str, problem: Problem) -> JSONResponse:
+    registered = problem.slug in REGISTRY  # an unregistered framework status: about:blank + its phrase
     content: dict[str, Any] = {
-        "type": base_uri + problem.slug,
-        "title": problem.slug.replace("-", " ").capitalize(),
+        "type": base_uri + problem.slug if registered else "about:blank",
+        "title": _TITLES.get(problem.slug, problem.slug.replace("-", " ").capitalize())
+        if registered
+        else HTTPStatus(problem.status).phrase,
         "status": problem.status,
         "detail": problem.detail,
         "instance": path,  # never the query string

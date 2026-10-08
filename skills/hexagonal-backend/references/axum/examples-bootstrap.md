@@ -264,9 +264,9 @@ use opentelemetry::trace::{TraceContextExt, TraceId};
 use secrecy::SecretSlice;
 use tower::ServiceBuilder;
 use tower_http::{
-    catch_panic::CatchPanicLayer, cors::CorsLayer, request_id::*,
-    sensitive_headers::SetSensitiveRequestHeadersLayer, set_header::response::SetMultipleResponseHeadersLayer,
-    timeout::TimeoutLayer, trace::DefaultOnResponse, trace::TraceLayer,
+    catch_panic::CatchPanicLayer, cors::CorsLayer, request_id::*, sensitive_headers::SetSensitiveRequestHeadersLayer,
+    set_header::response::SetMultipleResponseHeadersLayer, timeout::TimeoutLayer, trace::DefaultOnResponse,
+    trace::TraceLayer,
 };
 use tracing_opentelemetry::OpenTelemetrySpanExt;
 use utoipa::openapi::security::{HttpAuthScheme, HttpBuilder, SecurityScheme};
@@ -960,6 +960,9 @@ async fn moderation_webhook_verifies_dedups_and_acknowledges(pool: PgPool) {
     let path = "/internal/webhooks/moderation";
     send(&app, webhook("msg_1", &verdict, now, b"forged")).await.assert_problem(401, "unauthenticated", path);
     send(&app, webhook("msg_1", &verdict, now - 301, WEBHOOK_KEY)).await.assert_problem(401, "unauthenticated", path);
+    let oversized =
+        Request::post(path).header("content-type", "application/json").body(Body::from(vec![b'x'; 70 * 1024]));
+    send(&app, oversized.unwrap()).await.assert_problem(413, "payload-too-large", path);
     for _ in 0..2 {
         assert_eq!(send(&app, webhook("msg_1", &verdict, now, WEBHOOK_KEY)).await.status.as_u16(), 204);
     }
