@@ -182,8 +182,9 @@ Claude Code, by design.
 - **Gates report; they do not certify.** `reviewer`, `verifier` and (high-risk only)
   `adversary` each return an independent verdict and findings to the main session,
   which decides whether the change is done.
-- **Model policy is intentionally uniform `opus`** (reviewer/verifier = `sonnet`).
-  Not a cost oversight — leave it.
+- **Model policy is intentionally uniform `opus`** (verifier = `sonnet`: its work is mostly
+  execution — E2E runs and many browser turns, where opus latency and cost multiply per turn —
+  and its judgment is a single verdict). Not a cost oversight — leave it.
 - **Frontmatter fields.** Every agent sets `name`, `description`, `tools`, `model`, `skills`,
   `color`. The 3 MCP-dependent agents (`verifier`, `adversary`, `data-analyst`)
   additionally declare an `mcpServers:` array plus the matching `mcp__*` globs in `tools:`.
