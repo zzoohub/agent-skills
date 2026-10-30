@@ -6,7 +6,7 @@ Writing the tracking code is a developer task.
 
 ## Naming
 
-There is no industry standard: pick one convention, write it in the tracking plan, enforce it. This skill's default is `object_action`, lowercase with underscores, past tense (`signup_completed`, `cta_clicked`).
+There is no industry standard: pick one convention, write it in the tracking plan, enforce it. A project's own taxonomy wins; otherwise the tool's default: PostHog `object_action`, lowercase with underscores, past tense (`signup_completed`, `cta_clicked`); Mixpanel interactions as verb then target, screen arrivals as `pv_<screen>`, shared events split by properties (`click_product`, `pv_home`; `references/mixpanel/taxonomy.md`).
 - Context goes in properties, not names: `cta_clicked` with `cta_location`, never `cta_hero_clicked`; `signup_completed` with `method`, never `signup_google_completed`.
 - GA4 accepts letters, digits and underscores, starting with a letter, and reserves some names. Where GA4 has a recommended event, send that name (`sign_up`, `purchase`, `generate_lead`) through the plan's GA4 column, so its reports and Ads conversions work.
 
@@ -14,7 +14,7 @@ There is no industry standard: pick one convention, write it in the tracking pla
 
 - Identify at signup and login, merge the anonymous ID into the person once, and reset on logout (shared devices).
 - B2B: every event carries the account key (a group), and activation and retention are computed per account.
-- First-touch UTMs should survive identification as person properties (PostHog: `$initial_utm_*`); confirm it in your tool.
+- First-touch UTMs should survive identification as person properties (PostHog: `$initial_utm_*`; Mixpanel: a first-touch property set once, per its tool guide); confirm it in your tool.
 
 ## Event Contract
 
@@ -46,7 +46,7 @@ There is no industry standard: pick one convention, write it in the tracking pla
 | `subscription_upgraded` / `subscription_downgraded` | server | plan change billed | `from_plan`, `to_plan`, new recurring `amount_minor` | NRR |
 | `subscription_cancelled` | server | cancellation takes effect | `reason`, `plan_type` | churn |
 
-Secondary features share one `feature_used` event with `feature_name`. User and account properties: `plan_type` with one value list, `signup_date`, `company_size`.
+Secondary features share one `feature_used` event with `feature_name`. User and account properties: `plan_type` with one value list, `signup_date`, `company_size`. Under the Mixpanel convention each row keeps its trigger and side under that convention's name (e.g. `signup`, `input_complete`, `payment_complete`); secondary features become values on shared events.
 
 **`aha_moment_reached` is derived, then instrumented.** During discovery, compute Aha candidates from the underlying action events, so the hypothesis can change without re-instrumenting and history can be backfilled. Emit this synthetic event only once the definition is validated, as a funnel convenience, not the source of truth.
 
@@ -54,7 +54,7 @@ Secondary features share one `feature_used` event with `feature_name`. User and 
 
 ## Tracking Plan Template
 
-The tracking plan (default `biz/analytics/tracking-plan.md`; caller may redirect) is the single source of truth.
+The tracking plan (default `biz/analytics/tracking-plan.md`; caller may redirect) is the single source of truth. In Mixpanel the taxonomy doc set holds events and properties (`references/mixpanel/taxonomy.md`); `tracking-plan.md` then keeps the header line, the Aha Moment, the funnels and a metric → event map (each metric's event and filter, linked to its definition), with no event or property tables.
 
 ```markdown
 # Tracking Plan — [Product]

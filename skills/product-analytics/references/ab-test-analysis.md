@@ -8,6 +8,8 @@ Start from the test card in the experiment log (default `biz/growth/experiments.
 
 α belongs to the card, never to the analysis: stricter (e.g. 0.01) for one-way or high-stakes changes such as pricing, looser only for cheap, reversible calls. No record → assume α 0.05 two-sided, 80% power, the change's target outcome as primary and revenue per user as guardrail; state the MDE and margin you assumed, and label the readout "exploratory: no pre-registered design".
 
+**Price, discount or packaging tests** decide on revenue per exposed unit (conversion × the price paid, refunds out): conversion moves by construction, so read it beside the primary, with the shift between packages and single items. A card that decides one on conversion alone gets revenue per exposed unit beside it and a flagged deviation.
+
 Sanity-check power: n per arm ≈ 16·p(1−p)/δ² at 80% power and α 0.05, with δ the absolute MDE; a holdout beside a far larger treated arm needs ≈ 8·p(1−p)/δ² by itself. An underpowered test can't show "no effect", only "inconclusive".
 
 ## 2. Validity Before Results

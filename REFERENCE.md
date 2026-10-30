@@ -29,7 +29,7 @@ runtime's Skill-tool namespace, not directories in `skills/`.
 - `adversary` → adversarial-execution · review-checklists (security + correctness sections; executes their catalog at runtime) · database-design migration references (migration dry-runs, on demand) + playwright
 
 **Biz layer:**
-- `data-analyst` → product-analytics · churn-prevention (health-score framework, loaded on demand) + PostHog MCP
+- `data-analyst` → product-analytics (its PostHog or Mixpanel guide, per the project's tool) · churn-prevention (health-score framework, loaded on demand) + PostHog or Mixpanel MCP
 
 > Agent **sequencing** — how these chain end to end — lives in [`PLAYBOOK.md`](PLAYBOOK.md).
 
@@ -92,7 +92,8 @@ work (the main session or a subagent it spawns) writes it.
 | Content strategy | `biz/marketing/content/strategy.md` | main session | — |
 | Content (social/email/blog/changelog) | `biz/marketing/content/{social,email,blog,changelog}/` (blog: `{slug}.md`, `briefs/{slug}.md`) | copywriting (social, email, changelog), search-visibility (blog) | — |
 | SEO/AEO/GEO audits, plans + AI visibility | `biz/marketing/seo/` (living: `seo-strategy.md`, `keyword-map.md`, `ai-visibility-log.md`, `change-plan-{topic}.md`; dated: `audit-YYYY-MM-DD-{topic}.md`, `ai-visibility-YYYY-MM-DD.md`) | search-visibility | competitor-pages (`keyword-map.md`) |
-| Tracking plan + Aha moment | `biz/analytics/tracking-plan.md` | data-analyst (product-analytics) | cro, growth-loops, copywriting (email goal event), marketing and growth work |
+| Tracking plan + Aha moment | `biz/analytics/tracking-plan.md` (Mixpanel: an index of metrics, events and funnels; event and property definitions live in the taxonomy doc set) | data-analyst (product-analytics) | cro, growth-loops, copywriting (email goal event), marketing and growth work |
+| Mixpanel taxonomy doc set | `docs/mixpanel/` (`mixpanel-taxonomy.md`, `mixpanel-property-dictionary.md`, `events/<area>.md`) | the PR that changes tracking (data-analyst proposes sections in product-analytics' Mixpanel taxonomy format; creates the set when none exists) | data-analyst, product-analytics (Mixpanel guide) |
 | Funnels + retention | `biz/analytics/funnels.md` | data-analyst (product-analytics) | ux-design, cro, growth-loops, churn-prevention, pricing, copywriting (persuasion psychology) |
 | Dashboards | `biz/analytics/dashboards.md` | data-analyst (product-analytics) | — |
 | Kill/Keep/Scale + CC | `biz/analytics/kill-criteria.md` | data-analyst (product-analytics; criteria seeded from the PRD's v0.1 decision rule) | prd-craft (Checkpoint), growth-loops, marketing work |
@@ -119,7 +120,8 @@ directly when shipping.
 
 | Dependency | Used by | Purpose | Fallback if missing |
 |---|---|---|---|
-| PostHog MCP | data-analyst | Live funnels, insights, cohorts, experiments | methodology only (no live data) |
+| PostHog MCP | data-analyst (PostHog projects) | Live funnels, insights, cohorts, experiments | methodology only (no live data) |
+| Mixpanel MCP (direct server or the claude.ai connector) | data-analyst (Mixpanel projects) | Live insights, funnels, retention and flows reports, dashboards, cohorts, experiments, Lexicon | methodology only (no live data) |
 | claude-in-chrome / playwright MCP | verifier, adversary | Real-browser verification & E2E; adversary drives playwright for runtime attacks | the other of the two (verifier) |
 
 ---

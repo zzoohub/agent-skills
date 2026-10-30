@@ -4,7 +4,7 @@ Verified 2026-10-08 against Google, PostHog and WebKit documentation. Platform b
 
 ## Do You Need GA4?
 
-- The product analytics tool (e.g. PostHog) stays primary for funnels, retention and experiments.
+- The product analytics tool (PostHog or Mixpanel) stays primary for funnels, retention and experiments.
 - Add GA4 when Google Ads bids on your conversions: GA4 key events import as Ads conversions, still the deepest Google Ads link. Before a product tool's ad-spend import or conversion export replaces it, check that those integrations are generally available, not beta.
 - Search Console needs no GA4: its own reports and exports hold the query data.
 - Running both: GA4 for acquisition, the product tool for everything after signup. Their session counts differ by design; alert on drift in the gap, not on its size.

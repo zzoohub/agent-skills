@@ -31,6 +31,6 @@ Activation rate = signups who reach the Aha Moment ÷ signups, per cohort; time 
 
 ## Tooling
 
-Funnel correlation features (PostHog's correlation analysis) only shortlist candidates; compute RPV, coverage and lift yourself. Emit `aha_moment_reached` only after validation (event-tracking reference).
+Funnel correlation features (e.g. PostHog's correlation analysis) only shortlist candidates; compute RPV, coverage and lift yourself. Emit `aha_moment_reached` only after validation (event-tracking reference).
 
 **Output:** `reports/aha-analysis.md` in the analytics dir (default `biz/analytics/`; caller may redirect; ≤400 words plus the table; sections are a menu): the candidate table (action · window · frequency · RPV · coverage · lift overall and at equal active days · n), the FDR or holdout check, and the encouragement-test design. Only the definition and its status go to the tracking plan.

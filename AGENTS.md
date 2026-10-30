@@ -236,7 +236,7 @@ call that agent.
 | Ongoing content: social, email, changelog, build-in-public, blog articles | `copywriting` (social, email, changelog), `search-visibility` (blog) | skill |
 | SEO or AI-visibility audit, organic-traffic drop, keyword research, technical SEO, AI citations | `search-visibility` | skill |
 | Conversion (CRO), A/B test design, referral/viral loops, affiliate programs, churn (cancel flows, failed payments), paywall/upgrade | `cro`, `growth-loops`, `churn-prevention` | skill |
-| Analytics: tracking plan, funnels, retention/PMF, weekly reports, "why did X drop", test readouts | `data-analyst` (method in `product-analytics`) | agent |
+| Analytics (PostHog or Mixpanel): tracking plan, funnels, retention/PMF, weekly reports, "why did X drop", test readouts | `data-analyst` (method in `product-analytics`, with a guide per tool) | agent |
 
 For a plan review *before* writing code, the main agent can invoke the `plan-review` skill
 directly — in scope mode (scope/vision, while scope is negotiable) or execution mode (locked-scope

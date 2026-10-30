@@ -1,12 +1,13 @@
 ---
 name: product-analytics
 description: |
-  Measures a product to drive a decision: tracking plans and GA4/UTM setup,
-  metric definitions, dashboards and weekly reports, funnels, retention cohorts,
-  PMF, Carrying Capacity, GRR/NRR, LTV, live K, health-score backtests, A/B,
-  holdout and ad-creative test readouts, and kill/keep/scale calls (double
-  down/hold/drop for a login-less content site). Use for "why did X drop",
-  "read this test", "is this PMF", "set up tracking".
+  Measures a product to drive a decision, in PostHog or Mixpanel: tracking
+  plans and taxonomies, GA4/UTM setup, metric definitions, dashboards and
+  weekly reports, funnels, retention cohorts, PMF, Carrying Capacity, GRR/NRR,
+  LTV, live K, health-score backtests, A/B, holdout and ad-creative test
+  readouts, and kill/keep/scale calls (double down/hold/drop for a login-less
+  content site; scale/fix/retire per product for pay-per-purchase). Use for
+  "why did X drop", "read this test", "is this PMF", "set up tracking".
   Do NOT use for: experiment design or conversion fixes (cro), the K model
   (growth-loops), health-score design or churn interventions (churn-prevention).
 ---
@@ -21,25 +22,38 @@ Analytics exists to change a decision: name it first, distrust every number unti
 |---|---|---|
 | **A logged-in product** — persistent identity, repeat use (SaaS, app) | **Product frame** | Aha Moment → Retention → Carrying Capacity → Kill/Keep/Scale |
 | **A login-less content / marketing site** — mostly anonymous browsing, conversion = a lead/inquiry (blog, docs, lead-gen) | **Content-site frame** (`references/content-site-analytics.md`) | Acquisition → Engagement → Conversion (lead) → double down / hold / drop |
+| **A transactional product** — sold per purchase, most visitors anonymous until they pay, many buy once (paid reports, digital goods, e-commerce catalogs) | **Transactional frame** (`references/transactional-analytics.md`) | Acquisition → product funnel → revenue per visitor → repeat and cross-sell → scale / fix / retire |
 
-A content site has no persistent identity or repeat-use curve: Aha, cohorts, Carrying Capacity (CC), PMF and health scores don't apply.
+A content site has no persistent identity or repeat-use curve: Aha, cohorts, Carrying Capacity (CC), PMF and health scores don't apply. A transactional product is judged per purchase and per product: repeat purchase is its retention, and CC and health scores rarely apply.
 
-**Hybrid** (a product plus its marketing site): content-site frame pre-signup, product frame post-signup. State the split; never average metrics across the seam.
+**Hybrid** (a product plus its marketing site): content-site frame pre-signup, product frame post-signup. A transactional product with a subscription or a logged-in core: transactional frame for one-off purchases, product frame for the rest. State the split; never average metrics across the seam.
 
 **Product frame: fix the unit and the clock before computing.** Unit of analysis:
 - self-serve SaaS → the account (workspace); user actions still define activation;
 - sales-led B2B → logo + revenue (GRR/NRR); too few units for CC or per-user curves;
 - consumer app → the user;
-- commerce → the buyer; retention = a repeat purchase within the interval;
+- commerce built on repeat use (subscriptions, replenishment) → the buyer; retention = a repeat purchase within the interval (one-off purchases: transactional frame);
 - marketplace → each side; scarce-side liquidity before any other read.
 
 Natural usage interval ≈ the 80th percentile of users' median gaps between core actions (users with ≥3 of them), rounded up to a day, week or month. Measure retention in periods of that length: a yearly product judged monthly looks dead.
+
+## Then: Load the Tool Guide
+
+The methods here are tool-neutral; each tool's guide holds what a number means there (identity, counting), how to compute each analysis, its tracking conventions and its traps. Read it before any query or tracking change. First match wins:
+
+| Signal | Tool | Guide |
+|---|---|---|
+| The caller or project instructions name the tool | that tool | its row below |
+| Mixpanel taxonomy docs (default `docs/mixpanel/`) or a Mixpanel SDK in the code | Mixpanel | `references/mixpanel/guide.md`; tracking work adds `references/mixpanel/taxonomy.md` |
+| A PostHog SDK in the code | PostHog | `references/posthog/guide.md` |
+
+Both installed: the one holding the events the question needs; say which. Greenfield: the adopted house profile's analytics row (software-architecture's `references/house-stack.md`, if available), else ask; a subagent takes PostHog and lists the question. Another tool: apply these methods in its idiom, stating the mapping. A project's own taxonomy or tracking docs outrank any guide's defaults.
 
 ## Then: Name the Request
 
 | Request | Done means | Writes (default) | Budget (words) |
 |---|---|---|---|
-| Instrument | every in-scope metric is computable; identity and money rules set | `tracking-plan.md` | event table + ≤300 |
+| Instrument | every in-scope metric is computable; identity and money rules set | `tracking-plan.md` (Mixpanel: plus the taxonomy doc set) | event table + ≤300 |
 | Define, monitor | metrics defined (an outcome tied to the decision, 3–5 inputs, a counter-metric each), banded and owned | `dashboards.md`, `reports/week-YYYY-WW.md` | ≤250 + table |
 | Assess (retention, PMF evidence, CC, GRR/NRR, LTV, channel quality) | curves at the natural interval: n, plateau and late decay per pre-specified segment, activated vs all | `funnels.md` § Retention; CC in `kill-criteria.md`; `reports/{topic}-analysis.md` | ≤400 + tables |
 | Explain (a move, a funnel) | real, localized and timed, with a cause, what would disprove it and who carries it — or "no signal" / "data issue" | `reports/{topic}-analysis.md`, `funnels.md` | ≤400 |
@@ -69,12 +83,16 @@ Natural usage interval ≈ the 80th percentile of users' median gaps between cor
 | Task | Reference |
 |---|---|
 | Content/marketing site: acquisition, engagement, leads, double down / hold / drop | `references/content-site-analytics.md` |
+| Transactional product: per-product funnel, revenue per visitor, repeat and cross-sell, payback, scale / fix / retire | `references/transactional-analytics.md` |
 | Aha Moment discovery and validation; activation rate | `references/aha-moment-discovery.md` |
 | Retention cohorts, PMF evidence, GRR/NRR, LTV, payback and spend gates, funnels and drop-off, channel quality, health-score backtest; worked queries | `references/retention-analysis.md` |
 | Carrying Capacity, live K, kill-criteria record and spend plan, metric definitions and dashboards, weekly report | `references/carrying-capacity.md` |
 | Tracking plan, event naming, identity, server-side events | `references/event-tracking-design.md` |
 | GA4, GTM, UTM, AI-assistant channel, consent mode, server-side tagging | `references/ga4-gtm-setup.md` |
 | A/B, holdout and ad-creative test readouts, interim reads | `references/ab-test-analysis.md` |
+| Running any of the above in PostHog: identity, query surface, experiments, traps | `references/posthog/guide.md` |
+| Running any of the above in Mixpanel: identity, reading rules, report recipes, experiments, traps | `references/mixpanel/guide.md` |
+| Mixpanel tracking design: naming, decision order, product and channel axes, the taxonomy doc set | `references/mixpanel/taxonomy.md` |
 
 ## Before Any Number: Data-Trust Gate
 
@@ -107,7 +125,7 @@ A failed check is the finding: report it instead of the metric, then replace wha
 
 ## Verdicts
 
-Product frame only (content sites: per cluster and channel, content-site reference).
+Product frame only (content sites: per cluster and channel, content-site reference; transactional products: per product and channel, transactional reference).
 
 **Criteria first.** Write each criterion (metric, threshold, review date) in `kill-criteria.md` before the data; a later change needs a written reason. Thresholds below are defaults: a criterion on file overrides them; label any default applied. Asked for a call with none on file: write them before reading the outcome metrics and label that first call provisional. The record, its fix order and the spend plan: CC reference.
 
