@@ -33,7 +33,7 @@ Implement it in tokens: distances scale by a multiplier that drops to 0, so the 
 }
 ```
 
-A global `*` reset instead kills the fades the policy keeps, and with `animation-iteration-count: 1` it freezes every spinner, so a loading app looks hung. View transitions need their own rule (the react-view-transitions capability, if available, ships one); React Native: `react-native/platform.md`.
+A global `*` reset instead kills the fades the policy keeps, and with `animation-iteration-count: 1` it freezes every spinner, so a loading app looks hung. View transitions need their own rule (§ React `<ViewTransition>`); React Native: `react-native/platform.md`.
 
 ## Implementation Rules
 
@@ -48,3 +48,12 @@ For any animation consuming these tokens:
 - **Scroll smoothing (e.g. Lenis) only at the app root, never nested**, and only where the feel earns it (marketing, portfolio), never on docs or dashboards.
 - **Every gesture needs a non-gesture path** (a visible button or tap target) so the action stays reachable for assistive tech.
 - **Motion explains a change, or it is optional.** Keep motion that shows where something came from; make decorative motion (a background shimmer) optional.
+
+## React `<ViewTransition>`
+
+For DOM that is replaced (route changes, shared elements), not for hover or open/close. It freezes the screen and blocks input while it runs, so keep it rare.
+
+- It fires only inside a Transition; enter and exit also need it to come before any DOM node.
+- A page wrapper sits above the page's Suspense, never in a layout. Use `default="none"`, then name each trigger.
+- In Next.js (through 16.4) back and forward don't animate, whatever its guide says, and skip the guide's `::view-transition { pointer-events: none }`: clicks would pass through moving snapshots.
+- A global `*` reset doesn't reach its pseudo-elements. Under reduced motion, `::view-transition-group(*) { animation-name: none !important; }` stops morphs travelling and keeps the cross-fade; slides take their distance from `--ds-motion-distance`.

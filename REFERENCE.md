@@ -44,7 +44,7 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 | Architecture | software-architecture (incl. AI Feature Mode) · arch-decision · database-design |
 | UX | ux-design (incl. 3D/XR UX) · screen-design · cro (when conversion-driven) |
 | Backend build | hexagonal-backend (Axum / FastAPI / Hono / NestJS guide, by stack) · database-design (incl. PostgreSQL operations) · review-checklists (pre-mortem mode while building) |
-| Web build | react-architecture (folder structure, hooks, query keys, functional style) · react-best-practices · react-view-transitions (route, shared-element and Suspense-reveal transitions) · design-system (incl. component composition) · i18n · web3d |
+| Web build | react-architecture (folder structure, hooks, query keys, functional style) · react-best-practices · design-system (incl. component composition and view-transition traps) · i18n · web3d |
 | Mobile build | react-architecture · react-native-skills · design-system · i18n |
 | Marketing | copywriting (incl. persuasion psychology) · competitor-pages · pricing · ad-creative; content: copywriting (social, email, launch-day copy, changelog) · search-visibility |
 | Growth | cro · growth-loops · churn-prevention · pricing · copywriting (incl. persuasion psychology) |
@@ -181,8 +181,8 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
   attribution modeling, incrementality and geo-lift, and MMM have no owner: `ad-creative` stops at
   creative, creative-test design and in-flight kill/promote rules, and `product-analytics` owns
   creative-test readouts and tagging.
-- **Non-React or cross-document view transitions** — `react-view-transitions` covers React
-  same-document transitions only; plain-JS `startViewTransition` and cross-document (MPA)
+- **View transitions** — `design-system`'s `references/motion.md` keeps only the main traps of
+  React's `<ViewTransition>`; plain-JS `startViewTransition` and cross-document (MPA)
   `@view-transition` have no owner.
 - **Device and cross-browser verification** — `browse` and `qa` drive headless desktop Chromium
   only (no Safari or Firefox; `viewport` resizes without touch or a mobile user agent), and nothing

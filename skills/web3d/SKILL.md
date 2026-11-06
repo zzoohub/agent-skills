@@ -9,7 +9,7 @@ description: |
   frame-rate, color or GPU-memory problem, or when code touches three,
   @react-three/*, koota, @dimforge/rapier3d or navigator.xr. Do NOT use for
   3D/XR UX, IA or comfort design (ux-design), or CSS 3D effects and view
-  transitions (design-system, react-view-transitions).
+  transitions (design-system).
 ---
 
 # Web 3D & XR

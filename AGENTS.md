@@ -23,8 +23,8 @@ Claude Code still auto-loads this file as project instructions.)
 This repo is **not an application** — it is a **portable skill library + a Claude Code agent layer**.
 There is no product source code here. It ships three things:
 
-- **`skills/`** — **30** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 22 skills), `rules/` (guideline files:
+- **`skills/`** — **29** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
+  `references/` (deep-dive docs loaded on demand — 21 skills), `rules/` (guideline files:
   `react-best-practices` per rule, `react-native-skills` per decision area), `templates/`
   (output scaffolds — `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
   `database-design` only; two `.sql` files), `evals/` (`review-checklists` only) and the vendored
@@ -47,13 +47,13 @@ dirs are `agents/` and `skills/`). Don't look for app code or those doc trees he
 
 **Internalized React/RN content (formerly external symlinks).** Four skills were vendored in
 from [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills) (MIT) and scrubbed of
-Vercel-infrastructure coupling so they are self-contained and host-agnostic. Three remain skills:
-`react-best-practices`, `react-native-skills` (each ships a `rules/` library) and
-`react-view-transitions` (ships `references/`). The fourth, `composition-patterns`, is no longer a
-skill: its guide and `rules/` library now live in `design-system/references/composition/` (provenance
-note kept there). They replaced four dangling symlinks into an external Vercel/Expo store, so every
-skill under `skills/` is a real, repo-owned directory — no symlinks.
-**Vendored content is a frozen fork** (these four and `browse`): never re-clone over it; merge
+Vercel-infrastructure coupling so they are self-contained and host-agnostic. Two remain skills:
+`react-best-practices` and `react-native-skills` (each ships a `rules/` library). `composition-patterns`
+is no longer a skill: its guide and `rules/` library now live in `design-system/references/composition/`
+(provenance note kept there). `react-view-transitions` was removed; `design-system/references/motion.md`
+keeps its main traps in its own words. They replaced four dangling symlinks into an external Vercel/Expo
+store, so every skill under `skills/` is a real, repo-owned directory — no symlinks.
+**Vendored content is a frozen fork** (the three kept and `browse`): never re-clone over it; merge
 upstream changes selectively by hand, per its `UPSTREAM.md` (provenance, divergence, re-apply list).
 (The Vercel-Labs `web-design-guidelines` / `writing-guidelines` skills were deliberately **not**
 internalized; `design-system` remains the UI-guidance authority — see **Known gaps** in `REFERENCE.md`.)
@@ -225,7 +225,7 @@ call that agent.
 | Implement 3D / XR on the web | `web3d` | skill |
 | Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge) + `database-design` (incl. PostgreSQL operations) | skill |
 | Set up or restructure a React client: folder structure, FSD, where code goes, hooks, query keys, functional style | `react-architecture` | skill |
-| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-architecture` (structure), `react-best-practices`, `react-view-transitions` (route and shared-element transitions), `design-system` (incl. component composition), `i18n` | skill |
+| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-architecture` (structure), `react-best-practices`, `design-system` (incl. component composition and view transitions), `i18n` | skill |
 | Design tokens, theming or dark mode, a visual refresh ("looks dated"), component APIs; set up or audit a design system | `design-system` | skill |
 | Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | `react-native-skills` (+ `react-architecture`, `design-system`, `i18n`) | skill |
 | Add a language, fix a locale bug (plurals, RTL, time zones), audit i18n | `i18n` | skill |
