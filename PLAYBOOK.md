@@ -27,7 +27,8 @@ software-architecture → docs/arch/system.md (+ arch-decision ADRs, database-de
 ux-design             → docs/ux/ux-design.md (+ initial screen specs via screen-design: critical-path
                         and costly-to-fail screens plus one exemplar per screen class; the rest pending)
 implement             → main session / general-purpose subagents loading the stack skills
-                        (e.g. hexagonal-backend, react-architecture, react-best-practices, react-native-skills, design-system)
+                        (e.g. hexagonal-backend, react-architecture, react-best-practices, design-system;
+                        mobile: Expo's `expo` plugin)
 reviewer              → security + correctness (blocking gate) + maintainability (informational)
 verifier              → real-browser / API verification (behavior gate)
 adversary             → runtime exploit reproduction, isolated env (high-risk changes only)
@@ -107,7 +108,7 @@ product-brief (+ its Next test, on Test first) → prd-craft → software-archit
 → implement → reviewer → verifier → (adversary, if high-risk) → ship
 ```
 
-Defer until you actually need them: mobile (`react-native-skills`) on a web-only start, the
+Defer until you actually need them: mobile (Expo's `expo` plugin) on a web-only start, the
 biz/GTM skills until you have something to launch, `plan-review` until a plan carries a one-way
 door or an unevidenced core assumption. Add the GTM chain (#4) once the product is verifiable, then
 the growth cycle (#3) once you have users and tracking.

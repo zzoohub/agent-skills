@@ -3,7 +3,7 @@ name: react-best-practices
 description: |
   Build, review and fix React web code (Next.js App Router, TanStack Start, Vite): correctness first, performance by evidence. Covers data and state placement, Effects, hydration, mutations, the server boundary of Server Actions and createServerFn (validation, auth, tenant scoping, env vars), waterfalls, bundle size, re-renders and INP.
   Use for "hydration mismatch", "too many re-renders", "useEffect", "Server Action", "slow page", "bundle too big".
-  Do NOT use for: folder structure (react-architecture); tokens, theming, motion, view transitions or component APIs (design-system); React Three Fiber (web3d); React Native (react-native-skills); backends (hexagonal-backend).
+  Do NOT use for: folder structure (react-architecture); tokens, theming, motion, view transitions or component APIs (design-system); React Three Fiber (web3d); React Native (Expo's official skills); backends (hexagonal-backend).
 license: MIT
 source: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
 ---

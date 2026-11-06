@@ -90,7 +90,7 @@ When money or inventory moves, read both views: abuse (double-spends, cumulative
 ## Scope
 
 - **One root cause, one finding**, in the pass where it blocks: an exploit an attacker drives is security; breakage needing no attacker is correctness; a cost to future change is maintainability. A boundary escape hatch (`any`, `as`, `unsafe`) and the missing runtime check behind it are two: the check is correctness, the hatch Pass 2.
-- **Elsewhere**, if available: plans and specs → plan-review; architecture → software-architecture; superseding a decision record → arch-decision; live exploits → adversarial-execution; building fixes → hexagonal-backend, database-design; React or React Native UI correctness → react-best-practices or react-native-skills, rated on this ladder. Not covered: mobile-client internals (MASVS), privacy law, lint and type errors.
+- **Elsewhere**, if available: plans and specs → plan-review; architecture → software-architecture; superseding a decision record → arch-decision; live exploits → adversarial-execution; building fixes → hexagonal-backend, database-design; React or React Native UI correctness → react-best-practices or Expo's official skills, rated on this ladder. Not covered: mobile-client internals (MASVS), privacy law, lint and type errors.
 
 ## Before You Report — the gates
 

@@ -45,7 +45,7 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 | UX | ux-design (incl. 3D/XR UX) · screen-design · cro (when conversion-driven) |
 | Backend build | hexagonal-backend (Axum / FastAPI / Hono / NestJS guide, by stack) · database-design (incl. PostgreSQL operations) · review-checklists (pre-mortem mode while building) |
 | Web build | react-architecture (folder structure, hooks, query keys, functional style) · react-best-practices · design-system (incl. component composition and view-transition traps) · i18n · web3d |
-| Mobile build | react-architecture · react-native-skills · design-system · i18n |
+| Mobile build | react-architecture · Expo's `expo` plugin (external) · design-system · i18n |
 | Marketing | copywriting (incl. persuasion psychology) · competitor-pages · pricing · ad-creative; content: copywriting (social, email, launch-day copy, changelog) · search-visibility |
 | Growth | cro · growth-loops · churn-prevention · pricing · copywriting (incl. persuasion psychology) |
 | Analytics | product-analytics · churn-prevention (via the `data-analyst` agent) |
@@ -123,6 +123,7 @@ directly when shipping.
 | PostHog MCP | data-analyst (PostHog projects) | Live funnels, insights, cohorts, experiments | methodology only (no live data) |
 | Mixpanel MCP (direct server or the claude.ai connector) | data-analyst (Mixpanel projects) | Live insights, funnels, retention and flows reports, dashboards, cohorts, experiments, Lexicon | methodology only (no live data) |
 | claude-in-chrome / playwright MCP | verifier, adversary | Real-browser verification & E2E; adversary drives playwright for runtime attacks | the other of the two (verifier) |
+| Expo plugin (`expo@claude-plugins-official`, enabled in a mobile project's settings) | main session (mobile build) | Expo / React Native: routing, native UI, animation, lists, data fetching, upgrades; EAS build, submit and update | Expo docs and the model's own knowledge; this library has no React Native skill |
 
 ---
 
@@ -161,16 +162,13 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
   platform's own skills/CLI (vercel, wrangler, supabase), with `database-design` (PostgreSQL
   operations) covering lock-safe migration execution and major-version upgrades. There is no
   in-house release gate (preview → smoke → promote, env/secret diff, rollback runbook). Mobile
-  delivery is only partly owned: `react-native-skills` (`rules/dependencies-delivery.md`) covers
-  binary vs OTA, runtime-version compatibility, staged store and OTA rollouts and rollback; EAS
-  Build/Submit setup, store submission, universal/app-link setup and push notifications have no
-  owner.
+  delivery belongs to Expo's plugin when enabled (`eas-app-stores`, `eas-update`, `eas-workflows`);
+  this library owns none of it.
 - **Security/compliance ops** — code-level security is covered, static *and* runtime (`reviewer` +
   `review-checklists` security pass; `adversary` + `adversarial-execution` for runtime DAST on high-risk changes),
   but SOC2/ISO, secrets-rotation policy, vendor risk and mobile-client security (MASVS: storage,
   transport, pinning, binary hardening, root/jailbreak) are not. `review-checklists` scopes MASVS
-  out; `react-native-skills` covers only secret storage, public `EXPO_PUBLIC_` values, deep-link
-  input validation and system-browser sign-in.
+  out.
 - **Validation/PMF method** — pre-build validation is in `product-brief`: graded evidence, a
   riskiest-assumption test with kill and pass thresholds set before it runs, and a Test first /
   Pursue / Park / Kill Decision. Post-launch PMF (retention plateau, Sean Ellis survey) is in
@@ -186,12 +184,13 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
   `@view-transition` have no owner.
 - **Device and cross-browser verification** — `browse` and `qa` drive headless desktop Chromium
   only (no Safari or Firefox; `viewport` resizes without touch or a mobile user agent), and nothing
-  runs a mobile change on a simulator or device: `react-native-skills` runs device-free checks and
-  reports a platform it did not run as `not run on <platform>`, which gates should treat as
-  unverified.
+  in this library runs a mobile change on a simulator or device (Expo's experimental
+  `eas-simulator` can, when its plugin is enabled). A platform not run is reported as
+  `not run on <platform>`, which gates should treat as unverified.
 - **Vercel-Labs `web-design-guidelines` / `writing-guidelines` not internalized** — unlike the four
-  React/RN skills vendored in from vercel-labs/agent-skills (three still skills; `composition-patterns`
-  now lives in `design-system/references/composition/`), these two only *wrap* a live WebFetch of
+  React/RN skills vendored in from vercel-labs/agent-skills (`react-best-practices` still a skill,
+  `composition-patterns` now in `design-system/references/composition/`, the other two removed),
+  these two only *wrap* a live WebFetch of
   Vercel-Labs-hosted rulesets, so internalizing them as-is would keep a runtime Vercel-Labs dependency;
   they were left out. `design-system` remains the primary UI-guidance authority for web UI
   work. To adopt them, vendor the remote rulesets into a real skill dir first, then route them.

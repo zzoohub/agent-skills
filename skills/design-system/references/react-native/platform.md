@@ -35,7 +35,7 @@ For native chrome (alerts, pickers) to follow an explicit choice, also call `App
 
 ## Button
 
-Strings render only inside `ButtonText` (react-native-skills' compound-component rule, if available). While loading, the invisible label keeps the width and the accessible name. The button sets its own role and state after the prop spread, so a call site cannot override them.
+Strings render only inside `ButtonText`: React Native renders strings only inside `<Text>`, and a `typeof children === 'string'` switch breaks on mixed children (`{count} items`). While loading, the invisible label keeps the width and the accessible name. The button sets its own role and state after the prop spread, so a call site cannot override them.
 
 ```tsx
 import { createContext, use, type ReactNode } from 'react';
@@ -90,7 +90,7 @@ const styles = StyleSheet.create({
 
 - Sizes and line heights are absolute points; `lineHeight` does not track `fontSize`, so recompute it with every size change.
 - OS font scaling multiplies every `<Text>`: keep it for body text, cap display and headings (`maxFontSizeMultiplier={1.3}`), and disable it (`allowFontScaling={false}`) only where truly unavoidable.
-- `fontWeight` picks a face on Android only when the font files are grouped under one family (react-native-skills' fonts rule, if available).
+- `fontWeight` picks a face on Android only when the font files are grouped under one family (the `expo-font` config plugin's `fontDefinitions`); otherwise name each file after its PostScript name and select faces by `fontFamily`, or Android silently falls back.
 
 ## Accessibility
 

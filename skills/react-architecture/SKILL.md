@@ -2,7 +2,7 @@
 name: react-architecture
 description: |
   Client-side React architecture for web and React Native: Feature-Sliced folder structure, thin routes, headless screens with logic in hooks, query key factories, state tool choices, and functional programming (pure functions, currying, pipe and compose). Use when starting or restructuring a Next.js, TanStack Start, Vite or Expo app, or adding a screen, feature or hook: "folder structure", "FSD", "where should this go", "query keys", "refactor the frontend".
-  Do NOT use for: Effects, hydration, server security or performance (react-best-practices); tokens and component APIs (design-system); native lists or gestures (react-native-skills); system design (software-architecture).
+  Do NOT use for: Effects, hydration, server security or performance (react-best-practices); tokens and component APIs (design-system); native lists or gestures (Expo's official skills); system design (software-architecture).
 ---
 
 # React Architecture
@@ -11,7 +11,7 @@ Functional everywhere. Screens compose, hooks hold the logic. Code stays where i
 
 This skill fixes where code goes and what shape it takes. Framework APIs change between releases, so check those in version-matched sources: `node_modules/next/dist/docs/`, the `skills/` folders inside installed `@tanstack/*` packages, the Expo docs.
 
-**Correctness and performance outrank style.** Where react-best-practices, or react-native-skills on mobile (if available), disagrees about how code behaves or how fast it runs, follow it.
+**Correctness and performance outrank style.** Where react-best-practices, or Expo's official skills on mobile (if available), disagrees about how code behaves or how fast it runs, follow it.
 
 Paths are defaults (root `src/`, alias `@/`); the caller may redirect them. An app with another structure keeps it while you're only adding to it: follow its layout and write new logic in the functional style. Move code to this structure only when asked to restructure, and say what moved. Examples use `product`; use your domain's names.
 
@@ -261,4 +261,4 @@ export const useProducts = <T = Product[],>(filters: ProductFilters, select?: (p
 | `references/examples.md` | One vertical slice, file by file: entity, screen, mutation hook, Server Action form, store, flow hook, route files per stack |
 | `references/lib.md` | Code to copy in: `fp.ts`, `createQueryKeys`, `http`, `useUrlState`, the layer test |
 
-Siblings, if available: react-best-practices (Effects, hydration, server-boundary security, performance), design-system (tokens, `shared/ui`, component APIs), react-native-skills (lists, gestures, native behavior), i18n, hexagonal-backend (a dedicated backend).
+Siblings, if available: react-best-practices (Effects, hydration, server-boundary security, performance), design-system (tokens, `shared/ui`, component APIs), Expo's official skills (lists, gestures, native behavior), i18n, hexagonal-backend (a dedicated backend).
