@@ -254,7 +254,7 @@ export { ProductsSkeleton } from './ui/ProductsSkeleton'
 
 ## Feature: a form with a Server Action
 
-A web-only form. The checks run inside the action, in order: who is calling, whether they may send now, whether the input is valid. A failure is a value carrying what the form needs back, because React resets the form when the action resolves. `currentUserId` and `isWithinRateLimit` are the project's own. The full server boundary and its tests: react-best-practices, if available.
+A web-only form. The checks run inside the action, in order: who is calling, whether they may send now, whether the input is valid. A failure is a value carrying what the form needs back, because React resets the form when the action resolves. `currentUserId` and `isWithinRateLimit` are the project's own.
 
 ```ts
 // src/features/send-message/api/message.server.ts

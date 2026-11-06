@@ -4,7 +4,7 @@
 
 CORS and response security headers live in `misconfiguration.md`; authorization, IDOR and redirects in `auth.md`.
 
-**Entry points include more than routes.** A Next.js Server Action (`'use server'`) is reachable by a direct POST; a TanStack Start `createServerFn` is an HTTP RPC route; RSC props serialize to the client. Treat each as a public endpoint and apply this file plus `auth.md` (framework detail: the react-best-practices Server boundary, if available).
+**Entry points include more than routes.** A Next.js Server Action (`'use server'`) is reachable by a direct POST; a TanStack Start `createServerFn` is an HTTP RPC route; RSC props serialize to the client. Treat each as a public endpoint and apply this file plus `auth.md`.
 
 ## Injection
 

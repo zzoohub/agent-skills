@@ -44,7 +44,7 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 | Architecture | software-architecture (incl. AI Feature Mode) · arch-decision · database-design |
 | UX | ux-design (incl. 3D/XR UX) · screen-design · cro (when conversion-driven) |
 | Backend build | hexagonal-backend (Axum / FastAPI / Hono / NestJS guide, by stack) · database-design (incl. PostgreSQL operations) · review-checklists (pre-mortem mode while building) |
-| Web build | react-architecture (folder structure, hooks, query keys, functional style) · react-best-practices · design-system (incl. component composition and view-transition traps) · i18n · web3d |
+| Web build | react-architecture (folder structure, hooks, query keys, functional style, server entry points) · design-system (incl. component composition and view-transition traps) · i18n · web3d |
 | Mobile build | react-architecture · Expo's `expo` plugin (external) · design-system · i18n |
 | Marketing | copywriting (incl. persuasion psychology) · competitor-pages · pricing · ad-creative; content: copywriting (social, email, launch-day copy, changelog) · search-visibility |
 | Growth | cro · growth-loops · churn-prevention · pricing · copywriting (incl. persuasion psychology) |
@@ -182,14 +182,17 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
 - **View transitions** — `design-system`'s `references/motion.md` keeps only the main traps of
   React's `<ViewTransition>`; plain-JS `startViewTransition` and cross-document (MPA)
   `@view-transition` have no owner.
+- **React web performance and hydration** — unowned since `react-best-practices` was removed;
+  framework APIs come from version-matched docs. The Vercel plugin's `vercel:react-best-practices`
+  is no replacement: it keeps rules this library dropped (module `Map` cache, SWR, `better-all`).
 - **Device and cross-browser verification** — `browse` and `qa` drive headless desktop Chromium
   only (no Safari or Firefox; `viewport` resizes without touch or a mobile user agent), and nothing
   in this library runs a mobile change on a simulator or device (Expo's experimental
   `eas-simulator` can, when its plugin is enabled). A platform not run is reported as
   `not run on <platform>`, which gates should treat as unverified.
 - **Vercel-Labs `web-design-guidelines` / `writing-guidelines` not internalized** — unlike the four
-  React/RN skills vendored in from vercel-labs/agent-skills (`react-best-practices` still a skill,
-  `composition-patterns` now in `design-system/references/composition/`, the other two removed),
+  React/RN skills vendored in from vercel-labs/agent-skills (`composition-patterns` now in
+  `design-system/references/composition/`, the other three removed),
   these two only *wrap* a live WebFetch of
   Vercel-Labs-hosted rulesets, so internalizing them as-is would keep a runtime Vercel-Labs dependency;
   they were left out. `design-system` remains the primary UI-guidance authority for web UI

@@ -158,4 +158,4 @@ export function CardContent({ children }: { children: React.ReactNode }) {
 
 ## React Versions
 
-The examples use React 19 (`ref` as a prop, `<Context value>`, `use(Context)`); on React 18, use `forwardRef`, `<Context.Provider>` and `useContext`. Without the React Compiler, memoize context values. Form and action wiring (`useActionState`, `useOptimistic`) belongs to the react-best-practices capability, if available; form parts here stay presentational.
+The examples use React 19 (`ref` as a prop, `<Context value>`, `use(Context)`); on React 18, use `forwardRef`, `<Context.Provider>` and `useContext`. Without the React Compiler, memoize context values. Form and action wiring (`useActionState`, `useOptimistic`) stays in the app's hooks and actions (react-architecture, if available); form parts here stay presentational.

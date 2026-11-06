@@ -40,7 +40,7 @@ A design system exists to make the next UI decision faster than the last one. To
 
 **Proportion sizes the change and the report, never the inspection.** A Use or small Extend changes only what it touches, yet reports each material finding in a line (a pair already failing, a call site relying on accidental behavior). A scope cut states its reason and leaves something that works for its consumers. Only Establish creates structure, in this order: inventory literals and components (by call sites) → semantic map and pair table, gated per theme and committed beside the tokens → flash-free themes → bridge and guards at today's count → primitives in call-site order. **Done** means the Self-Review passes.
 
-**Out of scope** (via that capability, if available): app IA, flows, UX review (ux-design); one screen's spec (screen-design); React or RN performance (react-best-practices, Expo's official skills); locale logic (i18n); 3D engines and XR input (web3d, ux-design).
+**Out of scope** (via that capability, if available): app IA, flows, UX review (ux-design); one screen's spec (screen-design); React Native performance (Expo's official skills); locale logic (i18n); 3D engines and XR input (web3d, ux-design).
 
 ## Tokens
 

@@ -8,7 +8,7 @@ description: |
 
 # i18n
 
-i18n is a pipeline: locale resolution → catalog → formatting → script and layout → text sent outside requests → CI gates. The costly failures are structural; translation comes last. Siblings named here are used if available; general React, component APIs and mobile patterns belong to react-best-practices, design-system and Expo's official skills.
+i18n is a pipeline: locale resolution → catalog → formatting → script and layout → text sent outside requests → CI gates. The costly failures are structural; translation comes last. Siblings named here are used if available; React structure, component APIs and mobile patterns belong to react-architecture, design-system and Expo's official skills.
 
 **Budgets size the record, never the analysis:** run every applicable check (§4's traps on each affected surface and locale) first; a short answer still states each material finding in a line. **Solve the problem behind the request**, even when its cause sits outside the files named, **and change nothing else:** work in the project's conventions, test runner and note locations; unrelated defects and new infrastructure (caches, runners, notes files, extra messages) become proposals.
 
