@@ -56,7 +56,12 @@ export const createQueryKeys = <const D extends string>(domain: D) => {
 
 ## http
 
-The path is fixed first; the call comes later. An empty 201 or 204 is a success, so the body is read as text first. Encode path segments that come from a route or a user.
+The path is fixed first; the call comes later. An empty 201 or 204 is a success, so the body is read as text first. Encode path segments that come from a route or a user. A query that also runs on the server (a prefetch, a loader) needs an absolute URL, so paths start from `API_URL`; use your stack's public prefix (`NEXT_PUBLIC_`, `VITE_`, `EXPO_PUBLIC_`).
+
+```ts
+// src/shared/config/env.ts
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
+```
 
 ```ts
 // src/shared/api/http.ts
@@ -81,10 +86,12 @@ export const postJson = <I, O>(path: string) => (body: I): Promise<O> =>
 
 ## useUrlState (Next.js)
 
-`parse` is a module-level function, so its identity is stable. Native `history.replaceState` stays in sync with `useSearchParams`. The route file wraps the screen in `<Suspense>`, or `next build` fails on `useSearchParams`. TanStack Start and Expo Router don't need this: see the route file variants in `examples.md`.
+`parse` is a module-level function, so its identity is stable. Native `history.replaceState` stays in sync with `useSearchParams`. The route file puts a `<Suspense>` above the screen, or `next build` fails on `useSearchParams` in a static route. TanStack Start and Expo Router don't need this: see the route file variants in `examples.md`.
 
 ```ts
 // src/shared/lib/useUrlState.ts
+'use client'
+
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useMemo } from 'react'
 

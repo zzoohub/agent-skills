@@ -1,6 +1,6 @@
 # React Architecture Examples
 
-One vertical slice, file by file. Each block's first line is its path, and imports are shown because layering is the point. `product` and `cart` are examples; use your domain's names. Presentational components (`FilterBar`, `ProductGrid`) are left out.
+One vertical slice, file by file. Each block's first line is its path, and imports are shown because layering is the point. `product` and `cart` are examples; use your domain's names. Presentational components (`FilterBar`, `ProductGrid`, `ProductsSkeleton`) are left out; `ProductGrid` renders the loading, empty and retryable error states.
 
 ## Table of Contents
 
@@ -21,6 +21,7 @@ src/
 ├── app/products/page.tsx
 ├── screens/products/
 │   ├── ui/ProductsScreen.tsx
+│   ├── model/filters.ts
 │   ├── model/useProductFilters.ts
 │   ├── model/useProductCards.ts
 │   ├── model/toVisibleCards.ts
@@ -68,10 +69,11 @@ import { queryOptions } from '@tanstack/react-query'
 
 import { createQueryKeys } from '@/shared/api/createQueryKeys'
 import { getJson } from '@/shared/api/http'
+import { API_URL } from '@/shared/config/env'
 
 import type { Product, ProductFilters } from '../model/product'
 
-const fetchProducts = getJson<Product[]>('/api/products')
+const fetchProducts = getJson<Product[]>(`${API_URL}/api/products`)
 
 export const productKeys = createQueryKeys('products')
 
@@ -86,6 +88,8 @@ Components call the hook. `select` takes a partial, so a screen can shape the da
 
 ```ts
 // src/entities/product/api/useProducts.ts
+'use client'
+
 import { useQuery } from '@tanstack/react-query'
 
 import type { Product, ProductFilters } from '../model/product'
@@ -128,7 +132,7 @@ export type { Product, ProductFilters } from './model/product'
 
 ## Screen: headless composition
 
-Pure logic stays in the screen until a second consumer appears. Arrays use built-in chains; a single value going through several steps uses `pipe`. Field names stay as the data has them: renaming `name` here would force every consumer to rename it back.
+Pure logic stays in the screen until a second consumer appears. Arrays use built-in chains; a single value going through several steps uses `pipe`. Field names stay as the data has them: renaming `name` here would force every consumer to rename it back. Formatters are built once at module scope, because these functions run per item, and a sort breaks ties on a unique key.
 
 ```ts
 // src/screens/products/model/toVisibleCards.ts
@@ -137,9 +141,12 @@ import { pipe } from '@/shared/lib/fp'
 
 export type ProductCard = { id: string; name: string; priceLabel: string }
 
-const byName = (a: Product, b: Product) => a.name.localeCompare(b.name)
+const collator = new Intl.Collator('ko')
+const wonFormat = new Intl.NumberFormat('ko-KR')
+
+const byName = (a: Product, b: Product) => collator.compare(a.name, b.name) || collator.compare(a.id, b.id)
 const applyDiscount = (rate: number) => (price: number) => Math.round(price * (1 - rate))
-const formatWon = (price: number) => `${price.toLocaleString('ko-KR')}원`
+const formatWon = (price: number) => `${wonFormat.format(price)}원`
 
 const toCard = (product: Product): ProductCard => ({
   id: product.id,
@@ -155,6 +162,8 @@ Hooks compose hooks and pass partials to them.
 
 ```ts
 // src/screens/products/model/useProductCards.ts
+'use client'
+
 import { useProducts, type ProductFilters } from '@/entities/product'
 
 import { toVisibleCards } from './toVisibleCards'
@@ -162,14 +171,25 @@ import { toVisibleCards } from './toVisibleCards'
 export const useProductCards = (filters: ProductFilters) => useProducts(filters, toVisibleCards(filters))
 ```
 
-This hook is the only stack-specific file in the screen (Next.js here; see [Route files per stack](#route-files-per-stack)).
+`parseFilters` is pure and has no directive, because the route calls it on the server. These two files are the only stack-specific ones in the screen (Next.js here; see [Route files per stack](#route-files-per-stack)).
+
+```ts
+// src/screens/products/model/filters.ts
+import type { ProductFilters } from '@/entities/product'
+
+export const parseFilters = (params: URLSearchParams): ProductFilters => ({
+  category: params.get('category') ?? 'all',
+})
+```
 
 ```ts
 // src/screens/products/model/useProductFilters.ts
+'use client'
+
 import type { ProductFilters } from '@/entities/product'
 import { useUrlState } from '@/shared/lib/useUrlState'
 
-const parseFilters = (params: URLSearchParams): ProductFilters => ({ category: params.get('category') ?? 'all' })
+import { parseFilters } from './filters'
 
 export const useProductFilters = () => {
   const [filters, update] = useUrlState(parseFilters)
@@ -178,16 +198,19 @@ export const useProductFilters = () => {
 }
 ```
 
-The mutation hook lives with the one screen that uses it, and invalidates through the entity's factory. A second screen moves it to `features/`.
+The mutation hook lives with the one screen that uses it, and invalidates through the entity's factory. A second screen moves it to `features/`. The endpoint is shared with the mobile app, so this goes over HTTP; a web-only form uses a Server Action (below).
 
 ```ts
 // src/screens/products/api/useCreateProduct.ts
+'use client'
+
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 
 import { productKeys, type Product } from '@/entities/product'
 import { postJson } from '@/shared/api/http'
+import { API_URL } from '@/shared/config/env'
 
-const createProduct = postJson<{ name: string }, Product>('/api/products')
+const createProduct = postJson<{ name: string }, Product>(`${API_URL}/api/products`)
 
 export const useCreateProduct = () => {
   const queryClient = useQueryClient()
@@ -211,12 +234,12 @@ import { ProductGrid } from './ProductGrid'
 
 export function ProductsScreen() {
   const { filters, setFilter, clear } = useProductFilters()
-  const { data: cards = [], isPending } = useProductCards(filters)
+  const { data: cards = [], isPending, error, refetch } = useProductCards(filters)
 
   return (
     <Screen>
       <FilterBar category={filters.category} onCategoryChange={setFilter('category')} onClear={clear} />
-      <ProductGrid cards={cards} isPending={isPending} />
+      <ProductGrid cards={cards} isPending={isPending} error={error} onRetry={refetch} />
     </Screen>
   )
 }
@@ -224,12 +247,14 @@ export function ProductsScreen() {
 
 ```ts
 // src/screens/products/index.ts
+export { parseFilters } from './model/filters'
 export { ProductsScreen } from './ui/ProductsScreen'
+export { ProductsSkeleton } from './ui/ProductsSkeleton'
 ```
 
 ## Feature: a form with a Server Action
 
-A web-only form. Validation failure is a value, not a throw. Authentication, authorization and rate limits inside the action: react-best-practices, if available.
+A web-only form. The checks run inside the action, in order: who is calling, whether they may send now, whether the input is valid. A failure is a value carrying what the form needs back, because React resets the form when the action resolves. `currentUserId` and `isWithinRateLimit` are the project's own. The full server boundary and its tests: react-best-practices, if available.
 
 ```ts
 // src/features/send-message/api/message.server.ts
@@ -237,8 +262,10 @@ import 'server-only'
 
 import { rejectIfNotOk } from '@/shared/api/http'
 
-export const saveMessage = (message: { email: string; body: string }) =>
-  fetch(`${process.env.API_URL}/messages`, { method: 'POST', body: JSON.stringify(message) }).then(rejectIfNotOk)
+export const saveMessage = (userId: string, message: { email: string; body: string }) =>
+  fetch(`${process.env.API_URL}/messages`, { method: 'POST', body: JSON.stringify({ userId, ...message }) }).then(
+    rejectIfNotOk,
+  )
 ```
 
 ```ts
@@ -247,6 +274,8 @@ export const saveMessage = (message: { email: string; body: string }) =>
 
 import { z } from 'zod'
 
+import { currentUserId, isWithinRateLimit } from '@/shared/api/auth.server'
+
 import { saveMessage } from './message.server'
 
 const messageSchema = z.object({
@@ -254,15 +283,20 @@ const messageSchema = z.object({
   body: z.string().min(10),
 })
 
-export type SendMessageResult = { ok: true } | { ok: false; code: 'invalid' | 'failed' }
+export type SendMessageResult = { ok: true } | { error: string; fields?: { email: string; body: string } }
 
 export const sendMessage = async (_previous: SendMessageResult | null, formData: FormData): Promise<SendMessageResult> => {
-  const parsed = messageSchema.safeParse(Object.fromEntries(formData))
-  if (!parsed.success) return { ok: false, code: 'invalid' }
+  const userId = await currentUserId()
+  if (!userId) return { error: 'Sign in again.' }
+  if (!(await isWithinRateLimit(userId, 'send-message'))) return { error: 'Too many messages. Try again later.' }
 
-  return saveMessage(parsed.data).then(
+  const fields = { email: String(formData.get('email') ?? ''), body: String(formData.get('body') ?? '') }
+  const parsed = messageSchema.safeParse(fields)
+  if (!parsed.success) return { error: 'Check your email and message.', fields }
+
+  return saveMessage(userId, parsed.data).then(
     (): SendMessageResult => ({ ok: true }),
-    (): SendMessageResult => ({ ok: false, code: 'failed' }),
+    (): SendMessageResult => ({ error: 'Could not send. Try again.', fields }),
   )
 }
 ```
@@ -278,15 +312,14 @@ import { sendMessage } from '../api/sendMessage.actions'
 export function SendMessageForm() {
   const [result, submit, isPending] = useActionState(sendMessage, null)
 
-  if (result?.ok) return <p>Message sent.</p>
+  if (result && 'ok' in result) return <p>Message sent.</p>
 
   return (
     <form action={submit}>
       <fieldset disabled={isPending}>
-        <input name="email" type="email" required />
-        <textarea name="body" required />
-        {result?.code === 'invalid' && <p>Check your email and message.</p>}
-        {result?.code === 'failed' && <p>Could not send. Try again.</p>}
+        <input name="email" type="email" defaultValue={result?.fields?.email} required />
+        <textarea name="body" defaultValue={result?.fields?.body} required />
+        {result?.error && <p role="alert">{result.error}</p>}
         <button type="submit">{isPending ? 'Sending...' : 'Send'}</button>
       </fieldset>
     </form>
@@ -301,7 +334,7 @@ export { SendMessageForm } from './ui/SendMessageForm'
 
 ## Store: state, pure transitions, selectors
 
-Transitions are plain curried functions, so they test without React. The store holds state only, and each component subscribes to what it needs.
+Transitions are plain curried functions, so they test without React. The store holds state only, each component subscribes to what it needs, and nothing writes to it on the server.
 
 ```ts
 // src/entities/cart/model/cart.ts
@@ -319,6 +352,8 @@ export const selectTotal = ({ items }: CartState) => items.reduce((total, item) 
 
 ```ts
 // src/entities/cart/model/useCartStore.ts
+'use client'
+
 import { create } from 'zustand'
 
 import { compose } from '@/shared/lib/fp'
@@ -347,6 +382,8 @@ For real coordination: here the coupon's validity depends on the cart total, so 
 
 ```ts
 // src/screens/cart/model/useCartFlow.ts
+'use client'
+
 import { useState } from 'react'
 
 import { removeFromCart, useCartTotal } from '@/entities/cart'
@@ -367,26 +404,42 @@ export const useCartFlow = () => {
 
 ## Route files per stack
 
-The route file stays thin everywhere. On TanStack Start and Expo Router, only `useProductFilters` changes, and it keeps the same interface, so the screen stays as written.
+The route file stays thin everywhere. On TanStack Start and Expo Router, only `filters.ts` and `useProductFilters` change, and the hook keeps the same interface, so the screen stays as written.
 
-**Next.js.** `useSearchParams` needs a Suspense boundary or `next build` fails, and the route file is its place.
+**Next.js.** Data loads with the route. The `await` sits in a child under Suspense so the shell renders first, and the options defined for the hook work here unchanged. `error.tsx` beside this file gives the region its error boundary.
 
 ```tsx
 // src/app/products/page.tsx
+import { dehydrate, HydrationBoundary, QueryClient } from '@tanstack/react-query'
 import { Suspense } from 'react'
 
-import { ProductsScreen } from '@/screens/products'
+import { productListOptions } from '@/entities/product'
+import { parseFilters, ProductsScreen, ProductsSkeleton } from '@/screens/products'
 
-export default function Page() {
+type Props = { searchParams: Promise<Record<string, string>> }
+
+async function ProductsData({ searchParams }: Props) {
+  const filters = parseFilters(new URLSearchParams(await searchParams))
+  const queryClient = new QueryClient()
+  await queryClient.prefetchQuery(productListOptions(filters))
+
   return (
-    <Suspense>
+    <HydrationBoundary state={dehydrate(queryClient)}>
       <ProductsScreen />
+    </HydrationBoundary>
+  )
+}
+
+export default function Page(props: Props) {
+  return (
+    <Suspense fallback={<ProductsSkeleton />}>
+      <ProductsData {...props} />
     </Suspense>
   )
 }
 ```
 
-**TanStack Start.** `getRouteApi` lets the hook reach route state without importing the route file, which would be an upward import.
+**TanStack Start.** `getRouteApi` lets the hook reach route state without importing the route file, which would be an upward import. Load data in the route's `loader` with `productListOptions`; for the API, see the `router-query` skill inside the installed `@tanstack/react-router`.
 
 ```tsx
 // src/routes/products.tsx (TanStack Start)
@@ -401,14 +454,19 @@ export const Route = createFileRoute('/products')({
 ```
 
 ```ts
-// src/screens/products/model/useProductFilters.ts (TanStack Start)
-import { getRouteApi } from '@tanstack/react-router'
-
+// src/screens/products/model/filters.ts (TanStack Start)
 import type { ProductFilters } from '@/entities/product'
 
 export const parseFilters = (search: Record<string, unknown>): ProductFilters => ({
   category: typeof search.category === 'string' ? search.category : 'all',
 })
+```
+
+```ts
+// src/screens/products/model/useProductFilters.ts (TanStack Start)
+import { getRouteApi } from '@tanstack/react-router'
+
+import type { ProductFilters } from '@/entities/product'
 
 const route = getRouteApi('/products')
 
@@ -417,15 +475,26 @@ export const useProductFilters = () => {
   const navigate = route.useNavigate()
   const setFilter = (key: keyof ProductFilters) => (value: string) =>
     navigate({ search: (previous) => ({ ...previous, [key]: value }) })
-  return { filters, setFilter, clear: () => navigate({ search: {} }) }
+  return { filters, setFilter, clear: () => navigate({ search: { category: 'all' } }) }
 }
 ```
 
-**Expo Router.** Every file in the route folder becomes a route, so nothing but route files goes there. A `_layout` is routing too: its navigator and route names stay in it, and it imports providers from below.
+**Expo Router.** Every file in the route folder becomes a route, so nothing but route files goes there. A `_layout` is routing too: its navigator and route names stay in it, and it imports providers from below. Deep-link params are untrusted, so they go through `parseFilters`.
+
+`toSorted` and `Intl` in `toVisibleCards` need the app's Hermes to ship them; otherwise copy before sorting and load a polyfill first. Wire TanStack Query's `focusManager` to `AppState` and `onlineManager` to NetInfo or `expo-network` once in `providers/`, or queries won't refetch when the app returns or reconnects.
 
 ```tsx
 // src/app/products.tsx (Expo Router)
 export { ProductsScreen as default } from '@/screens/products'
+```
+
+```ts
+// src/screens/products/model/filters.ts (Expo Router)
+import type { ProductFilters } from '@/entities/product'
+
+export const parseFilters = ({ category }: { category?: string | string[] }): ProductFilters => ({
+  category: typeof category === 'string' ? category : 'all',
+})
 ```
 
 ```ts
@@ -434,9 +503,11 @@ import { router, useLocalSearchParams } from 'expo-router'
 
 import type { ProductFilters } from '@/entities/product'
 
+import { parseFilters } from './filters'
+
 export const useProductFilters = () => {
-  const { category = 'all' } = useLocalSearchParams<{ category?: string }>()
+  const filters = parseFilters(useLocalSearchParams())
   const setFilter = (key: keyof ProductFilters) => (value: string) => router.setParams({ [key]: value })
-  return { filters: { category }, setFilter, clear: () => router.setParams({ category: undefined }) }
+  return { filters, setFilter, clear: () => router.setParams({ category: undefined }) }
 }
 ```

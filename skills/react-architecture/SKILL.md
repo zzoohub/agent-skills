@@ -11,6 +11,8 @@ Functional everywhere. Screens compose, hooks hold the logic. Code stays where i
 
 This skill fixes where code goes and what shape it takes. Framework APIs change between releases, so check those in version-matched sources: `node_modules/next/dist/docs/`, the `skills/` folders inside installed `@tanstack/*` packages, the Expo docs.
 
+**Correctness and performance outrank style.** Where react-best-practices, or react-native-skills on mobile (if available), disagrees about how code behaves or how fast it runs, follow it.
+
 Paths are defaults (root `src/`, alias `@/`); the caller may redirect them. An app with another structure keeps it while you're only adding to it: follow its layout and write new logic in the functional style. Move code to this structure only when asked to restructure, and say what moved. Examples use `product`; use your domain's names.
 
 ---
@@ -20,7 +22,7 @@ Paths are defaults (root `src/`, alias `@/`); the caller may redirect them. An a
 ```
 src/
 ├── app/                      # Routes only (Next.js, Expo). TanStack Start: routes/
-│   └── products/page.tsx     # Renders ProductsScreen from '@/screens/products'
+│   └── products/page.tsx     # Loads data, renders ProductsScreen from '@/screens/products'
 ├── providers/                # App-wide providers and initialization
 ├── screens/                  # One slice per screen. XScreen composes what's below
 │   └── products/
@@ -55,7 +57,7 @@ src/
 
 **Rule: Screen first. Code starts in its screen slice and moves down when a second consumer appears. Never create an entity, feature or block ahead of use.** This outranks every other placement rule here.
 
-**Rule: Route files are thin: routing, guards, head, a Suspense boundary, the screen. Nothing else.**
+**Rule: Route files are thin: routing, guards, head, data loading, a Suspense boundary (with any view-transition wrapper above it), the screen. Nothing else.**
 
 **Rule: Other slices import only a slice's `index.ts`.** Server-only exports go in `index.server.ts`, because one server-only module in `index.ts` breaks the build of every Client Component importing the slice.
 
@@ -66,6 +68,7 @@ src/
 | Route folder | `src/app/` | `src/routes/` | `src/app/` (every file becomes a route; a `_layout` keeps its navigator and route names) |
 | Callable server code in `api/` | `x.actions.ts` (`'use server'`) | `x.functions.ts` (`createServerFn`) | none: HTTP only |
 | Server-only code in `api/` | `x.server.ts` with `import 'server-only'` | `x.server.ts` | none |
+| Hook files | `'use client'` as the first line, so a Server Component can still import the slice's `index.ts` | no directive | no directive |
 | URL state | `useUrlState` (`references/lib.md`) | `validateSearch`, `getRouteApi` | route params |
 
 The screen doesn't change across stacks; only the hooks and route files on this table do.
@@ -77,12 +80,12 @@ The screen doesn't change across stacks; only the hooks and route files on this 
 **Rule: Client code is functional. One paradigm, with exceptions only where React requires them.**
 
 1. **Pure core, effects at the edge.** Calculations are pure functions in `model/`. Requests, subscriptions and events live in hooks and handlers.
-2. **Immutable data.** Build new values. A state change is a `(prev) => next` function, which `useState`, Zustand's `setState` and `setQueryData` all accept.
-3. **Composition.** Arrays use built-in method chains. Several steps on any other value use `pipe(value, f, g)`. A function built before its data exists uses `compose(g, f)` over named functions (an unannotated lambda infers `unknown` there).
+2. **Immutable data.** Build new values. A state change is a `(prev) => next` function, which `useState`, Zustand's `setState` and `setQueryData` all accept. Scroll, pointer and per-frame values are the exception: they live in refs, out of state.
+3. **Composition.** Arrays use built-in method chains. Several steps on any other value use `pipe(value, f, g)`. A function built before its data exists uses `compose(g, f)` over named functions (an unannotated lambda infers `unknown` there). On a per-input path over a large array, one loop replaces the chain, and mutation that stays local to it is fine.
 4. **Currying by hand.** Config first, data last, written as arrows. Curry when a call site stores or passes the partial; a lone `f(a)(b)` means uncurry. No `curry()` helper: it loses generics and misreads default parameters.
 5. **No `class`, `this` or inheritance,** except Error Boundaries.
 6. **Hooks are called directly, at the top level.** Never pass one as a value: `pipe(x, useY)` and `xs.map(useY)` both pass the hooks lint, and the second crashes when the length changes.
-7. **No monad wrappers** (`Either`, `Option`, `IO`). Expected failures are discriminated unions (`{ ok: true } | { ok: false, code }`), missing values use `?.` and `??`, async state comes from the query library.
+7. **No monad wrappers** (`Either`, `Option`, `IO`). Expected failures are discriminated unions (`{ ok: true } | { error }`), missing values use `?.` and `??`, async state comes from the query library.
 8. **No helper for a one-liner.** `shared/lib/fp.ts` holds `pipe` and `compose` only; `not`, `prop`, `identity` and the like stay inline arrows.
 
 ```ts
@@ -125,24 +128,24 @@ function ProductsScreen() {
 // ✅ After: the main component composes, hooks hold the logic
 export function ProductsScreen() {
   const { filters, setFilter, clear } = useProductFilters()
-  const { data: cards = [], isPending } = useProductCards(filters)
+  const { data: cards = [], isPending, error, refetch } = useProductCards(filters)
 
   return (
     <Screen>
       <FilterBar category={filters.category} onCategoryChange={setFilter('category')} onClear={clear} />
-      <ProductGrid cards={cards} isPending={isPending} />
+      <ProductGrid cards={cards} isPending={isPending} error={error} onRetry={refetch} />
     </Screen>
   )
 }
 ```
 
-**Rule: Main component does composition only. Logic goes in hooks in `model/`.**
+**Rule: Main component does composition only. Logic goes in hooks in `model/`.** Call each hook in the lowest component that reads its value, so fast-changing state doesn't re-render the whole screen.
 
 **Rule: Each hook keeps one responsibility. A flow hook is for real coordination.** Two or three hooks in the main component are fine; a flow hook that only merges their returns adds a file for nothing.
 
 **Rule: Hook interfaces are clean and predictable.** Data hooks return the query result as is (`{ data, isPending, error }`); state hooks return the state and named actions (`{ selected, toggle, clear }`).
 
-**Rule: Hooks stay on the client.** A Server Component composes the same way with `await` in place of hooks, and hooks move to the interactive leaf. On Next.js, a screen with content worth server-rendering stays a Server Component, and the part reading the URL gets its own Suspense boundary.
+**Rule: Hooks stay on the client.** A Server Component composes the same way with `await` in place of hooks, and hooks move to the interactive leaf. On Next.js, a mostly static screen stays a Server Component with `'use client'` on its interactive leaves; a screen interactive throughout can be a Client Component, with its data loaded in the route.
 
 ---
 
@@ -182,12 +185,12 @@ export const useProducts = <T = Product[],>(filters: ProductFilters, select?: (p
 |---|---|
 | Server data | Server Component or route loader where the framework has one; TanStack Query in client code |
 | Filters, tabs, pagination | The URL, parsed once with a fallback |
-| App-wide client state | Zustand |
+| App-wide client state, or a fast-changing value many components read | Zustand |
 | Local UI | `useState` |
 | Simple form | Server entry point + Zod |
 | Complex form (dynamic fields, instant validation) | React Hook Form + Zod |
 
-**Rule: A Zustand store holds state and nothing else. Transitions are pure functions outside it, components subscribe with selectors, API calls stay out.**
+**Rule: A Zustand store holds state and nothing else. Transitions are pure functions outside it, components subscribe with selectors, API calls stay out.** On Next.js, never write to it on the server: a module-level store is shared across requests.
 
 **Rule: If it should survive a shared link, it belongs in the URL.**
 
@@ -211,7 +214,7 @@ export const useProducts = <T = Product[],>(filters: ProductFilters, select?: (p
 
 **Rule: Before creating UI, search `blocks/`.** Keep a catalog there (`BLOCKS.md`, generated from the folder: name, path, purpose from each component's JSDoc line). Reuse what fits instead of cloning it.
 
-**Rule: Industry-standard tools for hard jobs stay: TanStack Query, Zustand, Zod, React Hook Form. Anything else the language covers, or a few dozen lines can do, is written in-house.** No utility libraries.
+**Rule: Industry-standard tools for hard jobs stay: TanStack Query, Zustand, Zod, React Hook Form. Anything else the language covers, or a few dozen lines can do, is written in-house.** No utility libraries. A project's installed equivalent wins over any of these; never add a parallel library.
 
 ---
 
