@@ -1,9 +1,9 @@
 ---
 name: react-best-practices
 description: |
-  Build, review and fix React web code (Next.js App Router, TanStack Start, Vite): correctness first, performance by evidence. Covers data and state placement, Effects, hydration, mutations, the server boundary of Server Functions/Actions and createServerFn (validation, auth, tenant scoping, public env vars), waterfalls, bundle size, re-renders and INP.
+  Build, review and fix React web code (Next.js App Router, TanStack Start, Vite): correctness first, performance by evidence. Covers data and state placement, Effects, hydration, mutations, the server boundary of Server Actions and createServerFn (validation, auth, tenant scoping, env vars), waterfalls, bundle size, re-renders and INP.
   Use for "hydration mismatch", "too many re-renders", "useEffect", "Server Action", "slow page", "bundle too big".
-  Do NOT use for: tokens, theming, motion or component APIs (design-system); route or view transitions (react-view-transitions); React Three Fiber (web3d); React Native (react-native-skills); backend services (hexagonal-backend).
+  Do NOT use for: folder structure (react-architecture); tokens, theming, motion or component APIs (design-system); view transitions (react-view-transitions); React Three Fiber (web3d); React Native (react-native-skills); backends (hexagonal-backend).
 license: MIT
 source: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices
 ---
@@ -12,7 +12,7 @@ source: https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-
 
 > Fork of [`vercel-labs/agent-skills` → `react-best-practices`](https://github.com/vercel-labs/agent-skills/tree/main/skills/react-best-practices) (MIT), scrubbed of Vercel-infrastructure coupling and frozen: update policy in `UPSTREAM.md`.
 
-Siblings, if available: i18n (locale logic); review-checklists (general pre-landing review).
+Siblings, if available: react-architecture (folder structure, hooks, query keys, state tools); i18n (locale logic); review-checklists (general pre-landing review).
 
 ## Frame
 

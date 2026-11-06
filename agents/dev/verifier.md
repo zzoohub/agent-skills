@@ -52,7 +52,7 @@ git diff --name-only <base>...HEAD
 
 File pattern hints for classification:
 
-- **Web**: `components/**`, `pages/**`, `app/**/page.*`, `app/**/layout.*`, `views/**`, `templates/**`, `*.css`, `*.scss`, `*.tsx` (without route/api in path), `*.jsx`
+- **Web**: `components/**`, `pages/**`, `app/**/page.*`, `app/**/layout.*`, `views/**`, `screens/**`, `blocks/**`, `templates/**`, `*.css`, `*.scss`, `*.tsx` (without route/api in path), `*.jsx`
 - **API**: `app/**/route.*`, `api/**`, `routes/**`, `controllers/**`, `server/**`, `middleware.*`, `proxy.*`, `*.resolver.*`, `*.service.*`, `*.handler.*`, `models/**`, `schemas/**`, `prisma/**`, `drizzle/**`, `migrations/**`, `*.sql`
 
 Note: Server actions (`'use server'` in `.ts`/`.tsx`) belong to **both** paths. The UI invokes them (Web), but each one is also a publicly reachable POST endpoint that any client can call directly — Next.js says to treat them like public API endpoints. A UI check cannot show that an action lacks its own session/authorization check, so a changed action that mutates or reads protected data also gets the Phase 4c auth-enforcement reasoning (verify the action itself checks the session, not just the page or middleware).

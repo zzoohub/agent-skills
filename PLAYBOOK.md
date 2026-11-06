@@ -27,7 +27,7 @@ software-architecture → docs/arch/system.md (+ arch-decision ADRs, database-de
 ux-design             → docs/ux/ux-design.md (+ initial screen specs via screen-design: critical-path
                         and costly-to-fail screens plus one exemplar per screen class; the rest pending)
 implement             → main session / general-purpose subagents loading the stack skills
-                        (e.g. hexagonal-backend, react-best-practices, react-native-skills, design-system)
+                        (e.g. hexagonal-backend, react-architecture, react-best-practices, react-native-skills, design-system)
 reviewer              → security + correctness (blocking gate) + maintainability (informational)
 verifier              → real-browser / API verification (behavior gate)
 adversary             → runtime exploit reproduction, isolated env (high-risk changes only)

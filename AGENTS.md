@@ -23,8 +23,8 @@ Claude Code still auto-loads this file as project instructions.)
 This repo is **not an application** — it is a **portable skill library + a Claude Code agent layer**.
 There is no product source code here. It ships three things:
 
-- **`skills/`** — **29** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 21 skills), `rules/` (guideline files:
+- **`skills/`** — **30** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
+  `references/` (deep-dive docs loaded on demand — 22 skills), `rules/` (guideline files:
   `react-best-practices` per rule, `react-native-skills` per decision area), `templates/`
   (output scaffolds — `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
   `database-design` only; two `.sql` files), `evals/` (`review-checklists` only) and the vendored
@@ -224,9 +224,10 @@ call that agent.
 | Design or redesign one screen, with or without a UX doc | `screen-design` | skill |
 | Implement 3D / XR on the web | `web3d` | skill |
 | Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge) + `database-design` (incl. PostgreSQL operations) | skill |
-| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-best-practices`, `react-view-transitions` (route and shared-element transitions), `design-system` (incl. component composition), `i18n` | skill |
+| Set up or restructure a React client: folder structure, FSD, where code goes, hooks, query keys, functional style | `react-architecture` | skill |
+| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-architecture` (structure), `react-best-practices`, `react-view-transitions` (route and shared-element transitions), `design-system` (incl. component composition), `i18n` | skill |
 | Design tokens, theming or dark mode, a visual refresh ("looks dated"), component APIs; set up or audit a design system | `design-system` | skill |
-| Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | `react-native-skills` (+ `design-system`, `i18n`) | skill |
+| Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | `react-native-skills` (+ `react-architecture`, `design-system`, `i18n`) | skill |
 | Add a language, fix a locale bug (plurals, RTL, time zones), audit i18n | `i18n` | skill |
 | Pre-landing code review: security + correctness + maintainability | `reviewer` (method in `review-checklists`) | agent |
 | Verify behavior in a real browser / smoke-test endpoints before merge | `verifier` (method in `qa` + `browse`) | agent |

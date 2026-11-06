@@ -46,7 +46,7 @@ Go is **deliberately excluded** — Rust covers the performance/CLI niche, TypeS
 |---|---|
 | Server (Workers) | Hono, workers-rs **(WIP — reserve for wasm-on-Workers)** |
 | Server (Container) | Axum, FastAPI |
-| Frontend | TanStack Start **(RC — pin exact versions)** (React or Solid), Next.js |
+| Frontend | TanStack Start (React or Solid), Next.js; client structure per react-architecture, if available |
 | Mobile | React Native (Expo) + Expo Router + EAS |
 | Desktop | Tauri |
 | CLI | Rust |
@@ -145,6 +145,6 @@ Any language: response time — a k6 / autocannon / wrk smoke test with the p99 
 **Observability** — the house pick is OTel + CF Workers Logpush, with no third-party logging vendor by default (the Errors and Tracing + Logging rows). The architectural rules live in `observability.md`.
 
 **TanStack Start house taste** (explicit over magic, end-to-end types):
-- **FSD layering** — route files are thin routing glue (loader, guard, head); page UI lives in `views/`; server functions live in the owning slice's `api/`; layers import only downward (`views` → `widgets` → `features` → `entities` → `shared`).
+- **FSD layering** — route files are thin routing glue (loader, guard, head); server functions live in the owning slice's `api/`; the full structure is in react-architecture, if available.
 - **URL is first-class state** — filters, tabs, and pagination live in validated, typed search params, not client state, so views stay shareable and bookmarkable.
-- **Every server function is a public endpoint** — the build exposes each as an HTTP-reachable RPC route, so validate input and authenticate, authorize (ownership, not just a session), and tenant-scope *inside* the function; route guards are navigation UX only. Only `VITE_`-prefixed env vars reach the client — all of them do — so secrets stay unprefixed and server-side.
+- **Every server function is a public endpoint** — the build exposes each as an HTTP-reachable RPC route, so validate input and authenticate, authorize (ownership, not just a session), and tenant-scope *inside* the function; route guards are navigation UX only. Only public-prefixed env vars reach the client (`VITE_`, or `PUBLIC_` with Rsbuild) — all of them do — so secrets stay unprefixed and server-side.

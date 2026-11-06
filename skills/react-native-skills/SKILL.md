@@ -67,7 +67,7 @@ Defaults bind what the change adds or alters, plus pre-existing code its new beh
 - Native libraries, Expo Go vs development build, OTA and store releases, CNG, permissions, upgrades, monorepos → `rules/dependencies-delivery.md`.
 - Components that render text (buttons, chips) → `rules/design-system-compound-components.md`.
 
-Siblings, if available: design-system and i18n for what the description excludes; react-best-practices for generic React, minus web-only rules (built-ins per §1).
+Siblings, if available: design-system and i18n for what the description excludes; react-architecture for folder structure, hooks, query keys and state tools; react-best-practices for generic React, minus web-only rules (built-ins per §1).
 
 ## 5. Always (in the code §4 binds)
 
