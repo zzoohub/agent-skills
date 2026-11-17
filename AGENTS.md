@@ -24,7 +24,7 @@ This repo is **not an application** — it is a **portable skill library + a Cla
 There is no product source code here. It ships three things:
 
 - **`skills/`** — **27** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 21 skills), `templates/`
+  `references/` (deep-dive docs loaded on demand — 23 skills), `templates/`
   (output scaffolds — `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
   `database-design` only; two `.sql` files), `evals/` (`review-checklists` only) and the vendored
   forks' `UPSTREAM.md` records (see below). Not counted: the untracked `skills/synced/` folder, a
@@ -216,7 +216,7 @@ call that agent.
 |---|---|---|
 | Validate a new product idea or direction / write a one-pager (the *why* and *whether*) | `product-brief` | skill |
 | Write or review a full PRD, or record a release checkpoint | `prd-craft` | skill |
-| Spec, revise or review one feature on an existing product | `feature-spec` | skill |
+| Spec, revise or review one feature, on a live product or in a PRD's planned release | `feature-spec` | skill |
 | Design the system architecture | `software-architecture` | skill |
 | Modernize, re-architect or migrate an existing system (as-is recovery, transition plan) | `software-architecture` (Build Mode on an existing system) | skill |
 | Record or review one architecture decision (ADR) on an existing system | `arch-decision` | skill |

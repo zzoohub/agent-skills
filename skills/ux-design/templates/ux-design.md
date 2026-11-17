@@ -14,9 +14,9 @@
 
 **Screens**
 - [{Screen}](screens/{screen}.md) [v0.1]
-- {Screen} [v0.2] — pending: as {exemplar} except {deviation}
+- {Screen} [later] — pending: as {exemplar} except {deviation}
 
-<!-- One entry per screen, with its PRD release, and one §3 route row per screen. A pending entry is plain text; screen-design turns it into the link. -->
+<!-- One entry per screen, with its PRD release (`later` for a feature the PRD lists under Later), and one §3 route row per screen. A pending entry is plain text; screen-design turns it into the link. -->
 
 ## 1. Frame
 

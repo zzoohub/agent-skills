@@ -2,123 +2,134 @@
 name: prd-craft
 description: |
   Write the PRD for a new or undocumented product as a testable bet: outcome
-  metrics with counter-metrics, a v0.1 that tests the riskiest assumption,
-  has a stop rule and can run with real users, non-goals, the envelope
-  architecture needs, and a spec per feature. Reads the product brief first.
-  Also reviews a PRD for readiness and records a release's checkpoint result.
-  Use when: "write a PRD", "product requirements document", "spec out a
-  product", "review my PRD", "is this PRD ready", "the v0.1 results are in".
-  Do NOT use for: one feature on an existing product (feature-spec, once per
-  feature; never re-run this to add features); premise or scope challenges
-  (plan-review).
+  metrics with counter-metrics, a first release (v0.1) that tests the
+  riskiest assumption with real users under a stop rule fixed in advance,
+  what waits or is never built, and the constraints architecture and design
+  need. Reads the product brief first. Also reviews a PRD and records a
+  release's checkpoint result. Use when: "write a PRD", "product
+  requirements document", "spec out a product", "review my PRD", "is this
+  PRD ready", "the v0.1 results are in". Do NOT use for: one feature on an
+  existing product (feature-spec, once per feature; never re-run this to add
+  features); premise or scope challenges (plan-review).
 ---
 
 # PRD Craft
 
-A PRD turns a validated direction into a testable bet: who has the problem, the numbers that prove it moved, the smallest release that tests the riskiest assumption and when to stop, what we won't build, and what architecture must know. It also carries what that release needs to run with real people: a way in and out, the operator's work, the legal duties, the move off today's tool. A bet its real audience can't use tests nothing. It never invents precision.
+## Premise
 
-## Modes & Routing
+**A PRD is a bet, and its first release is the test.** A product is a belief about what people will do, and the expensive way to be wrong is to find out late. What a PRD was always for stays: the problem before the solution, numbers that say where they came from, an outcome someone can measure, a line between what is in and what is out. What changed is the limit on scope. Building has become cheap, so what fits before the deadline is rarely the limit any more. The limit is what the test needs: every extra feature blurs the signal, must be verified, supported and kept true, and may commit data or promises that can't be taken back. Ceremony that informs no decision goes: estimates nobody can ground, a ladder of releases nobody rereads, specs for features that may never be built.
 
-Defaults; the caller may redirect the `docs/prd/` root: brief `docs/prd/product-brief.md` (or a `product-brief-*.md` variant), PRD `docs/prd/prd.md`, one spec per feature at `docs/prd/features/{feature}.md`. Sibling skills named here are used if available.
+Five rules follow:
 
-| Situation | Mode |
-|---|---|
-| Unbuilt idea, no brief and no PRD | Brief first via product-brief, even if a PRD was asked for, then **Write**; without it, ask the caller, else write with the core bet [Assumed] |
-| A brief exists, no PRD | **Write**; several variants → confirm which (default: the canonical file). Over a Test first, Park or Kill Decision, an explicit PRD request proceeds with untested rows as assumptions; otherwise ask, or, unattended, write nothing and report the Decision |
-| A brief exists, but newer evidence contradicts its problem, segment, metric or an ask | **Write** on the evidence, deciding each departure (Calibrate) |
-| Live product, no PRD, a PRD is asked for | **Write**; usage data is evidence |
-| Review, audit or improve a PRD; "is it ready?" | **Review / Audit Mode** |
-| A release reached its checkpoint | **Checkpoint** (below) |
-| Add or change features (a PRD exists, or the product is live) | feature-spec, once per feature. Never re-run this skill to add features; a feature is not a pivot, however big |
-| Pivot: the problem, target users or success metric changed | Confirm the pivot scope, then **Write** over the vision in place |
-| A PRD exists, any other request ("write", "rewrite", "update") | Never regenerate it: patch a named change (price, appetite, envelope, a risk) through every section it touches, with Last Updated; unclear → ask what changed; unattended → Review, and say so |
-| Challenge the premise; cut, hold or expand scope | plan-review, scope mode |
+1. **The first release is a test, not a small product.** It retires the riskiest belief, takes its shape from that risk, and ends in a rule for continuing, changing or stopping that is fixed before any data.
+2. **One segment finishes one job, end to end, with real people.** A release its audience can't get into, get help with or leave tests nothing. Neither does one layer of everything.
+3. **Nothing enters the release unless the test needs it, or running it lawfully with real people does.** However cheap it is to build.
+4. **Never invent.** Every number and claim the scope rests on says where it came from. An unknown is written as unknown, with how it gets measured.
+5. **Follow the evidence, and say so.** When it contradicts what was asked, the draft follows it and names the departure for the owner to approve.
 
-**A pivot** marks each existing spec keep, revise (via feature-spec) or retire, after confirmation; retiring deletes only an unbuilt spec nothing cites (with its §5 row and §6 entry), else sets its status to `Retired (date): reason` and moves its key to a §7 `[never]` line. It refreshes the brief via product-brief, the brief's one writer; without it, patch only the brief's header, Problem and Direction. Otherwise write only the PRD and its specs.
+Done means the owner can approve the stake and the rule, an architect can size the system from §6, a designer knows which job comes first, an operator can run the release from first invite to deletion, and none of them needs the conversation that produced it.
 
-**Checkpoint.** Take the result from the kill-criteria record (default `biz/analytics/kill-criteria.md`, via product-analytics if available) or the caller. No data is not a pass; a threshold moved after the data is a new test; a primary that moved while a counter-metric broke its floor means change, not continue. Under the release add `Result (YYYY-MM-DD): [metric] = [value] (measured: source) → continue | change | stop, called by [who]`; measured values replace §4's unknowns. Continue or change: re-plan later releases by the next assumption to retire. The next release is planned like v0.1: its own lines from Tests to Transition, tags and a cut line, the step 4 walk for its audience, and its stubs deepened via feature-spec. Opening to everyone adds a launch bar (support, docs, pricing, legal and security review, §8 bars met). Stop: Status `Stopped: [reason]`, and pilot users get what the stop rule promised. A changed problem, segment or metric is a pivot.
+## Route
 
-## Calibrate
+Defaults (the caller may redirect the `docs/prd/` root): brief `docs/prd/product-brief.md` or a `product-brief-*.md` variant, PRD `docs/prd/prd.md`, one spec per feature at `docs/prd/features/{feature}.md`. Sibling skills named here are used if available.
 
-**Read first** the brief's Decision, Core bet, Success Signal, Riskiest Assumptions, Next test and Open Questions: the Success Signal defines the §4 primary; riskiest-assumption row 1 is what v0.1 tests (an unrun Next test cheaper than building runs first); the other rows seed §8; open questions go to §9. Then anything newer: research, usage, pilot or sales notes, stakeholder asks. A live product adds what shipped, usage and support data and every spec in `features/`; a pivot, the existing PRD.
+- **Nothing built, no brief:** a brief first (`product-brief`), even when a PRD was asked for. Without that skill, ask the caller; failing that, write with the core bet [Assumed].
+- **A brief, no PRD:** write. Several variants: confirm which (default: the canonical file). A Decision other than Pursue goes ahead only on an explicit PRD request, its untested rows carried as assumptions; otherwise ask, or, unattended, write nothing and report the Decision.
+- **A live product, no PRD:** write. What shipped goes under Shipped, usage is evidence, and existing specs keep their keys and REQ IDs.
+- **A PRD exists:** never regenerate it. Patch a named change (a price, the appetite, a constraint, a risk) through every section it touches. Unclear what changed: ask, or, unattended, review instead and say so. A new or changed feature goes to `feature-spec`, however big.
+- **A pivot** (the problem, the target users or the primary metric changed): confirm it with the owner, then write over the bet in place. Each existing feature is kept, revised or retired; a retired one moves to Never with its date and reason. The brief is refreshed through its own skill.
+- **"Is it ready?", review, audit, improve:** Review. **A release reached its checkpoint:** Checkpoint.
+- **Challenge the premise; cut or expand the scope:** `plan-review`, scope mode.
 
-**Evidence against the brief**, graded at least as strong as the evidence it contradicts, wins in the draft, never silently: each departure (an ask dropped or changed; a different segment, metric or scope) gets a decided §3 line with its approver. Weaker contrary evidence becomes a §8 risk or a §9 question. Recommend revising the brief through its owner (product-brief, if available): marketing, architecture and analytics read it, and a stale one misleads them all.
+## 1. Read and reconcile
 
-**The problem behind the request.** A described product is a guessed solution: name the pain, who has it, how often and what it costs them. If a setting, a process change or an existing tool would solve it, say so first. If the evidence puts part of the problem outside the request (a step before or after it, a need nobody asked for), the PRD covers it or names who must.
+Read the brief's Decision, Core bet, Success Signal, Riskiest Assumptions, Next test and Open Questions. The Success Signal defines the §4 primary. Row 1 is what v0.1 tests, and an unrun Next test that costs less than building runs first. The other rows seed §7, and the open questions go to §8. Then read anything newer: research, usage, pilot and sales notes, stakeholder asks.
 
-**Reach** sets depth and the template's word ceiling: personal (your own tool; specs optional), team (internal users), external (customers or the public). Regulated or sensitive data, money movement or an appetite over a team-quarter give a team PRD external depth. The ceiling limits what you write, never what you check.
+- **The request is a guessed solution.** Name the pain behind it, who has it, how often and at what cost. If a setting, a process change or an existing tool would solve it, say so first. If the evidence puts part of the problem outside the request (a step before or after it), the PRD covers it or names who must.
+- **Evidence against the brief** wins in the draft when it is graded at least as strong as what it contradicts, and never silently: each departure (an ask dropped or changed; a different segment, metric or scope) gets a §3 line with its approver, marked proposed. Weaker contrary evidence becomes a risk or an open question. Recommend revising the brief through its own skill, because marketing, architecture and analytics read it.
+- **Grades** are the brief's, strongest first: [Committed] money, a signed pilot or a priced letter of intent; [Observed] behavior seen or recorded; [Said] an account of a specific past instance; [Assumed] the rest, future intent and an unsigned "we'll try it" included.
 
-**Evidence** uses the brief's grades, strongest first: [Committed] (money, a pilot, a priced LOI), [Observed] (behavior seen or recorded), [Said] (their account of a specific past instance), [Assumed] (all else, future intent included). The assumption that would kill the product with the weakest evidence is the **dominant risk**; it decides what v0.1 is:
+## 2. Ask once
 
-| Dominant risk | v0.1 is | Exit evidence |
+One batch, only what the brief, the evidence and the request leave open, each with its default:
+
+1. **Appetite and owner:** how much time, people and money before the continue/change/stop call, and who makes it? *Six weeks (a personal tool: one), called by the requester.*
+2. **Pain and segment:** who hurts most, how often, at what cost; have they paid, hacked around it or left, or only said so; who pays, self-serve or through sales? *The brief's target user, self-serve; frequency and cost unknown, measured in v0.1.*
+3. **Decision rule:** which result means continue, change or stop, and what must not get worse? *Thresholds by judgment, tagged target.*
+4. **Hard constraints:** a deadline, jurisdictions, regulated data or outputs, mandated platforms, a contracted build? *None known; an external product holds personal data, so privacy duties start with its first real user.*
+5. **Systems:** what must it read from or write to, and what tool, sheet or process does it replace, holding how much live data and open work? *It replaces today's workaround, whose live records move at cutover.*
+
+If nobody can answer, or the caller says "just write it", draft on the defaults, marked [Assumed], and list the questions in §8 and the report, those gating v0.1 first.
+
+**Reach** is who the product can affect: `personal` (your own tool), `team` (internal users) or `external` (customers, the public). A personal PRD fits a page and may skip specs. Regulated or sensitive data, money movement, or an appetite beyond a team-quarter give a team product external depth.
+
+## 3. Shape the bet
+
+The belief that would kill the product and has the weakest evidence is the **dominant risk**. It decides what v0.1 is:
+
+| Dominant risk | v0.1 is | It passes when |
 |---|---|---|
-| Value: will they choose or buy it? | the thinnest end-to-end path for one segment's core job; a manual back end is fine | the primary or leading metric moves for real users |
-| Usability: demand proven, workflow not | the core flow at production quality, the rest stubbed | task success and time beat today's workaround |
-| Feasibility: AI quality, a hard integration | a spike on representative inputs, before any shell, its fallback (narrower scope, a person in the loop, stop) agreed before it runs | AI: the bar met on a held-out set nobody tuned on; integration: the real system at expected volume, failures included |
-| Viability: who pays, unit cost, legal | a pre-sale, pricing or compliance test before breadth | paid pilots or LOIs naming price and terms; cost per task under the ceiling |
-| Adoption: replacing a tool or process | one complete workflow, with the imports and integrations it needs, that lets one segment drop the old tool | that segment fully off it: no dual-running, no double entry |
+| Value: will they choose it, or buy it? | The thinnest end-to-end path for one segment's core job; a manual back end is fine | The primary or leading metric moves for real users |
+| Usability: demand is proven, the workflow isn't | The core flow at production quality, the rest stubbed | Task success and time beat today's workaround |
+| Feasibility: AI quality, a hard integration | A spike on representative inputs before any shell, its fallback agreed first (narrower scope, a person in the loop, stop) | AI: the bar is met on a held-out set nobody tuned on. Integration: the real system at expected volume, failures included |
+| Viability: who pays, unit cost, legal | A pre-sale, pricing or compliance test before breadth | Paid pilots or letters of intent naming price and terms; cost per task under the ceiling |
+| Adoption: it replaces a tool or process | One complete workflow, with the imports and integrations it needs, that lets one segment drop the old tool | That segment is fully off it: no dual-running, no double entry |
 
-*Break when* a hard dependency gates the test (build only what it needs), the build is mandated or for compliance (an acceptance gate replaces the thresholds), or the tool is personal (v0.1 is what you'd use this week).
+Exceptions: a hard dependency gates the test (build only what it needs); the build is mandated or for compliance (an acceptance gate replaces the thresholds); the tool is personal (v0.1 is what you would use this week).
 
-**Ask once**, in one batch, only what the brief, the evidence and the request leave open, each with its default and the sections it gates:
-1. **Appetite**: time and people before the continue/change/stop call? *Default:* ~6 weeks, one small team (personal: a week). §6.
-2. **Pain and evidence**: how often, at what cost; seen them pay, hack around it or leave over it, or only told? *Default:* unknown, measured in v0.1; told, so value is the dominant risk. §1, §6.
-3. **Segment and motion**: who hurts most, doing what today, switching for what; who pays, self-serve or sales? *Default:* the brief's target user; workaround and price [Assumed]; self-serve (team: internal rollout). §2, §6, §8.
-4. **Decision rule**: which checkpoint result means continue, change or stop, who calls it, and what must not get worse? *Default:* thresholds and counter-metrics by judgment, tagged target; called by the requester, who owns the appetite. §4, §6.
-5. **Hard constraints**: deadline, jurisdictions, regulated data or output (a decision about a person, advice, a health or financial claim, a record the law makes you keep), mandated platforms, a contracted build? *Default:* none known; an external product holds personal data, so privacy duties start with its first real user. §8, spec depth.
-6. **Systems**: what must it read from or write to, and what tool, sheet or process does it replace, holding how much live data and open work? *Default:* it replaces §1's workaround, whose live records move at cutover; re-keying into a system that stays is manual at pilot volume (build bar), unless only users can do it and evidence says double entry sends them back: then its integration is a Must. §5, §6, §8.
+**The decision rule** reads the §4 primary, or its leading indicator when the primary can't move by the checkpoint. Set the checkpoint by how long the signal takes to show, not by how long the build takes. The rule must be settleable at its sample: with few adopters, count them ("at least 2 of 3 teams") and never pool a rate; a rare event needs a longer window (at two a month, a month with one or none comes up four times in ten by chance). Continue, change and stop don't overlap, and who calls it is named before the data arrives.
 
-If no one can answer, or the caller says "just write it", draft now on the defaults, marked [Assumed], with the questions in §9 and the report, v0.1-gating first. *Break when* the user wants to think aloud: converse, then converge on a draft.
+## 4. Make it runnable
 
-**Done**: the Self-Review passes, so an architect can size the system from §8, an engineer can tell what v0.1 may fake, a designer can tag screens by §6 release, an operator can run the pilot from first invite to deletion, and anyone can name the date, number and person that decide v0.1.
+Before listing features, walk three people through the release:
 
-## Write
+- **One member of the audience,** from first contact to leaving: join (invite, sign-up, sign-in), bring their data in, use and change it (edit, undo, roles), get help or dispute (support, corrections, refunds), leave (export, deletion, the release ending).
+- **The operator,** through a week: accounts and access, support, moderation, billing, data requests, incidents.
+- **Anyone it records, scores or contacts who has no account:** notice, consent or objection, access, correction, deletion.
 
-1. **Read `templates/prd.md`**; its comments are your format rules. Read `references/examples.md` while drafting §1, §4, §6, §7 and §8.
-2. **§1–§4** from the brief, the newer evidence and the answers; a gap is a v0.1 measurement, never an invention.
-3. **v0.1, the bet**, shaped by the dominant-risk row, on the template's v0.1 lines. Reject a v0.1 that builds one layer of everything (all plumbing, no finished job): one segment must complete the core job end to end. *Break when* v0.1 is a spike or no-build test: it lists only what is under test, and the end-to-end job and steps 4 and 5 move to the first release users get, except duties: a test that uses real people's data or serves real people meets its §8 Duties in v0.1.
-4. **What running it takes.** The first release users get holds what is under test plus what running the test with real people, lawfully, needs. Walk one member of its audience from first contact to leaving, the operator through a week, and anyone it records, scores or contacts without an account (the stages are in the template's §6 comment). Each step they will hit becomes a §5 row, a manual build-bar step with an owner and the volume where it breaks, or a §7 non-goal whose reason holds for this audience ("invite-only: no public sign-up"); never a later stub. At pilot volume most steps are manual and cost a line; build what touches customer data, money, identity, consent or anything irreversible, and what users would quit over. Classify what it stores and outputs, and turn each duty into requirements per the template's §8 Duties, never only a citation or an open question. Replacing a tool, sheet or process adds the Transition line; an import or integration goes above the cut line when the exit evidence would not survive double entry (the template's §6 Must rule).
-5. **The cut line**, per the template's §6 rules: whole-job estimates, never trimmed to fit.
-6. **Later releases**, ordered by the assumption each retires next and never ahead of what they depend on, dated where the template says. Work waiting on a nameable condition goes to §7 as `[later: trigger]`.
-7. **Features** cover the whole product (template §5). A row that moves no §1 problem or §4 metric, and that nothing in step 4 needs, is a non-goal.
-8. **§7–§9**, then **specs at depth** (below), the **Self-Review** and the **report back**.
+Each step they will hit becomes a feature in Now, a manual step in the build bar (who does it, and the volume where that breaks), or a Never line whose reason holds for this audience ("invite-only: no public sign-up"). It is never left to a later release. At this volume most steps are manual and cost one line. Build what touches customer data, money, identity or consent, anything irreversible, and what users would quit over.
 
-### Specs at depth
+**Duties.** Classify what it stores and what it outputs. An output can be regulated when the data isn't: a decision or recommendation about a person (credit, hiring, housing, insurance, care), advice, a health, safety or financial claim, a record a law or contract makes you keep. Each law or contract that applies, checked at its source when writing, becomes a requirement in the release that first incurs it, never only a citation. A test on real people's data incurs its duties in v0.1. What you can't check or settle goes to §8 (owner: counsel; default: the duty applies).
 
-One spec file per §5 row, so every link resolves; a shipped row links one only if it exists. When someone can answer, get a go on §1–§6 before full specs if reach is external or v0.1 rests on [Assumed] answers; unattended, write them.
-- **Full**: every feature of the first release users get (and of v0.1, if that is a spike). Depth follows obligation, not release: a later feature that carries a duty, moves customer data or money, or decides a one-way door now (the ⚠ arch kinds) gets a full spec, or a stub plus those requirements with acceptance criteria.
-- **Stub** for the rest, on the template's stub format.
-- **Existing specs** (a live product, a pivot): adopt each kept or revised spec as its §5 row, keeping its key and REQ IDs (a module-named key too: list it in the report); never overwrite one or cut it to a stub.
-- *Break when* the build is contracted, fixed-bid, a regulated submission or a single release: full specs throughout. Personal reach may skip specs (then no Spec column, never dead links).
+**Replacing a tool, sheet or process** adds the Transition line. An import or integration is a Must when double entry is what would send users back to the old tool.
 
-Write full specs through the feature-spec capability in batch mode, on its template, Quality Bar and word budget, handing each spec the §8 duties it must meet. It asks nothing, only proposes splits, renames or reordering, and checks each PRD row, Dev Order entry and filename without changing them; the PRD's Last Updated is set once. Without it, give each spec, within 1,200 words, Problem & Outcome, Behavior, Requirements (`REQ-NNN`, each with acceptance criteria), Edge Cases, Decisions (product choices, marked proposed), Rollout & Existing Data, Out of Scope and Open Questions (missing facts and calls above the spec's authority, each with a default). Once the specs exist, set each §8 "met by" to the REQ ID its spec gave the duty.
+**A spike or no-build v0.1** lists only what is under test; the end-to-end job and this walk then belong to the first release users get. Duties don't wait.
 
-**Report back** within 250 words, a summary, not the document. Lead with what needs a decision: each departure from the brief with its approver, and the recommendation to revise the brief; a tight plan, or a bigger appetite to approve; a duty awaiting counsel. Then the files written (full or stub); reach and appetite; the v0.1 decision rule; defaults applied and questions to confirm, v0.1-gating first; the next step. A material finding the budget can't hold still gets its line.
+## 5. Draw the lines
 
-## Review / Audit Mode
+Every capability someone might expect lands in exactly one place in §5: Shipped, Now, Later or Never.
 
-A critique by default, never a rewrite: edit only on request, one targeted patch per finding; "improve" or "fix" is such a request (apply the Critical and High patches, report the rest).
+- **A feature** is something a user can say they did (`cancel-and-refill`), never the part that does it (`sms-service`). Its kebab-case key is the same in §5 and in its spec's filename.
+- **Now** is the release, in build order, dependencies first. Above the cut line are the Musts: what the release is pointless or unlawful without. A workaround moves an item below the line only when the exit evidence survives it: someone doing the work by hand at this volume, yes; users re-keying data they keep elsewhere, no.
+- **Fit.** Size the Musts only from something real (the builder's estimate, the pace of comparable work), as a whole-job range with slack for what it missed. If they don't fit the appetite, move items below the line or into the build bar, or say plainly that the plan is tight and what gives; more appetite is the owner's call (§8). Never trim an estimate to fit. With nothing to size from, write `unconfirmed`.
+- **Later** holds what waits, each with the result or event that pulls it in (a binding date is written as a date). Mark `⚠ arch` where adding it late is costly: tenancy, permissions, billing, locales, offline, audit, residency, moderation, a public API.
+- **Never** holds only what someone would argue for (a stakeholder's ask, a competitor's feature, the obvious extension), each with its reason.
 
-1. **Read** the PRD, its specs, the brief if present, and any newer evidence the caller gives.
-2. **Audit** against the Self-Review and `references/anti-patterns.md` (its anti-patterns, severity table and trouble map), by function, not format: map a PRD of another shape onto these sections by role; a house convention is a finding only where its function is missing (an unsourced number driving scope, not an untagged one; no cut line, not a missing [Should]). Never prescribe this template unless asked.
-3. **Report** failures only, within 600 words, opening with the verdict: **ready for architecture and UX**, **ready after the Critical fixes**, or **not ready** (no stated problem, or build scope committed before the core bet is tested). Each finding gives severity, section, the quoted problem and the fix; patch text only for Critical and High. Every Critical and High finding is reported, whatever the budget.
+## 6. Write and hand off
+
+Write from `templates/prd.md` (its comments are format rules) with `references/examples.md` beside you: weak sections next to better ones. Then run the Self-Review.
+
+**Specs.** Each feature in Now needs a feature spec before design and build; Later features get none until a release pulls them in. Once the owner has approved the bet, or when nobody is there to ask, write them through `feature-spec`, dependencies first, handing each the §6 duties it must meet, then set each duty's "met by" to the REQ its spec gave it. Until a spec exists, its line reads `spec owed`. A personal tool may skip specs.
+
+**Report back** in 250 words or fewer, not the document. Lead with what needs a decision: each departure from the brief, a plan that doesn't fit its appetite, a duty waiting on counsel. Then the files written, reach and appetite, the v0.1 decision rule, the defaults applied and the questions to confirm (those gating v0.1 first), and the next step: `plan-review` in scope mode when the bet is weakly evidenced or the scope still arguable, then `software-architecture` and `ux-design`; §4 and the v0.1 rule go to `product-analytics` (tracking plan, kill criteria).
+
+## Checkpoint
+
+When a release reaches its date, take the result from the kill-criteria record (default `biz/analytics/kill-criteria.md`) or the caller. No data is not a pass. A threshold moved after the data is a new test. A primary that moved while a counter-metric broke its floor means change, not continue.
+
+Record it under the release: `Result (YYYY-MM-DD): [metric] = [value] (measured: source) → continue | change | stop, called by [who]`. Measured values replace §4's unknowns.
+
+- **Continue or change:** the release's features move to Shipped with the Result line, and the next bet is planned the way v0.1 was: the next belief to retire, its own audience, rule and cut line, the step 4 walk, and features pulled from Later, each of which then needs its spec. Opening to everyone adds a launch bar: support, docs, pricing, a legal and security review, the §6 bars met.
+- **Stop:** Status becomes `Stopped: [reason]`, and the audience gets what the stop rule promised.
+
+## Review
+
+A critique, never a rewrite. Read the PRD, its specs, the brief and any newer evidence, and report only what fails the Self-Review, in 600 words or fewer (every Critical and High, whatever the budget). Open with the verdict: **ready for architecture and UX**, **ready after the Critical fixes**, or **not ready** (no stated problem, or build scope committed before the core bet is tested). Each finding gives its severity, section, the quoted problem and the fix, with patch text for Critical and High. Judge function, not format: map a PRD of another shape onto these sections by role, and never prescribe this template unless asked. Edit only on request; "improve" or "fix" is one (apply the Critical and High patches, report the rest).
 
 ## Self-Review
 
-Run before presenting; in a review, each failure is a finding.
-1. **Problem and segment.** §1 names the pain behind any requested solution, its frequency and cost (tagged) and today's workaround; §2, one first segment by situation, not demographics, and (team or external) the motion. Each difference from the brief (problem, segment, metric, an ask) is decided in §3 with evidence and approver, and the report recommends revising the brief.
-2. **Numbers.** Every number the scope rests on is tagged; each §4 baseline is the same quantity as its §1 figure; no invented baseline, statistic, quote or persona.
-3. **Metrics.** The primary is a change in behavior or business result, not an output ("launched", "% auto-verified"); each outcome the brief or caller named has a row or a reason it was dropped; each gameable row has a counter-metric with a floor; every column filled, an unknown baseline as its measurement task.
-4. **v0.1.** Assumption and risk, audience, checkpoint, build bar, and continue/change/stop thresholds with who calls them (or an acceptance gate), disjoint and settleable at its sample. The first release users get lets one segment finish the core job end to end, with a Should or Could below the cut line or the exception stated; its Musts' high-end whole-job estimates fit ~60% of the appetite, or the whole appetite with §6 giving the reason (proven estimates, low risk) or calling the plan tight and saying what gives.
-5. **Runs with real people.** Each lifecycle step its audience and the people it records, scores or contacts will hit, and each operator job, is a row, an owned manual step with its breaking volume, or an argued non-goal; the stop rule covers pilot users and their data; a replaced tool has a dated Transition line, and no integration whose absence the evidence says sends users back sits below the cut line.
-6. **Features.** Each §5 row traces to §1, §4 or what running v0.1 needs, and names a user capability (adopted keys stay), with no layouts, components or final copy; §5, §6 and `features/` match one-to-one on the key (no orphan file but a retired spec; no spec-less row unless specs were skipped or the row is shipped); `depends on:` targets exist and sit earlier in §6; spec depth follows release and obligation.
-7. **Non-goals.** Each one someone would argue for, tagged `[never]` or `[later: trigger]`, contradicting nothing in §5; costly `[later]` items carry ⚠ arch.
-8. **§8.** The envelope present, unknowns as tagged defaults; each duty has its checked source and is met, in the release that first incurs it, by a REQ that exists in the cited spec and states the duty with acceptance criteria (nothing built: a build-bar step with its owner); at least one value or viability risk; technology only where imposed, with its reason.
-9. **§9.** Every question names what it blocks, an owner and a default.
-10. **Specific and plain.** No §3 value proposition stays true with a competitor's name in place of ours; no sentence states what no one would dispute ("seamless", "ensure compliance"); a stakeholder reading cold follows every line, with no undefined shorthand.
-11. **Footprint.** Words below the header counted: within the reach ceiling and each stub ≤150, or over with the reason stated; no material finding cut to fit; no ToC, TBD or empty section; nothing narrates this skill.
+Run before presenting. In a review, each failure is a finding at the severity shown.
 
-## Next Steps
-
-- A weakly evidenced core bet or negotiable scope → plan-review, scope mode; then software-architecture and ux-design.
-- §4's metrics and the v0.1 rule → product-analytics (tracking plan, kill criteria); its read returns as a **Checkpoint**.
+- **Critical:** no problem or no segment; success can't be measured; v0.1 can't test the core bet, or its real audience can't run it (no way in or out, a duty it incurs with no requirement); an invented or unsourced number driving scope; something both in Now and in Never.
+- **High:** an output as the primary metric ("launched", "500 texts sent"), or a gameable metric with no counter-metric; a §4 baseline that isn't the same quantity as its §1 figure; an outcome or a brief's ask dropped silently; a decision rule its sample can't settle, or thresholds that overlap; no cut line, or nothing below it and no reason; an estimate trimmed to fit; a replaced tool with no dated transition; a costly Later item without `⚠ arch`; a feature named after a part, or one that traces to no problem, metric or step of the walk; a question gating v0.1 with no owner or default; technology nobody imposed; a dead spec link.
+- **Medium:** a generic segment; no build bar; only technical risks; a line a cold reader can't follow, or one just as true of a competitor ("seamless", "ensure compliance"); layouts, components or final copy; over the word ceiling with no reason given; a table of contents, a TBD, an empty section, or anything that narrates this method.

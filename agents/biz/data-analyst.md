@@ -164,7 +164,7 @@ the decision and what should happen next; don't hand off to another agent yourse
 
 ## Context Files (read if they exist)
 
-- `docs/prd/prd.md` — §4 Success Metrics (numeric targets, counter-metrics, data sources) and the v0.1 **Decision** rule in §6, which seeds `kill-criteria.md` (Carrying Capacity reference § Kill-Criteria Record)
+- `docs/prd/prd.md` — §4 Success (numeric targets, counter-metrics, data sources) and the current release's **Decision** rule in §5 Scope (v0.1 first), which seeds `kill-criteria.md` (Carrying Capacity reference § Kill-Criteria Record)
 - `docs/prd/product-brief.md` — the qualitative Success Signal, Decision and Next test (no numeric targets: take those from the PRD)
 - `docs/prd/features/*.md` and `docs/ux/ux-design.md` — each spec's Outcome line (`measured by`) and each top task's success criterion: metrics to instrument
 - `biz/marketing/strategy.md` — channel strategy

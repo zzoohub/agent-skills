@@ -20,8 +20,9 @@ chain and owns the handoffs.
 ## 1. Full product launch (idea → production)
 ```
 product-brief         → docs/prd/product-brief.md (the why and whether: a Decision + its Next test)
-prd-craft             → docs/prd/prd.md (+ feature specs: full for the first release users get,
-                        stubs for later ones)
+prd-craft             → docs/prd/prd.md (the bet: v0.1 and its decision rule; Now / Later / Never)
+feature-spec          → docs/prd/features/{feature}.md, one per feature in the PRD's Now release
+                        (Later features get a spec when a release pulls them in)
 software-architecture → docs/arch/system.md (+ arch-decision ADRs, database-design schema,
                         its AI Feature Mode for LLM/AI features — docs/arch/ai-features/, as needed)
 ux-design             → docs/ux/ux-design.md (+ initial screen specs via screen-design: critical-path
@@ -94,8 +95,8 @@ software-architecture (review mode)  — or —  ux-design (review mode)
 patching marketing around a product gap: a new persona or problem (a new direction) →
 `product-brief`; a requested feature or retention driver → `feature-spec` → `arch-decision` (if it
 shifts an architectural decision) → implement. At a release checkpoint, `prd-craft` (Checkpoint)
-records the result from `data-analyst`'s kill-criteria read and re-plans the next release, whose
-stub specs `feature-spec` then deepens.
+records the result from `data-analyst`'s kill-criteria read and plans the next release, whose
+features, pulled from Later, `feature-spec` then specs.
 
 ---
 
@@ -104,8 +105,9 @@ stub specs `feature-spec` then deepens.
 You don't need every skill or agent on day one. The minimum spine from idea to live product:
 
 ```
-product-brief (+ its Next test, on Test first) → prd-craft → software-architecture → ux-design
-→ implement → reviewer → verifier → (adversary, if high-risk) → ship
+product-brief (+ its Next test, on Test first) → prd-craft → feature-spec (the Now features)
+→ software-architecture → ux-design → implement → reviewer → verifier
+→ (adversary, if high-risk) → ship
 ```
 
 Defer until you actually need them: mobile (Expo's `expo` plugin) on a web-only start, the
