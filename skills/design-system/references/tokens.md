@@ -1,99 +1,98 @@
 # Tokens
 
-The example system. Hex values are placeholders (Tailwind v3 steps): swap in the brand's, then recompute every ratio.
+The role map, how a brand color enters it, the scales beside color, and the scopes a theme can take. Values are in `examples.md`'s token file and ratios come from the token test (`lib.md`); neither is restated here.
 
-## Format and Files
+## Table of Contents
 
-Token files are DTCG-style JSON (`$type`, `$value`, `{group.token}` references, CSS-string values, arrays for `cubicBezier` and `fontFamily`). DTCG 2025.10 is a W3C Community Group report, not a W3C standard; convert to its strict object forms only for a tool that enforces them. Write alpha as `rgba(r, g, b, a)` (`pipeline.md`).
+1. [Color roles](#color-roles)
+2. [Traps the pairs avoid](#traps-the-pairs-avoid)
+3. [From a brand color](#from-a-brand-color)
+4. [Other scales](#other-scales)
+5. [Type](#type)
+6. [Scopes beyond light and dark](#scopes-beyond-light-and-dark)
 
-Files live in the repo's UI folder (default `src/shared/ui/tokens/`, or a shared package once two or more apps consume them; caller may redirect):
+## Color roles
 
-```
-tokens/
-├── primitive.tokens.json   # raw scales; referenced, never emitted
-├── semantic.tokens.json    # theme-independent: space, size, radius, opacity, type, motion, z-index
-└── themes/
-    ├── light.tokens.json   # every themed key: bg, fg, border, elevation
-    └── dark.tokens.json    # the same keys, remapped
-```
+Three categories, and a utility or style property takes roles from one of them only.
 
-`themes/light.tokens.json` (excerpt; dark maps the same keys):
-
-```json
-{
-  "bg": { "accent": { "$type": "color", "$value": "{color.blue.600}" } },
-  "fg": { "onAccent": { "$type": "color", "$value": "{color.white}" } }
-}
-```
-
-## Palette
-
-| Hue | Steps |
+| Role | For |
 |---|---|
-| gray | 50 `#f9fafb`, 100 `#f3f4f6`, 200 `#e5e7eb`, 400 `#9ca3af`, 500 `#6b7280`, 700 `#374151`, 800 `#1f2937`, 900 `#111827`, 950 `#030712` |
-| blue | 400 `#60a5fa`, 500 `#3b82f6`, 600 `#2563eb`, 700 `#1d4ed8` |
-| red | 50 `#fef2f2`, 400 `#f87171`, 500 `#ef4444`, 600 `#dc2626`, 700 `#b91c1c` |
-| amber | 50 `#fffbeb`, 400 `#fbbf24`, 500 `#f59e0b`, 700 `#b45309` |
-| green | 50 `#f0fdf4`, 400 `#4ade80`, 500 `#22c55e`, 700 `#15803d` |
+| `bg.base` | The page |
+| `bg.raised` | Cards, popovers, dialogs, inputs. In a dark theme it is lighter than the page, and that carries elevation |
+| `bg.subtle` | Hover and pressed surfaces, wells. `fg.muted` fails on it |
+| `bg.accent`, `bg.accentHover` | The primary action's fill; the same fill under the pointer or a press |
+| `bg.danger`, `bg.dangerHover`, `bg.dangerSubtle` | The destructive fill; a tint behind danger text |
+| `bg.overlay` | The scrim behind a dialog. Not part of any pair |
+| `fg.default`, `fg.muted` | Body text; secondary text and placeholders |
+| `fg.link` | Links in running text, underlined |
+| `fg.danger` | Error text and icons, on a surface or on `bg.dangerSubtle` |
+| `fg.onAccent`, `fg.onDanger` | Text and icons on the fill each is named for, and nowhere else |
+| `border.default` | Dividers. About 1.2:1, so never the only boundary of an input |
+| `border.input`, `border.danger` | A control's boundary, at 3:1 |
+| `border.focus` | The focus outline |
 
-Plus `white` `#ffffff`.
+Success and warning take danger's shape when the product needs them: a fill, its on-color, a subtle tint and a text color. A role with no consumer is not added.
 
-**From a supplied brand color** (a requirement: SKILL.md § Theming):
-1. The exact hex becomes, unchanged, the step nearest its OKLCH lightness. Build the other steps in OKLCH with one lightness target per step across hues, so a step's pairs nearly hold in every hue; lower chroma where a step leaves sRGB, and re-space only the brand's neighbors if they crowd it.
-2. Test the exact value per role and mode first. As a fill: against pure white and pure black (one always passes 4.5:1; a near-black on-token such as `gray.950` can miss, at worst 4.49:1) and, in dark mode, against `bg.base` and `bg.raised` (≥3:1). As text, a ring or an icon: against every surface it sits on.
-3. A failing role takes the smallest OKLCH lightness shift that passes, hue held, chroma lowered only to stay in gamut. Search for it; never take the next step. Measured on Tailwind v3's 500 fills against white: those at 3.6–4.5:1 pass after a ΔL of 0.003–0.055, while the next step sits 0.06–0.08 away; those at 2.1–2.8:1 need 0.12–0.2, a different color, so the exact fill with a dark on-color is the smaller change. A dark-mode fill searches against `bg.raised` with `min` 3, then re-picks its on-color.
+## Traps the pairs avoid
 
-A design-time helper, run where culori is installed or can be a dev dependency; code that derives themes at runtime (on a server or device) ports the conversions it uses (OKLCH ↔ sRGB, chroma clamp, WCAG luminance) rather than add a dependency.
+- **A dark theme's fills get lighter, so their on-colors get darker.** White on the dark accent fill is 3.68:1; near-black is 5.47:1. A navy brand color kept exact as a dark-mode fill sits at 1.42:1 against the raised surface and reads as an outline.
+- **A fill is not a text color.** The accent fill used as link text is 3.99:1 on the dark raised surface, and the danger fill as error text is 3.90:1. `fg.link` and `fg.danger` exist for this, and the typed bridge keeps the fill out of `text-`.
+- **Hover and pressed states are pairs.** `hover:bg-accent/90` puts white text on a lighter fill at about 4.3:1; at `/80` it is 3.6:1. The hover token was gated; the alpha was not.
+- **Translucent fills change with what is under them.** The dark danger tint is 15% red: the test lays it over each surface before measuring. Ship the composited opaque value when a tint must sit on something unknown.
+- **`fg.muted` passes on the page and on raised surfaces only.** On `bg.subtle` it is 4.39:1 in light and 4.06:1 in dark.
 
-```js
-import { clampChroma, converter, formatHex, wcagContrast } from 'culori';
-const toOklch = converter('oklch');
+## From a brand color
 
-// The color nearest `hex` in OKLCH lightness, hue held, that reaches `min` against `against`.
-export function smallestPassingShift(hex, against, min = 4.5) {
-  const base = toOklch(hex);
-  for (let d = 0; d <= 1; d += 0.0025) {
-    for (const l of [base.l - d, base.l + d]) {
-      if (l < 0 || l > 1) continue;
-      const candidate = formatHex(clampChroma({ ...base, l }, 'oklch'));
-      if (wcagContrast(candidate, against) >= min) return { hex: candidate, deltaL: l - base.l };
-    }
-  }
-  return null; // nothing reaches `min` against this surface
+A supplied value is a requirement, not a seed.
+
+1. **Test the exact value per role and per theme first.** As a fill, either white or black always passes on it: their two ratios multiply to 21, so the better one is at least 4.58:1. In a dark theme the fill also needs 3:1 against the surfaces it sits on. As text, a ring or an icon, test it against every surface.
+2. **A failing role takes the smallest lightness shift that passes,** hue held and chroma lowered only to stay displayable: `nearestPassing(color, against, min)` in `lib.md`. Search for it; never take the next step of a ramp. Among mid-tone brand fills under white text, those at 3.5–4.5:1 pass after a shift of 0.003–0.06 in OKLCH lightness, which most eyes read as the same color. Those at 2.1–2.8:1 need 0.12–0.2, a different color, and there the exact fill with a dark on-color is the smaller change.
+3. **Ship the smaller change as provisional, and put the choice to the owner.** A brand usually arrives as two requirements, a color and the text on it, and when the pair fails one of them has to give. Three options keep the pair legal: the shifted fill under the requested text; the exact fill under the other on-color (black passes wherever white fails); the exact pair kept for large text only (3:1 from 24px, or 18.66px bold). Ship the one that changes least on screen, mark it provisional in the token file, and report it first: role, theme, old → new value, the change in lightness, the ratio, and the options not taken. If the brand's rules forbid altered values, the exact fill under the other on-color is the default. For a text, ring or edge role the option that alters nothing is a neutral one: links in `fg.default` and underlined, a neutral focus ring, a 3:1 edge around the exact fill.
+
+Hover, pressed and subtle tones come from a ramp around the brand value, built in OKLCH with one lightness target per step across hues so that a step's pairs nearly hold in every hue. The brand's exact value stays one of the steps, unchanged. A brand fill never doubles as a status fill: a red brand is not `danger`.
+
+## Other scales
+
+These keep the engine's names. The system's part is choosing which steps the product uses, and keeping literals out.
+
+- **Space,** on a 4px grid: steps 1–6 (4–24px) inside a group, 4–16 (16–64px) between groups. A gap inside a component is never larger than the gap around it.
+- **Radius:** one step per kind of component (controls, cards, dialogs), `full` for pills and avatars.
+- **Elevation:** one shadow step per layer (card, dropdown, dialog, toast). Shadows mark layers, never emphasis, and nearly vanish in a dark theme, where the raised surface does the work.
+- **Opacity:** disabled is 0.5. Nothing else fades text, because only disabled controls are exempt from contrast.
+- **Layers:** named, not numbered: sticky 200, overlay 300, modal 400, toast 500. They order portals and in-flow elements only. A native modal `<dialog>` or a `popover` renders in the top layer, above every z-index, so keep all overlays in one system: a z-indexed toast shows beneath a top-layer dialog, and inert.
+- **Targets:** 24×24 CSS px for a pointer; 44pt (iOS) or 48dp (Android) under a finger. A small icon keeps its drawn size and gains the rest as padding or `hitSlop`.
+
+## Type
+
+- **A scale is a ratio snapped to whole pixels:** about 1.2 for dense apps, 1.25–1.333 for content. Seven steps cover most products. A size the scale lacks goes through token admission, never `text-[13px]`.
+- **Sizes are in `rem`,** so the user's font setting scales them. Each size carries its own line height: tight for display sizes (1.2), about 1.5 for body.
+- **Tracking is its own value, in `em`:** slightly negative for headings, slightly positive for small caps and captions.
+- **Fluid sizes are for display and headings only.** `clamp(1.5rem, 1.2rem + 1.5vw, 1.875rem)` keeps a `rem` term in the middle so zoom still works; keep the maximum within 2.5× the minimum, or 200% zoom no longer doubles the text.
+- **Inputs are at least 16px on touch devices,** or iOS zooms the page on focus.
+- **Each script gets its own family and line height,** set per language in the token layer (`:root:lang(ja) { … }`), never per component. A Latin font has no CJK glyphs, so each shipped language names its family after it (Pretendard, Noto Sans JP, Noto Sans SC); one shared CJK fallback draws Japanese with Chinese glyph forms, or the reverse. CJK body text wants a looser line height (1.5–2.0), and CJK fonts have no true italics: emphasize with weight.
+
+## Scopes beyond light and dark
+
+A theme is a block of roles on an attribute, so anything that changes the look of a region is one.
+
+**An inverted band** (a dark footer, a highlighted plan) is `data-theme` on that element. Every primitive inside follows, with no extra class on any of them.
+
+**An art-directed page** (a campaign, a product with its own identity) is a theme of its own. It defines every role, so the system's primitives take the page's look and its pairs are tested like any other theme's. What only that page uses is a variable in the same block, not a new role:
+
+```css
+/* src/screens/summer-sale/ui/summer-sale.theme.css (shape) */
+[data-theme='summer-sale'] {
+  color-scheme: light;
+  --ds-bg-base: #fff7ed;
+  --ds-bg-accent: #c2410c;
+  --ds-fg-on-accent: #ffffff;
+  /* …every other role */
+  --sale-sunburst: #fdba74; /* this page's alone: used as bg-(--sale-sunburst) */
 }
 ```
 
-Report each shift as role, mode, old → new hex, ΔL and ratio, beside its neutral fallback, which never alters a supplied value: links in `fg.default`, underlined; a neutral focus ring; a ≥3:1 edge around the exact fill. The owner decides (SKILL.md § Theming).
+The file sits with its screen, imports there, and is a token source: add it to the token test's `SOURCES`, and the literal test already skips `*.theme.css`. A page with one odd value does not need a theme; that is a `token-exempt` line.
 
-## Allowed Pairs
+**A brand or tenant** is a second attribute, `data-brand`, with one block per brand × theme, and the full pair list runs for each. Render the attribute from the server when the tenant is known from the request. A brand that arrives later (after login, from remote config) is set once on arrival and stored, so the first-paint script replays it; clear it at logout, or a shared device shows the last tenant's brand on the login page. Brand surfaces outside the token file follow the theme or are listed as not following: favicon, `theme-color`, the manifest, splash and status bar, emails, charts and canvas, SVG logos, third-party widgets.
 
-The complete semantic color map; a pair not listed is not allowed. Ratios are WCAG 2 contrast on the worst listed surface.
-
-| Pair (fg / bg) | Light | Dark | Worst, light / dark |
-|---|---|---|---|
-| `fg.default` / `bg.base`, `bg.raised`, `bg.subtle`, any `bg.{status}Subtle` | gray.900 on gray.50, white, gray.100 | gray.50 on gray.900, gray.800, gray.700 | 16.1 / 9.86 |
-| `fg.muted` / `bg.base`, `bg.raised` (never `bg.subtle`: 4.39 / 4.06) | gray.500 | gray.400 | 4.63 / 5.78 |
-| `fg.accent` (links) / `bg.base`, `bg.raised` | blue.600 | blue.400 | 4.95 / 5.77 |
-| `fg.onAccent` / `bg.accent`, `bg.accentHover` | white on blue.600, blue.700 | gray.950 on blue.500, blue.400 | 5.17 / 5.47 |
-| `fg.onDanger` / `bg.danger`, `bg.dangerHover` | white on red.600, red.700 | gray.950 on red.500, red.400 | 4.83 / 5.35 |
-| `fg.onWarning` / `bg.warning` | gray.950 on amber.500 | the same | 9.37 / 9.37 |
-| `fg.{status}Strong` / its `bg.{status}Subtle`, `bg.base`, `bg.raised` | `.700`; subtle fill `.50` | `.400`; subtle fill `.500` at 15% alpha | red 5.91 / 4.63, amber 4.81 / 6.69, green 4.79 / 6.48 |
-| `border.input` / `bg.base`, `bg.raised` | gray.500 | gray.500 | 4.63 / 3.04 |
-| `border.focus` / `bg.base`, `bg.raised` | blue.500 | blue.400 | 3.52 / 5.77 |
-
-Not pairs: `bg.overlay` (scrim) `rgba(0, 0, 0, 0.5)` / `rgba(0, 0, 0, 0.7)`; `border.default` gray.200 / gray.700, for decorative dividers only, never an input's only boundary (1.18:1).
-
-Traps the table already avoids:
-- **Alpha fills change with what sits under them.** Gate them on every surface they can sit on (the dark status tints were), or ship the composited opaque value.
-- **Dark fills get lighter, so dark on-tokens get darker.** The dark accent fill, blue.500, is 3.99:1 on `bg.raised`; a navy brand kept exact there (blue.900) is 1.42:1 and reads as an outline. White on blue.500 is 3.68:1; `gray.950` is 5.47:1.
-- **Hover and pressed fills are pairs too.** An opacity hover such as `bg-accent/90` lightens the fill under white text to 4.32:1; use the hover token.
-
-## Other Scales
-
-- **Space** (semantic, 4px grid): `space.component` xs 4, sm 8, md 12, lg 16, xl 24; `space.layout` xs 16, sm 24, md 32, lg 48, xl 64.
-- **Touch target:** `size.touchTarget` 48, which meets Android's 48dp and iOS's 44pt.
-- **Radius:** none 0, sm 4, md 8, lg 12, xl 16, 2xl 24, full 9999.
-- **Elevation** (semantic shadows): `elevation.card`, `.dropdown`, `.modal`, `.toast` are the Tailwind v3 shadow steps sm, md, lg, xl; dark raises their alpha to 0.2–0.4, but `bg.raised` carries the dark elevation cue.
-- **Opacity:** `opacity.disabled` 0.5; disabled controls are contrast-exempt, so nothing else may fade text.
-- **z-index** (in-flow and portal layers only; the top layer ignores it): base 0, dropdown 100 (in-flow, never portaled), sticky 200, overlay 300, modal 400, popover 450, toast 500.
-- **Component tokens** (tier 3), only for a deliberate deviation or a white-label styling API: `button.radius` → `{radius.md}`, `button.paddingX.md` → `{space.component.lg}`. Version them like props.
+**Density** remaps spacing on `data-density`. Targets never shrink below the floor.

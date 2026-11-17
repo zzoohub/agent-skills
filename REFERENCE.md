@@ -44,7 +44,7 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 | Architecture | software-architecture · ai-architecture (AI features and agents) · arch-decision · database-design |
 | UX | ux-design (incl. 3D/XR UX) · screen-design · cro (when conversion-driven) |
 | Backend build | hexagonal-backend (Axum / FastAPI / Hono / NestJS guide, by stack) · database-design (incl. PostgreSQL operations) · review-checklists (pre-mortem mode while building) |
-| Web build | react-architecture (folder structure, hooks and headless patterns, request functions and query keys, functional style, server entry points) · design-system (incl. component composition and view-transition traps) · i18n · web3d |
+| Web build | react-architecture (folder structure, hooks and headless patterns, request functions and query keys, functional style, server entry points) · design-system (tokens, themes, `shared/ui` component APIs, motion incl. view-transition traps) · i18n · web3d |
 | Mobile build | react-architecture · Expo's `expo` plugin (external) · design-system · i18n |
 | Marketing | copywriting (incl. persuasion psychology) · competitor-pages · pricing · ad-creative; content: copywriting (social, email, launch-day copy, changelog) · search-visibility |
 | Growth | cro · growth-loops · churn-prevention · pricing · copywriting (incl. persuasion psychology) |
@@ -182,6 +182,11 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
 - **View transitions** — `design-system`'s `references/motion.md` keeps only the main traps of
   React's `<ViewTransition>`; plain-JS `startViewTransition` and cross-document (MPA)
   `@view-transition` have no owner.
+- **Token pipelines and shared design-system packages** — `design-system` covers one product's
+  system. It no longer carries DTCG token files, a Style Dictionary build or the release process of
+  a system several apps share (deprecation lints, codemods, majors); it keeps a line on each. Its
+  dated tool facts (Tailwind, shadcn, headless libraries) live only in its `references/stack.md`,
+  with a last-verified date.
 - **React web performance and hydration** — unowned since `react-best-practices` was removed;
   framework APIs come from version-matched docs. The Vercel plugin's `vercel:react-best-practices`
   is no replacement: it keeps rules this library dropped (module `Map` cache, SWR, `better-all`).
@@ -191,8 +196,8 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
   `eas-simulator` can, when its plugin is enabled). A platform not run is reported as
   `not run on <platform>`, which gates should treat as unverified.
 - **Vercel-Labs `web-design-guidelines` / `writing-guidelines` not internalized** — unlike the four
-  React/RN skills vendored in from vercel-labs/agent-skills (`composition-patterns` now in
-  `design-system/references/composition/`, the other three removed),
+  React/RN skills vendored in from vercel-labs/agent-skills (all four since removed, their lasting
+  patterns kept in `react-architecture` and `design-system`),
   these two only *wrap* a live WebFetch of
   Vercel-Labs-hosted rulesets, so internalizing them as-is would keep a runtime Vercel-Labs dependency;
   they were left out. `design-system` remains the primary UI-guidance authority for web UI
