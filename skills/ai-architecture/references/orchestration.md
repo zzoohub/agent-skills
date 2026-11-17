@@ -49,6 +49,8 @@ Offline and batch AI (ingestion, enrichment, classification backfills, embedding
 - **Precompute what can be precomputed**; the online path then reads a stored answer.
 - **Stages are idempotent**, keyed by input hash plus the release unit (model, prompt, schema versions), so a replay or a model change reprocesses exactly what it must, and outputs are versioned, not overwritten.
 - **Use the discounted batch tier** where the deadline allows, with a job budget instead of per-request caps.
+- **A batch tier usually has its own quota**, separate from the synchronous limits: bulk work there leaves interactive headroom untouched.
+- **The batch window is a target, not a guarantee.** A batch can end partly done or expire with nothing: reconcile by request id, resubmit the remainder, and leave slack before your own deadline.
 - **A bad record goes to a dead-letter path** with its reason; a sample of each run goes to review; output validity and cost per item are tracked per run.
 - **A model upgrade is a backfill decision**: reprocess everything, new items only, or neither, recorded with its cost.
 
