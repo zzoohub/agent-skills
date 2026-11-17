@@ -1,159 +1,134 @@
-# NestJS 12 stack guide
+# NestJS guide
 
-Read with `SKILL.md`, the contract: this file holds only what NestJS changes about it. The code is one tenant-scoped slice in `examples-domain.md`, `examples-adapters.md` and `examples-bootstrap.md`; every `file=` block there is a complete file of one project that compiles, lints and passes its tests on PostgreSQL 18.
+How to build and change a NestJS service so that it keeps the rules in `SKILL.md`: the decisions this stack forces, where it breaks a rule silently, and its traps. The code is one project, the publishing slice, split by need across `slice.md`, `reliability.md`, `service.md` and `tests.md`. Verified means that on the baseline below it passed typecheck, type-aware lint, the boundary check and its tests on PostgreSQL as the application's role, built, migrated from empty, and ran its API and worker as real processes.
 
-## 0. Version baseline
+## 0. Baseline
 
-Verified against the npm registry on 2026-10-08. APIs drift: check the official docs with a doc-lookup tool if one is available.
+Verified 2026-11-18 against the npm registry. Check newer releases with a doc-lookup tool.
 
-| Package | Version | Why it matters |
+| Package | Version | Note |
 |---|---|---|
-| Node.js | 24 LTS; `engines: ^22.13.0 \|\| >=24.11.0` | TypeORM 1.1's floor. `nest new` and generators need 22.22.3+ or 24.15+; a CommonJS app's Jest loads the ESM-only packages from 24.9 |
-| TypeScript | `~6.0.3` | 7.0 ships no compiler API (Swagger CLI plugin, dependency-cruiser). 6.0 rejects `baseUrl` (TS5101) and defaults `types` to `[]` |
-| `@nestjs/{core,common,platform-express,testing}` | 12.1.2 | ESM-only; Standard Schema params; `useSecurityHeaders()` (12.1); Express drains on close |
-| `@nestjs/config` | 12.0.1 | `validationSchema` takes Zod and keeps its parsed output; there is no 11.x |
-| `@nestjs/swagger` | 12.0.2 | Converts Standard Schemas; `@ApiResponse({ standardSchema })` |
-| `@nestjs/terminus` | 12.1.0 | `shutting_down` + `gracefulShutdownTimeoutMs`; 12.0.x leaks with `withTimeout` |
-| `@nestjs/typeorm` + `typeorm` + `pg` | 12.0.2 + 1.1.1 + 8.23.1 | 1.1 throws on `null`/`undefined` in `where` (reads and writes) and on an empty `where` in update/delete |
-| `nestjs-cls` + `@nestjs-cls/transactional` + `-adapter-typeorm` | 7.0.1 + 4.0.1 + 2.0.1 | nestjs-cls 5.x peers Nest ≤ 11 |
-| `nestjs-pino` + `pino` + `pino-http` | 5.3.1 + 10.4.0 + 11.0.0 | 4.x peers stop at Nest 11 |
-| `zod` | 4.6.5 | ≥ 4.2 for Standard JSON Schema (OpenAPI); string lengths count code points, like `char_length` |
-| `jose` | 6.2.12 | ESM-only |
-| `uuid` | 14.0.2 | Monotonic v7; `crypto.randomUUIDv7()` needs Node ≥ 24.16 |
-| `@opentelemetry/sdk-node` | 0.223.0, with instrumentation http 0.223, express 0.71, nestjs-core 0.69, pg 0.75, pino 0.69 | Instrumentations release with the SDK; the ESM loader hook ships in `@opentelemetry/instrumentation` |
-| `vitest` + `vite` + `supertest` | 5.0.3 + 8.3.3 + 7.3.1 | Vite 8 (Oxc) emits decorator metadata: no SWC plugin |
-| `oxlint` + `oxlint-tsgolint` + `dependency-cruiser` | 1.87.0 + 7.0.2003 + 18.5.0 | oxlint is Nest 12's default linter; tsgolint runs its type-aware rules |
+| Node.js | 26.13.1 | `engines` starts where in-thread loader hooks exist: 22.22.3, 24.11.1, 26.0.0 (§ 7). Also passed on 22.23.4. |
+| PostgreSQL | 18.7 | `uuidv7()`, `transaction_timeout`. |
+| @nestjs/common, core, platform-express, testing | 12.5.1 | ESM-only. Express 5.3.0 underneath. |
+| @nestjs/config, @nestjs/swagger | 12.1.1, 12.1.2 | Config validates with Zod and keeps its output. Swagger reads Standard Schemas. |
+| @nestjs/typeorm, typeorm, pg | 12.0.3, 1.1.3, 8.23.1 | TypeORM throws on `undefined` or `null` in a `where` and on an empty `where` in `update`. |
+| zod | 4.6.7 | Its issue codes are the `errors[].code` of every 422. |
+| jose, nestjs-pino, pino, pino-http | 6.2.17, 5.3.2, 10.4.0, 11.0.0 | |
+| uuid | 14.0.3 | Monotonic v7 within a process. Node 22 lacks `crypto.randomUUIDv7()`, and Node 26's is unordered within a millisecond. |
+| @opentelemetry/sdk-node | 0.301.2 | With api 1.10.0 and the http 0.301.2, express 0.73.0, pg 0.78.0 and pino 0.71.0 instrumentations. All three signals export to OTLP by default. |
+| import-in-the-middle | 3.6.0 | Its in-thread loader hook. |
+| typescript | 6.0.3, pinned `~6.0.3` | 7.0 has no compiler API (§ 9), and Swagger peers 5 or 6. |
+| dependency-cruiser, oxlint, oxlint-tsgolint | 18.8.0, 1.94.0, 7.0.2007 | |
+| vitest, vite, supertest | 5.1.0, 8.3.8, 7.3.2 | Vite emits decorator metadata, so tests need no SWC plugin. |
+| npm | 11.20.0 | Install scripts need approval. None is needed here. |
 
-Not used: `nestjs-zod` (peers Nest ≤ 11; the native Standard Schema path replaces it), `ts-node` (unmaintained; migrations run compiled), `madge` (does not install beside TS 6; `no-circular` replaces it), `typeorm-transactional` (last release 2023), `helmet` (`useSecurityHeaders()` sets its defaults). Watch list only: `@nestjs/{idempotency,outbox,locks,resilience,workflows,webhooks,authentication,drizzle}` (0.0.x–0.1.0, first published September–October 2026; `@nestjs/idempotency` writes outside your transaction) and `@nestjs/observe` (a hosted service, not OpenTelemetry). Drizzle 0.45 is the alternative ORM.
+Not used: `nestjs-cls` (the transaction is handed over), `@nestjs/terminus` (probes check no dependency), the Nest OpenTelemetry instrumentation (§ 9), `nestjs-zod`, `helmet` and `ts-node` (Nest and the compiled release step replace them).
 
-## 1. Approach a change in NestJS
+Watch list: `@nestjs/idempotency` and `@nestjs/outbox` (0.x), usable only if they complete inside the caller's transaction. A Nest 12 instrumentation. TypeScript 7.1. PostgreSQL 19.
 
-Plan with SKILL.md Step 3, then settle these; each is rule → why → when to break.
+## 1. Decisions
 
-- **ESM, declared in the manifest.** `"type": "module"`, `nodenext`, `.js` suffixes on relative imports, top-level `await` in entrypoints, `import.meta.dirname` for `__dirname`. *Why:* every `@nestjs/*` 12 package is ESM, and a non-interactive `nest new` scaffolds ESM. *Break:* an existing CommonJS app stays CommonJS (`nest upgrade` does not convert it; `require(esm)` loads Nest 12).
-- **The domain is plain TypeScript, wired by factories.** Ports are abstract classes, contract and DI token at once; use cases have no decorators and are built with `useFactory` + `inject`. *Why:* no reflection metadata, so no `import type` trap, and `domain/` imports nothing from `@nestjs/*`, which lets the boundary rule be an allow-list. *Break:* adapters use `@Injectable()` constructor injection, with value imports of every token.
-- **One unit of work per command, owned by the use case.** `UnitOfWork.run()` wraps `TransactionHost.withTransaction()` (propagation Required: a nested `run()` joins), retries the whole unit on `40001`/`40P01` and turns transient failures into `unavailable`. Request-path adapters reach the database only through `Db`: `read()` joins the active transaction, `write()` refuses to run without one, `outside()` commits on its own. *Why:* `TransactionHost.tx` falls back to the autocommit `dataSource.manager` whenever no transaction is active, so a write that outlives its unit of work silently commits alone. *Break:* reads may run outside a transaction; the relay and the readiness latch, which never run inside a unit of work, use the `DataSource`.
-- **Errors are a closed set, mapped exhaustively, rendered once.** `DomainError.kind` maps to a problem slug through `satisfies Record<ErrorKind, …>`, so a new kind does not compile until mapped; one `renderProblem()` serves the filter and the idempotency interceptor. *Why:* Nest's built-in exceptions carry Nest's body, body-parser errors are `http-errors` objects, and the router's 404 is a `NotFoundException`. *Break:* never.
-- **The edge checks shape; the domain owns the rules.** `@Body/@Query/@Param({ schema })` with Zod: `z.strictObject` for our write bodies (`z.object` for a sender's webhook payload, § 6), upper bounds only. Trimming, formats and exact lengths live in the domain, so every inbound adapter gets them. *Why:* one schema validates, types the handler parameter and feeds OpenAPI. *Break:* class-validator DTOs remain supported; keep one style per module.
-- **The actor travels explicitly.** A global guard verifies the token and attaches the `Actor`; handlers pass it to the use case with `@CurrentActor()`. *Why:* a principal read from CLS hides the dependency and breaks callers that are not HTTP requests. *Break:* never; CLS carries only the request id and the transaction.
-- **Background work runs in its own process.** The relay and the purge run in `worker.ts` (`createApplicationContext`) on the same `CoreModule`. *Why:* independent scaling; batch work never competes with requests for the pool. *Break:* a small service may run the loops in the API process; stop them in `onModuleDestroy` either way.
+- **ESM, declared in the manifest.** `"type": "module"`, `nodenext`, `.js` suffixes, top-level `await` in entrypoints. *Why:* every `@nestjs/*` package is ESM-only.
+- **The domain is plain TypeScript, wired by factories.** A port that Nest injects is an abstract class (`UnitOfWork`, `Clock`, `IdGenerator`, `IdempotencyStore`), because an interface leaves no runtime token. A port the unit of work hands over is an interface. Use cases are built with `useFactory`. *Why:* the domain imports nothing from `@nestjs/*`, so the boundary rule is an allow-list and the `import type` trap cannot bite there. Adapters use `@Injectable()` with value imports of every token.
+- **The transaction is handed over, never ambient.** `uow.run(actor, work)` opens a transaction, sets the tenant first and passes `work` a `tx` bound to both. A nested `run` joins through an `AsyncLocalStorage` private to the adapter, and one for another tenant is refused. Reads use a unit of work too, because row-level security shows nothing until the transaction names a tenant. *Why:* a handed-over `tx` cannot run without a tenant or after its transaction. An ambient manager falls back to the pool, where a read sees no row and a write commits alone. *Break when* a context-based transaction library is already in use: set the tenant first in every transaction and make queries outside one fail.
+- **The outermost unit retries 40001 and 40P01.** Three attempts with full jitter, then `unavailable`. A joined run never retries. *Why:* only the whole transaction is safe to repeat. Under the idempotency interceptor, the retry re-runs the handler.
+- **Errors are a closed set, rendered once.** `DomainError.kind` maps to a problem type through `satisfies Record<ErrorKind, ProblemSlug>`, and one `renderProblem()` serves the filter and the idempotency interceptor. *Why:* Nest's exceptions, body-parser's errors and the router's 404 each arrive in their own shape (§ 3).
+- **Background work runs in its own process.** `worker.ts` builds an application context on the same `CoreModule`. *Why:* it scales alone and leaves the pool to requests. *Break when* the service is small: run the loops in the API, stopped in `onModuleDestroy`.
 
-Failure semantics behind those rules:
-- **Nothing is cancelled.** An rxjs `timeout` stops waiting; the handler and its transaction run on. `statement_timeout` bounds each query, the idempotency lease (longer than the deadline) fences a late completion, and work that must happen after commit goes through the outbox.
-- **Transactions propagate through AsyncLocalStorage.** Work started inside `run()` keeps that context after `run()` resolves; only the `Db.write` guard stops it reaching the fallback manager. `repo.manager` and an injected `Repository<T>` escape the transaction entirely.
-- **Errors leave by throwing.** Guards, interceptors, pipes and handlers throw; middleware calls `next(error)`; Nest routes both to the global filter.
-- **Shutdown follows Nest's hook order** (§7): release what requests use only in `onApplicationShutdown`.
+Failure semantics:
 
-| Failure | Response | Logged | Client |
-|---|---|---|---|
-| Domain rule, state or authorization | 4xx problem | access log only | fixes the request |
-| `40001` / `40P01` | the unit of work retries (3 attempts, full jitter), then 503 | yes | retries |
-| Connection loss, pool wait, `statement_timeout`, key set unavailable | 503 + `Retry-After` | yes | retries |
-| Deadline passed | 503 + `Retry-After`; the handler runs on | yes | retries with the same `Idempotency-Key` |
-| Lease lost or key in flight | 409 `idempotency-in-flight` + `Retry-After: 1` | no | retries |
-| Anything else | 500, generic detail | once, with `request_id` | reports it |
+- **Nothing is cancelled.** The deadline stops waiting, and the handler and its transaction run on. `statement_timeout` cancels the statement at the deadline, `transaction_timeout` ends a longer transaction, and the 60 s idempotency lease outlasts both.
+- **Work must not outlive its unit.** Using `tx` after `run()` resolved fails with `Query runner already released`.
 
 ## 2. Layout and composition
 
-```
-src/
-  domain/{shared,publishing}/  errors, ports, aggregate, use cases; no framework imports
-  inbound/http/                controller, schemas, problem renderer, filter, pipe, guard, interceptors, probes
-  inbound/webhooks/            signature guard and webhook controller (internal router)
-  outbound/postgres/           entity, repository, Db, unit of work, outbox, inbox, idempotency, relay
-  migrations/                  SQL migrations, outside every hex layer
-  core.module.ts               config, logging, CLS, DataSource, UoW, clock, ids: global, both processes
-  app.module.ts                PublishingModule (ports → adapters, use-case factories) and AppModule
-  worker.module.ts, main.ts, worker.ts, configure-app.ts, shutdown.ts, telemetry.ts, config.ts, data-source.ts
+```text
+src/domain/{shared,publishing}/  errors, Actor, ports, model, use cases
+src/inbound/http/                routes, problems, auth, interceptors, probes
+src/inbound/webhooks/            the moderation receiver, on the internal router
+src/outbound/postgres/           unit of work, repository, outbox, relay, idempotency store
+src/migrations/                  SQL, outside every layer
+src/*.ts                         config, modules, entrypoints, shutdown, telemetry
 ```
 
-- `CoreModule.forProcess(name)` is global, like config and logging. A feature module exports nothing, so no feature can inject another's repository; never export `TypeOrmModule`.
-- The global filter, guard, pipe and interceptor are `APP_*` providers, not `app.useGlobal*()`: resolved by DI and present in testing modules.
-- `configureApp()` is shared by `main.ts` and the test builder, so HTTP tests run the production edge.
+`CoreModule.forProcess(name)` is global and serves both processes. `PublishingModule` binds ports to adapters and exports nothing. The global filter, guard, pipe and interceptor are `APP_*` providers, so testing modules include them. `configureApp()` serves `main.ts` and the test builder. Migrations live in `src/` because the release step runs them compiled.
 
-## 3. HTTP edge
+The boundary check keeps `src/domain` free of outside imports, `node:` included, keeps `inbound` and `outbound` apart and refuses cycles. Nest wires at runtime, so only this check catches a leaked import.
 
-`configureApp()` order; each layer wraps everything registered after it, including the responses those layers synthesize:
-1. `assignRequestId`: echoes a safe `X-Request-Id` or mints one, sets the header, stores `req.id` — the one source pino-http and nestjs-cls read.
-2. `useSecurityHeaders()`: Helmet's defaults.
-3. `enableCors()`: before anything that can fail, or browsers hide the problem document.
-4. `requireJsonBody`: 415 for a non-JSON body, which the parser would skip and the pipe answer with a confusing 422.
-5. `useBodyParser("json", { limit: "64kb" })`, with `bodyParser: false` and `rawBody: true` in the factory options: 413 and 400.
+## 3. Edge
 
-Then module middleware (pino-http, CLS), then Nest's chain: guards (auth) → interceptors (deadline, then idempotency) → pipes → handler → filter.
+| # | Layer | Why here |
+|---|---|---|
+| 1 | `assignRequestId` | Every response carries `X-Request-Id`, and pino-http reads `req.id`. |
+| 2 | `useSecurityHeaders()`, `enableCors()` | Before anything that can fail, so a browser can read the problem. |
+| 3 | `requireJsonBody` | 415. The parser would skip a non-JSON body and the pipe would answer 422. |
+| 4 | `useBodyParser("json", { limit: "64kb" })` | 413 and 400. `rawBody: true` keeps the bytes for the webhook guard. |
+| 5 | pino-http, guards, `DeadlineInterceptor`, route interceptors, pipe, handler | Nest's order. The deadline (503 at `REQUEST_TIMEOUT_MS`, at most 30 s) wraps idempotency. |
 
-**Error pipeline.** `@Catch()` everything, write through `HttpAdapterHost`, return early on `headersSent`. A Nest `HttpException` or an exposed `http-errors` error keeps its status (`getStatus()`, never its body): a status with exactly one registry slug renders that slug, any other (409, 410, 502, …) an `about:blank` problem titled by the status. Every 401 carries `WWW-Authenticate`, every 503 `Retry-After`. Express has no 405: a 404 that no route took asks Express's route table for the path's methods, while a handler's own `NotFoundException` stays a 404. Log once, in the filter: every 5xx except a probe's.
+**Error pipeline.** The filter catches everything and returns on `headersSent`. A Nest `HttpException` or an exposed `http-errors` error keeps its status, never its body. A status with exactly one registry type renders that type, any other `about:blank` (`http-api.md` § Problem types). Express has no 405, so a 404 that no route serves asks the route table for the path's methods. The filter logs every 5xx once, except a probe's.
 
-**400 vs 422.** `StandardSchemaValidationPipe`'s exception factory sees only the issues, so the subclass records the source in `transform()`: a path parameter that cannot be an id is 400; body and query values are 422 with `errors[].pointer` or `errors[].parameter`.
+**400 or 422.** The pipe's exception factory sees only the issues, so the subclass adds the source in `transform()`. A path parameter that is not an id, malformed JSON and a foreign cursor are 400. Body and query values are 422, with `errors[].pointer` or `errors[].parameter`. Schemas are strict, so `tenant_id` in a body is a 422. They carry upper bounds only, and the domain owns trimming, formats and exact lengths, so every inbound adapter gets them.
 
-**Deadline.** The global `DeadlineInterceptor` wraps per-route interceptors and answers 503 + `Retry-After` at `REQUEST_TIMEOUT_MS`, below the 60 s idempotency lease.
+**PATCH** is a merge patch, and `If-Match` is checked in the use case after the 404 and 403 decisions.
 
-## 4. Auth and the Actor
+## 4. Authentication and the Actor
 
-- `BearerAuthGuard` is the global `APP_GUARD`; `@Public()` (`Reflector.createDecorator`) exempts probes and webhooks, which verify a signature instead.
-- `jose` pins algorithms (`ES256`/`EdDSA` for JWKS; `HS256` only when `JWT_MODE=hs256`, which config refuses in production) and requires `iss`, `aud`, `exp`, `sub`; Zod parses the claims after the signature check. `sub` is bounded: it becomes part of the idempotency scope.
-- No `Bearer` credentials get the bare `Bearer` challenge; anything presented goes to jose, and a refusal is 401 with `WWW-Authenticate: Bearer error="invalid_token"`.
-- `createRemoteJWKSet` caches keys and refetches on an unknown `kid`, each fetch bounded by `timeoutDuration`. Failing to obtain the key set (timeout, network, non-200, not a key set) is 503: our dependency failed, not the token. jose reports both kinds as `JOSEError`, so the guard wraps the resolver and lets through only the errors raised while matching the token to the keys.
-- The guard sets `Cache-Control: no-store` on authenticated responses.
+`BearerAuthGuard` is the global `APP_GUARD`, and `@Public()` exempts probes and webhooks. jose pins the algorithms (ES256 and EdDSA against a JWKS, HS256 only in `hs256` mode, which config refuses in production), the issuer and the audience, and requires `exp` and `sub`. Zod then bounds `sub`, which is stored, and refuses U+0000 in it.
+
+A key source that cannot be reached answers 503, because the service's dependency failed, not the token. jose reports that failure like a bad token (§ 9), so the guard wraps the resolver and treats only `JWKSNoMatchingKey`, `JWKSMultipleMatchingKeys` and `JOSENotSupported` as token faults (401).
+
+The guard sets `Cache-Control: no-store` and attaches the `Actor`, and `@CurrentActor()` passes it to the use case. Nothing ambient carries it, because a queue, a webhook or a test has no request to read.
 
 ## 5. Persistence
 
-- **TypeORM for the aggregate, SQL for infrastructure tables.** `ArticleEntity` (Data Mapper, never Active Record) serves `findOneBy`, the keyset query and conditional `update`; outbox, inbox, idempotency and relay statements are parameterized SQL, where conditional writes and `SKIP LOCKED` read plainly.
-- **Concurrency by the shape of the write.** Unique slug: `23505` mapped by constraint name. Edit: `update(…, { version: expected })`, `affected === 0` → 412 under `If-Match`, else 409 `version-conflict`. Publish and archive: an update guarded by `status = from` that sets `version = version + 1`, then a re-read in the same transaction for the stored truth.
-- **Cursor precision.** Keyset on the UUIDv7 id alone (`id < :after ORDER BY id DESC`, index `(tenant_id, id)`); the cursor is `base64url("v1:" + id)`.
-- **Pool and session.** `connectTimeoutMS` (pg-pool's `connectionTimeoutMillis`, which also bounds the wait for a free client), `poolSize` × instances within the database's budget, `statement_timeout` (= the request deadline) and `idle_in_transaction_session_timeout` as startup parameters through `extra`, `applicationName` per process.
-- **Migrations.** Hand-written SQL in migration classes listed explicitly (globs fail under Vitest); `migrationsTransactionMode: "each"`, so a class with `transaction = false` can build an index `CONCURRENTLY`. The release step runs them compiled before rollout: `node node_modules/typeorm/cli.js migration:run -d dist/data-source.js`, so `data-source.ts` and `migrations/` live in `src/`. `migration:generate --check` in CI proves the entity still matches the SQL, except `CHECK` expressions and index column order (§ 9). Lock-safe execution: database-design.
+**Two roles.** The release step connects as the owner through `MIGRATION_DATABASE_URL`, which only `data-source.ts` reads. The application connects as `app_rw`, a login role created outside the migrations that neither owns the tables nor has BYPASSRLS. The migrations create schema `app`, the tables, the policy and only the grants the code uses. Readiness refuses a SUPERUSER or BYPASSRLS role, which would switch row-level security off without an error. TypeORM keeps its `migrations` table in the default schema (§ 9), so the owner needs `CREATE` there and `app_rw` gets `SELECT` on it.
 
-## 6. Reliability recipes
+**The tenant is set per transaction.** `inTenantTransaction()` first runs `SELECT set_config('app.current_tenant', $1, true)`. It takes a bind parameter, which `SET LOCAL` cannot, and is transaction-local, so a pooled connection keeps nothing. The policy reads it through `NULLIF(…, '')`, because a used connection reads it back as an empty string. The repository still puts `tenant_id` in every query, since the `(tenant_id, id)` index needs it.
 
-- **Idempotency** is one interceptor, on the routes that accept a key, after the auth guard (scope = tenant + subject) and inside the deadline. It acquires outside any transaction, then runs the handler and `complete()` in one `uow.run()` that the use case joins, so the stored response commits with the writes. A thrown 4xx is stored in its own transaction; anything else releases the key. It returns a promise through `from()`, so the deadline's unsubscribe cannot skip `complete()` or `release()`; when the deadline answered first, nothing is stored and the transaction rolls back. Nest sets the route status before interceptors run and never after, so a replay can set its own.
-- **Outbox relay.** One statement claims each aggregate's head row with `FOR UPDATE SKIP LOCKED` and pushes `next_attempt_at` forward as a lease; publishing happens outside any transaction; failures get a jittered backoff and dead-letter after `maxAttempts`. The worker stops claiming in `onModuleDestroy`, before the pool closes; `outbox.oldest_pending.age` is an observable gauge.
-- **Webhooks.** A guard verifies the signature over the raw bytes (`rawBody: true`) before validation; body-parser has already parsed them, so malformed JSON is a 400 before any signature check. The use case claims the `webhook-id` in the inbox inside the effect's transaction. Permanent outcomes are acknowledged, a payload the schema refuses included (logged as a warning): a 4xx would be retried until the sender disables the endpoint. The schema strips unknown members, because senders add fields. A transient failure is 503 so the sender retries.
-- **Scheduled jobs** are loops in the worker, not `@Cron` in the API, which fires on every replica: make each job idempotent (the purge is) or take an advisory lock.
+**Error translation.** A `23505` is `already-exists` only on `uq_articles_tenant_slug`, because primary keys raise it too. Classes 08 and 53, `57P0x`, `57014`, `55P03`, `25P03`, `25P04`, `40001`, `40P01`, socket errors and the pool's connect timeout become `unavailable`. Anything else stays a 500, a `42501` included.
+
+**Concurrency.** Writes are conditional and the database increments `version`, guarded on `version` for an edit and on `status` for a transition, and the repository re-reads the row in the same transaction. A version computed in memory would give a concurrent edit and transition the same ETag.
+
+**Cursor.** Newest first is a keyset on the UUIDv7 id, `base64url("v1:" + id)`, decoded only in the adapter.
+
+**Pool and session.** `connectTimeoutMS` bounds the connect and the wait for a free client. Startup parameters set `statement_timeout` to the deadline, `idle_in_transaction_session_timeout`, `TimeZone=UTC` and `transaction_timeout` at 1.5 times the deadline (§ 9). Behind a transaction-mode pooler, set them on the role.
+
+**Migrations.** Hand-written SQL in classes listed in `postgresOptions()`. `migrationsTransactionMode: "each"` lets a class with `transaction = false` build an index `CONCURRENTLY`. Run the release step once per release, from one job. `migrate:check` proves the entity matches the SQL, within its blind spots (§ 9). Lock-safe execution: database-design `references/migration-patterns.md`, if available.
+
+## 6. Reliability
+
+**Idempotency** is one interceptor per route, after the auth guard and inside the deadline. It hashes the method, `originalUrl` and the canonical body, and acquires on the pool. Then it runs the handler and `complete()` in one `uow.run()` that the use case joins, so the stored response commits with the writes. A thrown 4xx rolls back and is stored in a fresh transaction, so it replays. A 5xx releases the key. A takeover of an expired lease extends its expiry, so the purge cannot delete it. The interceptor returns through `from()`, so the deadline's unsubscribe cannot skip completion or release. Nest sets the route's status before interceptors run, so a replay sets its own. A route that also takes `If-Match` must release on 412 and 428, or the corrected retry gets the stored refusal.
+
+**Outbox relay.** The claim is a `MATERIALIZED` CTE (§ 9) over each aggregate's head row, with `FOR UPDATE SKIP LOCKED`. It increments `attempts` and moves `next_attempt_at` forward as the lease, so publishing runs outside any transaction. Outcomes are fenced on `attempts`, so a relay whose lease ran out cannot overwrite a newer claim. Consumers dedupe by id. Failures back off with full jitter and dead-letter after `maxAttempts`, and on stop the relay hands its claims back. Gauges report the oldest pending age and the dead-letter depth. Each row keeps the `traceparent` of its insert for the broker adapter.
+
+**Webhooks.** A guard verifies the signature over `req.rawBody` within 300 s, against every configured secret for rotation. Body-parser has already parsed, so malformed JSON is a 400 before the check. The schema is not strict, because senders add fields. A refused payload is logged and acknowledged, since a 4xx would be retried. The inbox claim and the effect share one unit of work under the tenant the signed payload names. A duplicate, an unknown article or a wrong state answers 204, and a transient failure 503. The router skips bearer auth and OpenAPI, so block it at the ingress.
+
+**Scheduled work** runs as loops in the worker, not as `@Cron` in the API, which fires on every replica. Each job is idempotent or takes an advisory lock.
 
 ## 7. Operability
 
-- **Readiness latch.** `onApplicationBootstrap()` makes one round-trip (`showMigrations()` refuses to open while migrations are pending), then reports local state. Terminus marks `shutting_down` in `beforeApplicationShutdown`, right after `onModuleDestroy`, so readiness answers 503 before the delay starts. Liveness is a plain handler: through `health.check()` it would turn 503 while draining.
-- **Shutdown.** `shutDownOnSignal()` replaces `enableShutdownHooks()`: `close(signal)` runs `onModuleDestroy` (stop claiming), `beforeApplicationShutdown` (readiness 503, then `gracefulShutdownTimeoutMs` on SIGTERM while traffic still flows), the HTTP drain (no deadline of its own) and `onApplicationShutdown` (TypeORM closes the pool); telemetry flushes last, under an unref'd failsafe timer. Kubernetes (30 s default grace): `SHUTDOWN_DELAY_MS` ≈ 5000. Cloud Run (10 s grace, traffic stopped before SIGTERM): 0. Delay + deadline + 3 s must fit the grace. Leave `return503OnClosing` off: it flips before the delay and answers live traffic with a non-problem 503.
-- **Logging.** nestjs-pino reads `req.id` (`customAttributeKeys.reqId: "request_id"`, `quietReqLogger`), redacts credentials and skips probes; `@opentelemetry/instrumentation-pino` adds `trace_id` and `span_id`, with `disableLogSending` so stdout stays the only log pipeline. `bufferLogs` + `app.useLogger()` route Nest's `Logger` to pino.
-- **OpenTelemetry.** `telemetry.ts` is preloaded with `node --import`: it registers the ESM loader hook before the app's modules load (the ESM-only `@nestjs/*` packages are otherwise never patched) and starts `NodeSDK`; exporters come from `OTEL_*` variables. Tests never load it.
+**Readiness** has three states: starting, ready, draining. Its `onApplicationBootstrap` is the startup round-trip: it refuses pending migrations and a bypassing role, then latches. Liveness checks nothing.
 
-## 8. Testing and CI
+**Shutdown.** `shutDownOnSignal()` replaces `enableShutdownHooks()` and passes the signal that `close()`'s interface omits. `close(signal)` runs `onModuleDestroy` (the worker stops claiming), `beforeApplicationShutdown` (readiness 503, then `SHUTDOWN_DELAY_MS` of traffic), the HTTP close, which lets in-flight requests finish, and `onApplicationShutdown` (TypeORM closes the pool). The telemetry flush is last, bounded at 1 s. A failsafe timer exits 1 when the drain overruns. Config refuses a grace below delay + deadline + 3 s. The delay is the time the platform needs to stop routing, 0 where it stops before SIGTERM.
 
-- **Real PostgreSQL.** `globalSetup` recreates the database and migrates it forward from empty; suites share it sequentially and isolate by random tenant ids. PGlite stores milliseconds and hides precision bugs.
-- **The test builder** is `Test.createTestingModule({ imports: [AppModule] })` + `configureApp()` + `init()`: production wiring, no port. Swap adapters with `overrideProvider(Token)`, which replaces only providers the graph already declares.
-- **Risk-set mechanics.** Concurrent creates through `Promise.allSettled`; an in-flight key by locking `articles` in an open transaction, so the first request blocks inside its own; a late write after `run()` resolved; a deadlock simulated with `code: "40P01"`; draining by `close("SIGTERM")` on a listening app while polling readiness; a test-only controller that throws Nest's built-in exceptions.
-- **Lint.** oxlint `--type-aware --deny-warnings` with correctness, suspicious and perf as errors; each exception carries its reason.
-- **Boundary gate.** An allow-list for the domain; `tsPreCompilationDeps` makes `import type` count; CI also fails when zero modules were cruised, which a TypeScript 7 install or a bad config causes silently:
+**Logs.** nestjs-pino logs `req.id` as `request_id`, redacts credentials and the webhook signature, and skips probes. `bufferLogs` and `app.useLogger()` route Nest's logger to pino. The pino instrumentation adds `trace_id` and `span_id`.
 
-```js file=.dependency-cruiser.cjs
-/** Dependencies point inward. DI resolves wiring at runtime, so only this gate catches a leaked import. */
-module.exports = {
-  forbidden: [
-    {
-      name: "domain-imports-only-domain",
-      comment: "An allow-list: no framework, ORM, driver, SDK or Node built-in; a deny-list always misses one.",
-      severity: "error",
-      from: { path: "^src/domain/" },
-      to: { pathNot: "^src/domain/" },
-    },
-    {
-      name: "adapters-meet-only-through-ports",
-      severity: "error",
-      from: { path: "^src/(inbound|outbound)/" },
-      to: { path: "^src/(inbound|outbound)/", pathNot: "^src/$1/" },
-    },
-    { name: "no-circular", severity: "error", from: {}, to: { circular: true } },
-  ],
-  options: {
-    tsPreCompilationDeps: true, // `import type` counts: a type-only import of an ORM type is still a leak
-    tsConfig: { fileName: "tsconfig.json" },
-    doNotFollow: { path: "node_modules" },
-  },
-};
-```
+**Telemetry.** `node --import ./dist/telemetry.js` starts the SDK before the application loads, with import-in-the-middle's in-thread loader hook, which the Express instrumentation needs to patch what the ESM Nest packages import. The server span is named by route, with Express and pg spans beneath it. Tests never load the SDK.
 
-- **OpenAPI.** The HTTP suite writes `openapi.json`; CI fails when it differs from the committed copy, and `oasdiff breaking` compares it with `main`.
+## 8. Tests and gates
+
+**Harness.** The test config derives the application's URL as `app_rw` from the owner's. The global setup creates the role if missing, recreates the database and runs the release step. Every suite connects as `app_rw`, because on the owner most tenant tests still pass and prove nothing. Files run one at a time and isolate by random tenant ids. The test builder serves the production modules through supertest without a port.
+
+**How each risk is forced.**
+
+- A deadlock: work rejecting once with `code: "40P01"`.
+- An in-flight key: `LOCK TABLE app.articles IN SHARE MODE` in a second transaction holds the first request.
+- Tenant isolation: unfiltered counts inside and outside a tenant transaction, the repository as the owner, a pool of one.
+- The relay: a second relay overtaking inside the first one's publish, and a pool of one with the planner settings that re-run a subquery.
+- The key source: a local server that answers 503, serves HTML, refuses connections or lacks the key.
+
+**Gates**, in CI order: `npm ci` → `npm run typecheck` → `npm run lint` → `npm run boundaries` → `npm test`, which rewrites `openapi.json` → `git diff --exit-code openapi.json` → `oasdiff breaking <base>/openapi.json openapi.json --fail-on ERR` → `npm run build` → `npm run migrate` on an empty database → `npm run migrate:check`.
 
 ## 9. Traps
 
@@ -161,25 +136,29 @@ Each row was reproduced on this baseline.
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| A guard's 401, the router's 404 or malformed JSON become a 500, even text/html | The filter took an `HttpException` body for a problem document; Nest's is `{ statusCode, message, error }` | Status from `getStatus()`; one renderer normalizes every error |
-| A handler's `NotFoundException` becomes a 405; a `ConflictException` an unlogged 500 | The renderer took every 404 for the router's and knew only the registry's statuses | A 404 is the router's only when no route serves the method; other statuses stay, as `about:blank` |
-| An identity-provider outage answers 401, and clients drop valid tokens | jose raises a non-200 or unparsable key set as a plain `JOSEError`, like a bad token | Wrap the key resolver: a failed fetch is 503 |
-| Valid JSON with `\u0000` answers 500 (SQLSTATE 22021) | `text` cannot store U+0000; `jsonb` refuses it too (22P05) | Refuse it in the domain's value rules |
-| A 150-emoji title is "too long" | `String.length` counts UTF-16 units; Zod, JSON Schema and `char_length` count code points | Count `Array.from(value).length` |
-| Anyone can sign a webhook | A mistyped `whsec_` secret decodes leniently, even to an empty HMAC key | Check the base64 and length at startup |
-| "Nest can't resolve dependencies of X (?, …)" | `import type` of a DI token: the metadata says `Object` | Value imports, or build the class with `useFactory` |
-| A write commits though its use case rolled back | `TransactionHost.tx` is the autocommit manager outside a transaction (late work, `repo.manager`, `Repository<T>`) | Every write through a guard that refuses without a transaction |
-| Pages repeat or never end on real PostgreSQL | Cursor through a JS `Date` (ms) over `timestamptz` (µs) | Keyset on a UUIDv7 id, or the DB's text value |
-| A loop over `query()` results sees `[rows, rowCount]` | TypeORM returns that pair for `UPDATE`/`DELETE … RETURNING` | Destructure `[rows]` |
-| An index covers one column only | Property-level `@Index` ignores its column list | Class-level `@Index(name, [columns])` |
-| A 405 lists every HTTP method | Nest mounts module middleware with `app.all()` | Skip routes that accept every method |
-| Live traffic gets a non-problem 503 (text/html) during the deregistration delay | `return503OnClosing` flips before `beforeApplicationShutdown` | Leave it off; readiness uses Terminus `shutting_down` |
-| The drift check stays green after a `CHECK` expression or an index's column order changed | TypeORM compares `CHECK` constraints by name and index columns as a set | Review both in the SQL; rename the constraint or index when its meaning changes |
-| Shutdown overruns the drain and exits 1 when no OTLP collector answers | `instrumentation-pino` also sends every record to the Logs SDK, whose default OTLP exporter retries at shutdown until its timeout | `disableLogSending: true`; a stalled trace export is bounded by the failsafe |
-| No SIGTERM delay though `gracefulShutdownTimeoutMs` is set | `close()` called without the signal (`INestApplicationContext` declares none) | `close("SIGTERM")` |
-| `TS2416` on a `StandardSchemaValidationPipe` subclass | Nest 12's generic `transform` | `override async transform<T>(value: T, metadata): Promise<T>` |
-| `SyntaxError` at a decorator in a test file | Vite 8 applies tsconfig decorator settings only to included files | Include `test/` |
-| `Cannot access 'X' before initialization` between entities | ESM + decorator metadata on a relation property | Type relations as `Relation<T>` |
-| Requests hang when the pool is exhausted | No `connectTimeoutMS`: pg-pool waits forever | Set it |
-| `overrideProvider()` cannot supply a missing provider | It replaces only declared providers | Declare the token in a test module, or `overrideModule()` |
-| The boundary gate misses a type import | Type-only imports are erased before cruising | `tsPreCompilationDeps: true` |
+| A 401, the router's 404 or malformed JSON answers `{ message, error, statusCode }` | Nest's exceptions carry Nest's body | Render from the status alone |
+| A handler's 404 becomes a 405, or a 410 a 500 | Every 404 taken for the router's, only registry statuses known | Router's 404 only when no route serves the method. Other statuses as `about:blank` |
+| A wrong method answers 404 though the path exists | Module middleware is a route accepting every method | Skip such routes when listing `Allow` |
+| Valid tokens answer 401 while the identity provider is down | jose reports a 503 or HTML reply as `JOSEError`, a non-key-set as `JWKSInvalid`, a hang as `JWKSTimeout`, a refusal as `TypeError` | Wrap the resolver. Only key-matching errors are token faults |
+| `\u0000` in valid JSON answers 500 (22021, or 22P05 in `jsonb`) | PostgreSQL text cannot hold U+0000 | Refuse it in the domain |
+| 150 emoji are too long for the model but fit the column | `String.length` counts UTF-16 units. Zod and `char_length` count code points | `Array.from(value).length` |
+| Anyone can sign a webhook | A mistyped secret decodes leniently, `"!!!!"` to zero bytes | Check base64 and length at startup |
+| `Nest can't resolve dependencies of the NeedsConfig (?)` | `import type` of a DI token | Value imports, or `useFactory` |
+| `findOneBy` returns `null` for an existing article, `insert` fails with 42501 | A `Repository<T>` or the `DataSource` runs outside any tenant transaction | Go through the unit of work |
+| Pages repeat or never end | A cursor through a `Date` drops the microseconds | Keyset on the UUIDv7 id |
+| A loop over `query()` results sees `[rows, count]` | TypeORM returns that pair for `UPDATE` or `DELETE … RETURNING` | Destructure `[rows]` |
+| One relay pass claims 201 rows for a batch of 5 | `id IN (SELECT … LIMIT n FOR UPDATE SKIP LOCKED)` re-run per row skips the rows already updated | A `MATERIALIZED` CTE |
+| After one slow statement, the next request gets `Connection terminated unexpectedly` | `transaction_timeout` equal to `statement_timeout` ends the session (25P04) | `transaction_timeout` above `statement_timeout` |
+| Startup fails with `permission denied for schema public` | `showMigrations()` tries to create TypeORM's table as `app_rw` on an unmigrated database | Run the release step first |
+| The first migration fails with the DataSource's `schema` set to `app` | TypeORM puts its table there and never creates the schema | Keep the default schema |
+| The drift check passes after a `CHECK` or an index's column order changed | TypeORM compares checks by name and index columns as a set | Review the SQL. Rename what changes meaning |
+| The drift check wants a one-column index | A property-level `@Index` ignores its column list | Class-level `@Index` |
+| `Cannot access 'AuthorEntity' before initialization` | ESM and decorator metadata on a circular relation | `Relation<AuthorEntity>` |
+| `Nest could not find Missing element` | `overrideProvider()` replaces only declared providers | Declare the token first |
+| Every request gets 503 `text/html` during the drain delay | `return503OnClosing` flips before any hook | Leave it off |
+| Shutdown ends in the failsafe `exit(1)` without a collector | sdk-node 0.301 exports all signals to OTLP, and `shutdown()` waits about 8 s, rejecting when a span exists | Race the flush against 1 s and swallow its rejection |
+| Every log record is also exported | The pino instrumentation sends records to the Logs SDK | `disableLogSending: true` |
+| No Nest spans | instrumentation-nestjs-core 0.72 skips `@nestjs/core` 12 silently | Rely on HTTP, Express and pg spans |
+| The server span is `GET` with no route, or each start prints `DEP0205` on Node 26 | No ESM loader hook, or the deprecated `module.register()` | `register()` from `import-in-the-middle/register-hooks.mjs` |
+| The boundary check misses a type-only import | Type imports are erased before the check | `tsPreCompilationDeps: true` |
+| The boundary check reports 0 modules | TypeScript 7.0 has no compiler API | Pin TypeScript 6. The script fails on 0 |

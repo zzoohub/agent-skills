@@ -226,7 +226,7 @@ call that agent.
 | Design app-wide UX/IA, a new multi-screen flow or 3D/XR UX; recover or audit a shipped app's UX | `ux-design` | skill |
 | Design or redesign one screen, with or without a UX doc | `screen-design` | skill |
 | Implement 3D / XR on the web | `web3d` | skill |
-| Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge) + `database-design` (incl. PostgreSQL operations) | skill |
+| Build/modify backend: APIs, domain logic, DB queries, queue / webhook / cron handlers, workers, a tool surface for agents (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge; wires the roles and RLS that `database-design` specifies) + `database-design` (incl. PostgreSQL operations) | skill |
 | Set up or restructure a React client: folder structure, FSD, where code goes, hooks, headless patterns (render props, compound blocks, HoCs), request functions and query keys, functional style | `react-architecture` | skill |
 | Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-architecture` (structure, headless patterns, server entry points), `design-system` (tokens, themes, `shared/ui` component APIs, motion), `i18n` | skill |
 | Design tokens, dark mode or a scoped theme, a visual refresh ("looks dated"), hardcoded colors, a `shared/ui` component's API; set up or audit a design system | `design-system` | skill |
