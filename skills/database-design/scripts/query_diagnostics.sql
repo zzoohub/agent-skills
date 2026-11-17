@@ -1,7 +1,7 @@
 -- PostgreSQL runtime diagnostics, for incidents and the weekly check (structure: schema_review.sql).
 -- psql -X -f query_diagnostics.sql <conn>   Read-only; PostgreSQL 14+; also runs on a replica.
 -- [pg_stat_statements] queries need the extension. Newer columns are read via to_jsonb(row), NULL
--- on older versions. Reading the results: references/postgresql/production-ops.md.
+-- on older versions. Reading the results: references/operations.md.
 
 -- 1. Sessions by state and wait event. Lock waits -> 2. Many 'idle in transaction' -> 3.
 --    'active' with no wait_event = CPU -> 6 (window it: which statements own the time, and did

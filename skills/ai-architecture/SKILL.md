@@ -41,7 +41,7 @@ Write only what changes what the next reader does: a line stays in the feature d
 **Ownership.** Write only the feature doc. What the system docs need from this design is handed over: in a pass that also runs the software-architecture capability, put these rows straight into its docs; standalone, list them in the report as owed.
 
 - A new container, store, provider or trust boundary → an ADR, via the arch-decision capability if available, that points to the feature doc section instead of restating it.
-- A Data Inventory row per AI store: traces, memory, caches, index, eval sets.
+- A Data Inventory row per AI store: traces, memory, caches, index, eval sets. Their tables, indexes and access roles come from the database-design capability, if available.
 - The provider as a dependency with a degraded mode; the AI service-level indicators; one cost row; risks taken from the failure path.
 - What features share: the model access port, providers and exit path, the AI cost ceiling, agent identities, enforcement points, the kill switch.
 

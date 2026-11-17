@@ -22,7 +22,7 @@ Could the caller navigate the source of truth directly instead of a copy in an i
 - **Freshness** is the maximum delay before edits and permission revocations reach the index: a stated target with a guard. Index incrementally.
 - **Deletion** tombstones at once and reaches every derived copy: chunks, embeddings, caches, summaries. The index is a derived store whose rebuild time is its recovery objective.
 - **The embedder is an index-time commitment.** Queries and index use the same model and version; a change is a scheduled re-embedding migration, not a config flip. Select it on your own queries in every language you serve. The reranker follows the same rule.
-- **Placement**: co-locate the index in a store you already run until a measured ceiling binds. Size it from chunk count × dimensions × bytes per value.
+- **Placement**: co-locate the index in a store you already run until a measured ceiling binds. Size it from chunk count × dimensions × bytes per value. Its physical form (tables, vector index, filtered and hybrid search) comes from the database-design capability, if available.
 
 ## Injecting context
 

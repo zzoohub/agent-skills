@@ -1,6 +1,6 @@
-# PostgreSQL Performance Patterns
+# Scale
 
-Physical layout at scale: row size, partitioning, scale-out and read replicas. Query tuning: `references/postgresql/query-tuning.md`; vacuum, pooling and settings: `references/postgresql/production-ops.md`.
+Physical layout at scale: row size, partitioning, tenant skew, scale-out and read replicas. Query tuning: `references/query-tuning.md`; vacuum, pooling and settings: `references/operations.md`.
 
 ## 1. Row size and column order
 
@@ -34,7 +34,7 @@ CREATE TABLE access_logs_2026_10 PARTITION OF access_logs
     FOR VALUES FROM ('2026-10-01') TO ('2026-11-01');
 ```
 
-Create partitions ahead of time (pg_partman's premake, or a scheduled job) and alert when the next one is missing. A DEFAULT partition catches stray rows but makes every later ATTACH scan it and forbids `DETACH … CONCURRENTLY`; pg_partman creates one unless told not to (`p_default_table := false`).
+Create partitions ahead of time (pg_partman's premake, or a scheduled job) and alert when the next one is missing. Autovacuum never analyzes the partitioned parent, only its partitions: schedule `ANALYZE` on the parent after loads and partition changes, or queries planned against the parent run on missing statistics. A DEFAULT partition catches stray rows but makes every later ATTACH scan it and forbids `DETACH … CONCURRENTLY`; pg_partman creates one unless told not to (`p_default_table := false`).
 
 **Retention is a partition drop:**
 ```sql
@@ -45,12 +45,20 @@ DROP TABLE access_logs_2026_07;
 ```
 pg_partman automates creation and retention (`retention`, `retention_keep_table`).
 
-## 3. When one primary runs out
+## 3. Tenant skew
+
+Check the largest tenant's share of each hot table (`most_common_freqs` on `tenant_id`, read as a role that bypasses RLS). A dominant tenant fails in two ways:
+- **Plans fitted to the average tenant.** Give its sessions custom plans (`SET LOCAL plan_cache_mode = force_custom_plan`), or add statistics on `(tenant_id, <filter column>)`.
+- **Shared resources.** It draws on the CPU, I/O, connections and cache every tenant shares. When its demand drives a slowdown (load attribution in `references/query-tuning.md`, plus the application's per-tenant request rates), give it a budget (a rate limit, its own pool or replica), cache its hot aggregates, or isolate it in its own partition or database.
+
+Record which in database.md, Decisions.
+
+## 4. When one primary runs out
 
 Partitioning scales table management and replicas scale reads; neither scales writes past one primary. Signals: write saturation after query and vacuum tuning, a working set larger than one machine, per-tenant blast-radius requirements. The way out (a sharding layer such as Citus, application-level sharding, or a PostgreSQL-compatible distributed database whose isolation, transaction limits and PL/pgSQL support differ) is a system-level decision (`system.md`), and most products never need one. The schema's job is to **not foreclose it**: every unique constraint carries the prospective distribution key (usually `tenant_id`) now, and primary keys do too once sharding is on the Scaling Ladder (`system.md` §4).
 
-## 4. Read replicas
+## 5. Read replicas
 
 Replicas scale reads and add lag.
-- Route read-after-write flows ("show what I just saved") to the primary; send only lag-tolerant reads (dashboards, search, reports) to replicas. `synchronous_commit = remote_apply` makes a commit wait until a synchronous standby has applied it: read-your-writes on that standby, paid in write latency. On PG19+ the reader pays instead: the client keeps the LSN the primary reports after its commit (`pg_current_wal_insert_lsn()`), and the replica runs `WAIT FOR LSN '<lsn>' WITH (TIMEOUT '…')` before reading.
-- A long query on a replica is either cancelled by replay conflicts or, with `hot_standby_feedback = on`, pins the primary's xmin horizon and bloats it (`references/postgresql/production-ops.md`). Choose per replica.
+- Route read-after-write flows ("show what I just saved") to the primary; send only lag-tolerant reads (dashboards, search, reports) to replicas. `synchronous_commit = remote_apply` makes a commit wait until a synchronous standby has applied it: read-your-writes on that standby, paid in write latency. On PG19+ the reader pays instead: the client keeps the LSN the primary reports after its commit (`pg_current_wal_insert_lsn()`), and the replica runs `WAIT FOR LSN '<lsn>' WITH (TIMEOUT '…')` before reading, as a top-level statement sent before the session has taken a snapshot.
+- A long query on a replica is either cancelled by replay conflicts or, with `hot_standby_feedback = on`, pins the primary's xmin horizon and bloats it (`references/operations.md`). Choose per replica.

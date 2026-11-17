@@ -5,7 +5,7 @@ Diagnose slowness from evidence: attribute the load, reproduce each statement th
 ## Attribute the load first
 
 The request names one query; the problem is whatever owns the time.
-- **Scope.** One endpoint slow, or everything? Everything, or CPU, I/O or connections saturated, means a shared resource ran out (check the session shape first: `references/postgresql/production-ops.md`, Incident triage), so find the statements consuming it. One endpoint: list every statement it issues per request (the list, its count, facets, any N+1) and every variant (filters, sorts, page depth), and fix the set, not the sample.
+- **Scope.** One endpoint slow, or everything? Everything, or CPU, I/O or connections saturated, means a shared resource ran out (check the session shape first: `references/operations.md`, Incident triage), so find the statements consuming it. One endpoint: list every statement it issues per request (the list, its count, facets, any N+1) and every variant (filters, sorts, page depth), and fix the set, not the sample.
 - **Rank by share of total time over a window** that brackets the change (`scripts/query_diagnostics.sql` §6 window, or the host's per-query history). Never by mean, never on totals since the last reset, and never reset the statistics to "start clean": that destroys the baseline. A 3 ms statement called 20M times a day spends about 17 hours of database time daily, and a ranking by mean never shows it.
 - **Split each top statement's growth** into calls/s (demand) and mean ms (cost per call), before vs during:
 
@@ -16,7 +16,7 @@ The request names one query; the problem is whatever owns the time.
   | up | up | both | each, by its share |
 
 - **Blast radius.** The statements that together own most of the window explain a system-wide symptom; a statement that regressed but owns a few percent is a finding, not the cause. Name every cause that owns a material share.
-- **Always slow, or only sometimes?** Always: the plan, a missing index, or the work itself. Sometimes: a generic plan, parameter skew, lock waits (`log_lock_waits`) or a cold cache; compare the slow execution's own plan, logged by `auto_explain` (`references/postgresql/production-ops.md`), with a fast one, since a plan reproduced later may differ.
+- **Always slow, or only sometimes?** Always: the plan, a missing index, or the work itself. Sometimes: a generic plan, parameter skew, lock waits (`log_lock_waits`) or a cold cache; compare the slow execution's own plan, logged by `auto_explain` (`references/operations.md`), with a fast one, since a plan reproduced later may differ.
 - Huge `calls` with `rows / calls` near 1 is an N+1 in the application. Fix it there with one query (`= ANY($1)`, a join), not with an index. `shared_blks_read` ranks I/O (with `track_io_timing` on, its time too); `temp_blks_written` ranks sorts and hashes that spill to disk.
 - No workload data, only a pasted query: say so, give the §6 queries to run, and analyze the statement given.
 
@@ -41,7 +41,7 @@ The request names one query; the problem is whatever owns the time.
    `ANALYZE`, `SET STATISTICS` and `CREATE STATISTICS` run online (SHARE UPDATE EXCLUSIVE); build any index `CONCURRENTLY`.
 3. **Rank nodes** by their own time × loops, then by shared blocks read (from outside shared_buffers, often still the OS cache) vs hit, then temp blocks.
 4. **`ORDER BY x LIMIT n` walking an index on `x`** while discarding rare matches (large `Rows Removed by Filter`): index `(filter_col, x)`, or fix the filter's estimate so the planner stops betting on finding matches early.
-5. **Widen an index only when** `Rows Removed by Filter` × loops is at least 10× the rows returned and the query is hot. A Filter line is not a defect by itself: every extra index column costs every write and can end HOT updates. Exception: completing an index-only scan. Any index added or changed here passes the Index gate (SKILL.md Stage 3): every variant of the endpoint, and the table's existing indexes.
+5. **Widen an index only when** `Rows Removed by Filter` × loops is at least 10× the rows returned and the query is hot. A Filter line is not a defect by itself: every extra index column costs every write and can end HOT updates. Exception: completing an index-only scan. Any index added or changed here passes the Index gate (SKILL.md): every variant of the endpoint, and the table's existing indexes.
 6. **JIT** taking a large share of a short query (the `JIT:` block at the end of the plan; `jit` is on by default before PG19): `jit = off` for that role.
 7. **Index Only Scan with high `Heap Fetches`**: the visibility map is stale, so VACUUM the table; on append-only tables, lower `autovacuum_vacuum_insert_scale_factor`.
 
@@ -56,7 +56,7 @@ Estimates within 10× and every row read is needed, yet the statement owns the l
   |---|---|---|
   | **Bounded**: `SELECT count(*) FROM (SELECT 1 FROM … LIMIT 1001) s`, shown as "1,000+"; or a recent window | work capped per call | the exact number past the cap |
   | **Estimated**: the planner's row estimate (`reltuples` for a whole table) | almost free | accuracy: filtered estimates can be off by multiples |
-  | **Cached**: a summary row updated with each write (contention: `references/postgresql/query-patterns.md`, hot rows) or a table refreshed on a schedule | exact within a staleness bound | write cost or staleness, and a drift query to run |
+  | **Cached**: a summary row updated with each write (contention: `references/query-patterns.md`, hot rows) or a table refreshed on a schedule | exact within a staleness bound | write cost or staleness, and a drift query to run |
   | **Index-only**: a covering index on the filter columns | exact and fresh | still reads every matching entry; vacuum must keep pages all-visible (`Heap Fetches` near 0), so it is weak on update-heavy tables |
 
 ## Why the index is not used
@@ -68,7 +68,7 @@ Estimates within 10× and every row read is needed, yet the statement owns the l
 | `LIKE 'prefix%'` scans the table | Non-C collation | A `text_pattern_ops` index (ranges and ORDER BY still need a default-opclass index; equality works with either) or `COLLATE "C"` |
 | Parent `DELETE` slow, plan shows `Trigger for constraint …` time | Unindexed child FK column: every delete scans the child | Index the child FK column (`scripts/schema_review.sql` §1) |
 | Writes slow, low `hot_pct` (`query_diagnostics.sql` §10) | An updated column is indexed, so updates are never HOT | Drop the index on the churning column, or lower `fillfactor` when pages are full |
-| `status = ANY($2) ORDER BY created_at LIMIT n` reads every match, then sorts | The index returns rows value by value | The per-value merge (`references/indexing-strategy.md`, Column order) |
+| `status = ANY($2) ORDER BY created_at LIMIT n` reads every match, then sorts | The index returns rows value by value | The per-value merge (`references/indexing.md`, Column order) |
 
 PG18 B-tree skip scan can use a composite index whose leading column is unconstrained, but it pays off only when that column has few distinct values. Do not design for it.
 

@@ -25,7 +25,7 @@ There is no product source code here. It ships three things:
 
 - **`skills/`** — **28** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
   `references/` (deep-dive docs loaded on demand — 24 skills), `templates/`
-  (output scaffolds — `ai-architecture`, `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
+  (output scaffolds — `ai-architecture`, `database-design`, `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
   `database-design` only; two `.sql` files), `evals/` (`review-checklists` only) and the vendored
   fork's `UPSTREAM.md` record (`browse`, see below). Not counted: the untracked `skills/synced/` folder, a
   local sync cache that is not part of the library.
@@ -93,7 +93,7 @@ binary (resolved via `$BROWSE_BIN` or the bundled `bin/find-browse`) but has no 
 
 ```bash
 psql <conn> -f skills/database-design/scripts/query_diagnostics.sql  # runtime: waits, blocker tree, xmin horizon and wraparound, top statements (pg_stat_statements), replica lag
-psql <conn> -f skills/database-design/scripts/schema_review.sql  # structural: unindexed FKs, unused-index candidates, key headroom, risky types, RLS gaps
+psql <conn> -f skills/database-design/scripts/schema_review.sql  # structural: unindexed FKs, unused-index candidates, key headroom, risky types, RLS gaps, undeclared references, what each login role can do, vector columns
 ```
 
 `.gitignore` uses an ignore-all-then-whitelist pattern (comments are in Korean) and excludes build
@@ -221,7 +221,7 @@ call that agent.
 | Design the system architecture | `software-architecture` | skill |
 | Modernize, re-architect or migrate an existing system (as-is recovery, transition plan) | `software-architecture` (Build Mode on an existing system) | skill |
 | Record or review one architecture decision (ADR) on an existing system | `arch-decision` | skill |
-| Design or review a DB schema; tune queries, run lock-safe migrations or upgrade a live Postgres | `database-design` | skill |
+| Design or review a DB schema, the tables behind an AI feature (embeddings, chat, memory, runs) or the roles that bound apps, readers and agents; tune queries, run lock-safe migrations or upgrade a live Postgres | `database-design` | skill |
 | Design or review an AI feature or agent: model choice (decision model, LLM, speech), workflow, graph or agent, RAG, voice, on-device, eval gate, cost | `ai-architecture` | skill |
 | Design app-wide UX/IA, a new multi-screen flow or 3D/XR UX; recover or audit a shipped app's UX | `ux-design` | skill |
 | Design or redesign one screen, with or without a UX doc | `screen-design` | skill |

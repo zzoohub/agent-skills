@@ -1,11 +1,11 @@
 # Indexing Strategy
 
-Indexes come from access paths, not from columns; this file is the depth behind the Index gate (SKILL.md Stage 3). A query that ignores its index: `references/postgresql/query-tuning.md`. Building or dropping one on a live table: `references/migration-patterns.md`.
+Indexes come from access paths, not from columns; this file is the depth behind the Index gate in SKILL.md. A query that ignores its index: `references/query-tuning.md`. Building or dropping one on a live table: `references/migration-patterns.md`.
 
 ## From paths to indexes
 
 1. **List the paths and every variant** (gate step 1). Sources: the feature specs, the API and the code that builds the queries; on a running system, `pg_stat_statements` ranked by total time.
-2. **Constraint indexes first.** PRIMARY KEY, UNIQUE and EXCLUDE indexes enforce invariants, and child-FK indexes (SKILL.md Stage 3) serve parent deletes; none needs a path, and none is ever "unused".
+2. **Constraint indexes first.** PRIMARY KEY, UNIQUE and EXCLUDE indexes enforce invariants, and child-FK indexes (SKILL.md, DDL defaults) serve parent deletes; none needs a path, and none is ever "unused".
 3. **Tabulate candidates × variants, then merge.** Example: a tenant's orders, filtered by status (one value, several, or none), newest first, with a total count:
 
    | Candidate | `status = $2` | `status = ANY($2)` | no filter | count |
@@ -15,7 +15,7 @@ Indexes come from access paths, not from columns; this file is the depth behind 
    | `(tenant_id, status, created_at DESC, id DESC)` | seek and stop | per-value merge | per-value merge over the closed set | index-only, per value |
 
    An index whose columns are a leading prefix of another's (`(a)` beside `(a, b)`) is redundant unless it is unique or the narrow one is hot and much smaller.
-4. **Verify on seeded data** (SKILL.md Stage 3): a plan on an empty table proves nothing.
+4. **Verify on seeded data** (`references/proof.md`): a plan on an empty table proves nothing.
 
 ## Column order
 
@@ -23,6 +23,7 @@ Indexes come from access paths, not from columns; this file is the depth behind 
 - Then, under `ORDER BY … LIMIT`, the sort columns: the scan returns rows in order and stops at LIMIT, and a range column placed after them is still checked inside the index.
 - Otherwise the range column next.
 - *Break when* the range alone leaves a handful of rows: then equality → range, and sort those few.
+- `IS NULL` is not an equality for ordering: `WHERE tenant_id = $1 AND assignee_id IS NULL ORDER BY last_activity_at DESC LIMIT 20` on `(tenant_id, assignee_id, last_activity_at DESC)` fetched and sorted every unassigned row (2,329 buffers in one test). A partial index `(tenant_id, last_activity_at DESC) WHERE assignee_id IS NULL` returned the page in order (6 buffers).
 
 Example (range vs sort): `WHERE tenant_id = $1 AND due_at < now() ORDER BY priority DESC LIMIT 50`. The textbook "equality → range → sort" index `(tenant_id, due_at, priority)` fetches and sorts every overdue row (≈2,500 buffers on a 400k-row test table); `(tenant_id, priority DESC, due_at)` reads 50 rows in order (≈50 buffers).
 

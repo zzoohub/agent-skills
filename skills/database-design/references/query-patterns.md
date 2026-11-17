@@ -1,6 +1,6 @@
 # PostgreSQL Query Patterns
 
-The traps in everyday query shapes. Diagnosing a slow query: `references/postgresql/query-tuning.md`.
+The traps in everyday query shapes. Diagnosing a slow query: `references/query-tuning.md`.
 
 ## Keyset pagination
 
@@ -14,9 +14,9 @@ LIMIT 21;   -- page of 20, plus one row for has-next; index (created_at DESC, id
 ```
 - When creation order is the contract, a unique time-ordered id (UUIDv7) alone is the cursor: `WHERE id < $1 ORDER BY id DESC`.
 - Any other order needs the sort key plus a unique tiebreaker, with the comparison and the index in the same direction. Mixed directions (`ORDER BY score DESC, id ASC`) cannot use one row comparison: write `score <= $1 AND (score < $1 OR id > $2)` with an index on `(score DESC, id ASC)`. The first conjunct is the index seek; the bare OR form filters from the top of the index on every page.
-- A page can miss a row that commits late with an earlier key: fine for lists, wrong for a change feed or sync that must see every row, which needs a commit-ordered cursor (`references/design-patterns.md`, reliability tables).
+- A page can miss a row that commits late with an earlier key: fine for lists, wrong for a change feed or sync that must see every row, which needs a commit-ordered cursor (`references/integrity.md`, change feeds).
 - **The calling code** fetches `LIMIT page_size + 1` and returns a next cursor, built from the last row it returns, only when the extra row came back; an exactly full last page then ends the list instead of leading to an empty one. The cursor carries every sort key at full precision: `timestamptz` keeps microseconds and a JavaScript `Date` keeps milliseconds, so a truncated cursor skips or repeats rows.
-- A filter over several values with one sort (`status = ANY($2)`) needs the per-value merge: `references/indexing-strategy.md`, Column order.
+- A filter over several values with one sort (`status = ANY($2)`) needs the per-value merge: `references/indexing.md`, Column order.
 
 ## Child caps and fan-out
 
@@ -67,5 +67,5 @@ ORDER BY d;
 ## Hot rows, queues and materialized views
 
 - A counter updated by every request serializes those writers on one row lock. Append increments to a side table and fold them in periodically (`WITH d AS (DELETE … RETURNING …) UPDATE …`), or split the counter into N rows summed on read.
-- Job queues claim rows with `FOR UPDATE SKIP LOCKED` and a lease, commit the claim, and work outside the transaction. An outbox relay that keeps per-aggregate order claims only each aggregate's head row, so the row lease is the aggregate lease. Table shapes: `references/design-patterns.md` (reliability tables).
+- Job queues claim rows with `FOR UPDATE SKIP LOCKED` and a lease, commit the claim, and work outside the transaction. An outbox relay that keeps per-aggregate order claims only each aggregate's head row, so the row lease is the aggregate lease. Table shapes: `references/integrity.md` (reliability tables).
 - `REFRESH MATERIALIZED VIEW CONCURRENTLY` needs a unique index on the view and still recomputes the whole query before diffing. At scale, maintain a summary table incrementally.

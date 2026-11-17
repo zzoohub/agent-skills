@@ -11,7 +11,7 @@ The single source for running schema and data changes against live traffic. Befo
 
 A full `pg_dump` is no safety net: it holds ACCESS SHARE on every table for its whole run, so your ACCESS EXCLUSIVE step queues behind it, and restoring it discards every later write.
 
-**Contract steps wait for every consumer** (SKILL.md Stage 4): CDC/ETL sees a rename as drop + add, so the warehouse column vanishes.
+**Contract steps wait for every consumer** (SKILL.md, Change): CDC/ETL sees a rename as drop + add, so the warehouse column vanishes.
 
 **The lock queue is the outage.** Even metadata-only DDL needs a brief ACCESS EXCLUSIVE lock. While a long transaction holds any lock on the table, the DDL waits, and every later query on the table, reads included, queues behind it. Guard each step by type:
 - **Strong-lock DDL** (ACCESS EXCLUSIVE, SHARE ROW EXCLUSIVE): `lock_timeout` = the stall the table's hottest query can absorb, usually 100 ms–1 s on OLTP; retry 10–30 times with jittered backoff on SQLSTATE `55P03`; if retries keep failing, find the blocker (`scripts/query_diagnostics.sql` §2–3). A `statement_timeout` of a few seconds catches a "metadata-only" step that is really a rewrite.
@@ -20,9 +20,11 @@ A full `pg_dump` is no safety net: it holds ACCESS SHARE on every table for its 
 
 **One DDL step per transaction.** A multi-step `BEGIN…COMMIT` holds every lock until the final COMMIT, so a later step's wait keeps the earlier ACCESS EXCLUSIVE locks, and the traffic queued behind them, in place. The exception is an atomic swap of metadata-only statements (worked example).
 
-**Connection and tool.** Run migrations over a direct or session-pooled connection: under transaction pooling, `SET lock_timeout` and the runner's session advisory lock land on another server connection than the DDL (fallback: `SET LOCAL` per step, or `ALTER ROLE migrator SET lock_timeout = '1s'`, which a session running `CONCURRENTLY` resets to 0). Then find the runner's transaction scope. Most tools wrap each file in a transaction: put `CONCURRENTLY` and COMMIT-per-batch backfills in a file marked with the tool's no-transaction switch, or run them outside the tool, and say which. A runner holding one transaction across all pending files keeps every lock until the run ends, so each strong-lock step ships as its own run; a multi-statement file sent as one query string runs as one implicit transaction, so it carries one strong-lock step. Neither accepts `CONCURRENTLY`. A generated migration is a draft: read the SQL the ORM emits and label each statement, since generators write plain `CREATE INDEX`, validating FKs and rewriting type changes.
+**Connection and tool.** Run migrations over a direct or session-pooled connection: under transaction pooling, `SET lock_timeout` and the runner's session advisory lock land on another server connection than the DDL (fallback: `SET LOCAL` per step, or `ALTER ROLE migrator SET lock_timeout = '1s'`, which a session running `CONCURRENTLY` resets to 0). Then find the runner's transaction scope. Most tools wrap each file in a transaction: put `CONCURRENTLY` and COMMIT-per-batch backfills in a file marked with the tool's no-transaction switch, or run them outside the tool, and say which. A runner holding one transaction across all pending files keeps every lock until the run ends, so each strong-lock step ships as its own run; a multi-statement file sent as one query string runs as one implicit transaction, so it carries one strong-lock step. Neither accepts `CONCURRENTLY`. A generated migration is a draft: read the SQL the ORM emits and label each statement, since generators write plain `CREATE INDEX`, validating FKs and rewriting type changes. With no tool or naming convention to follow, write `<UTC timestamp>_<verb>_<domain>.sql` plus `.down.sql` for reversible steps in the migrations directory (default `db/migrations/`; caller may redirect), one file per domain in build order for a new schema. Never edit an applied migration, and no auto-DDL (`synchronize: true`) in deployed environments.
 
-**RLS-forced tables filter their owner too**: with no tenant set, a backfill updates nothing and a verify query finds no mismatches. Run data steps (backfill, verify, archive, purge) as the `BYPASSRLS` maintenance role (`references/design-patterns.md` §6) after `SET row_security = off`, so a policy that still applies raises an error instead of matching zero rows; or set the tenant per batch.
+**A linter checks this file's lock table mechanically** (plain `CREATE INDEX`, a constraint added without `NOT VALID`, a rewriting type change, a missing `lock_timeout`): run one in CI where the project has it (`references/landscape.md`). It reads SQL text, so it cannot know the table's size, the runner's transaction scope or the deployed code.
+
+**RLS-forced tables filter their owner too**: with no tenant set, a backfill updates nothing and a verify query finds no mismatches. Run data steps (backfill, verify, archive, purge) as the `BYPASSRLS` maintenance role (`references/access.md`) after `SET row_security = off`, so a policy that still applies raises an error instead of matching zero rows; or set the tenant per batch.
 
 ## Lock and work per statement
 
@@ -31,7 +33,7 @@ Label every statement before it ships. AE = ACCESS EXCLUSIVE (blocks everything)
 | Statement | Lock | Work | Online path |
 |---|---|---|---|
 | ADD COLUMN, nullable or non-volatile default (`now()` included) | AE, brief | metadata; existing rows read the default as evaluated at ALTER time | as is |
-| ADD COLUMN with volatile default (`uuidv7()`, `clock_timestamp()`), identity, STORED generated, or (before PG19) constrained domain | AE | rewrite | nullable plain column → backfill → constraint |
+| ADD COLUMN with volatile default (`uuidv7()`, `clock_timestamp()`), identity, STORED generated, or constrained domain | AE | rewrite | nullable plain column → backfill → constraint |
 | ALTER COLUMN TYPE | AE | rewrite + index rebuild, unless binary-coercible: `varchar(n)` → `text`/longer, `numeric` precision up at same scale, `timestamp` → `timestamptz` with session `TimeZone` UTC | new column + sync |
 | SET NOT NULL | AE | scan, skipped when a valid `CHECK (col IS NOT NULL)` exists | CHECK `NOT VALID` → `VALIDATE` → SET NOT NULL; PG18+ `NOT NULL … NOT VALID` |
 | ADD CHECK | AE | scan | `NOT VALID` → `VALIDATE` |
@@ -44,11 +46,11 @@ Label every statement before it ships. AE = ACCESS EXCLUSIVE (blocks everything)
 | CREATE TRIGGER | SRE | — | brief, under `lock_timeout` |
 | RENAME, DROP COLUMN, SET DEFAULT | AE, brief | metadata | expand-contract for renames, drops |
 | ATTACH PARTITION | SUE on parent, AE on attached table | scan, skipped by a matching valid CHECK | add that CHECK first |
-| VACUUM FULL, CLUSTER | AE | rewrite | pg_repack, or PG19+ `REPACK CONCURRENTLY` where available |
+| VACUUM FULL, CLUSTER | AE | rewrite | pg_repack, or PG19+ `REPACK (CONCURRENTLY)` |
 
 AE locks replay on physical standbys, cancelling conflicting queries or stalling replay.
 
-**Runbook.** Deliver a migration as one row per step: statement | lock | work (metadata, scan, rewrite, build) | duration | guard (`lock_timeout`, `statement_timeout`, batch size) | verify | abort trigger. Time each scan, rewrite, build and backfill on a masked production-sized copy, or on a seed of at least 10% of the rows scaled up (an estimate: index builds scale worse than linearly); a step with neither a measured nor an estimated duration is not ready. Add at most 150 words of notes: the deploy order, the PITR target, what is irreversible.
+**Runbook.** Deliver a migration as one row per step: statement | lock | work (metadata, scan, rewrite, build) | duration | guard (`lock_timeout`, `statement_timeout`, batch size) | verify | abort trigger. Time each scan, rewrite, build and backfill on a masked production-sized copy (a provider branch is one), or on a seed of at least 10% of the rows scaled up (an estimate: index builds scale worse than linearly; `references/proof.md`); a step with neither a measured nor an estimated duration is not ready. Add at most 150 words of notes: the deploy order, the PITR target, what is irreversible.
 
 ## Pre-flight
 
@@ -122,7 +124,7 @@ Keep the new name: a closing `RENAME` breaks every reader switched in step 5 (ma
 First ask whether a rename is worth four deploys; an ORM mapping costs nothing. A column rename is the type-change recipe without the cast. A table renames in one transaction with a view under the old name: `ALTER TABLE old RENAME TO new; CREATE VIEW old WITH (security_invoker = true) AS SELECT * FROM new;` (PG15+). The simple view is updatable, so old code keeps working; `security_invoker` keeps RLS applying to the caller.
 
 ### Drop a column or table
-- **Column**: deploy code that neither reads nor writes it (ORMs select every mapped column: unmap it), archive it, record the PITR target, then `DROP COLUMN`. Prepared `SELECT *` statements then fail until the pools reconnect (`references/postgresql/production-ops.md`, Pooling).
+- **Column**: deploy code that neither reads nor writes it (ORMs select every mapped column: unmap it), archive it, record the PITR target, then `DROP COLUMN`. Prepared `SELECT *` statements then fail until the pools reconnect (`references/operations.md`, Pooling).
 - **Table**: evidence first: no scans on the primary or any replica over a business cycle (`seq_scan`/`idx_scan` deltas), no dependents (`pg_depend`), no publication (`pg_publication_tables`). Archive, then `DROP TABLE` without `CASCADE`, which silently drops dependent views and FKs.
 
 ### Replace a table (strangler)

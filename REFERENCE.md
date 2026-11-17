@@ -75,7 +75,7 @@ work (the main session or a subagent it spawns) writes it.
 | Risks & open questions | `docs/arch/risks.md` | software-architecture (arch-decision closes answered Open Questions and appends accepted risks) | implementers, plan-review (execution mode), reviewer |
 | Database design | `docs/arch/database.md` | database-design | backend implementers, plan-review (execution mode, when data changes) |
 | Migrations | the project migration tool's directory and format (no tool: `db/migrations/<UTC timestamp>_<verb>_<domain>.sql` + `.down.sql` for reversible steps) | database-design | backend implementers (hexagonal-backend wiring), reviewer, adversary (migration dry-runs) |
-| AI feature design | `docs/arch/ai-features/{feature}.md` | ai-architecture | ux-design, screen-design (AI surface states), pricing (§7 cost per successful task), implementers |
+| AI feature design | `docs/arch/ai-features/{feature}.md` | ai-architecture | database-design (the stores it needs: index, session log, memory, usage), ux-design, screen-design (AI surface states), pricing (§7 cost per successful task), implementers |
 | Recovered as-is (re-architecture / system migration; retired when the transition completes) | `docs/arch/as-is.md` | software-architecture (Build Mode on an existing system) | software-architecture (Transition Plan), implementers |
 | App UX | `docs/ux/ux-design.md` | ux-design | screen-design, design-system (accessibility requirements), web3d, web/mobile implementers |
 | Screen specs | `docs/ux/screens/{screen}.md` (3D/XR: `{experience}.md`) | ux-design (initial set: critical-path and costly-to-fail screens + one exemplar per screen class, via screen-design), screen-design | screen-design (redesigns, a pending entry's exemplar), web3d, qa (screen-spec states as test oracle), web/mobile implementers |
@@ -122,6 +122,7 @@ directly when shipping.
 |---|---|---|---|
 | PostHog MCP | data-analyst (PostHog projects) | Live funnels, insights, cohorts, experiments | methodology only (no live data) |
 | Mixpanel MCP (direct server or the claude.ai connector) | data-analyst (Mixpanel projects) | Live insights, funnels, retention and flows reports, dashboards, cohorts, experiments, Lexicon | methodology only (no live data) |
+| PostgreSQL client and a scratch server (`psql`, `pgbench`; a container, local server or provider branch of the target version) | main session (database-design) | Proving a design by running it: rejected writes, races, plans on seeded data, migration rehearsal; the two diagnostic scripts | claims labeled *not run*, with the commands to run |
 | claude-in-chrome / playwright MCP | verifier, adversary | Real-browser verification & E2E; adversary drives playwright for runtime attacks | the other of the two (verifier) |
 | Expo plugin (`expo@claude-plugins-official`, enabled in a mobile project's settings) | main session (mobile build) | Expo / React Native: routing, native UI, animation, lists, data fetching, upgrades; EAS build, submit and update | Expo docs and the model's own knowledge; this library has no React Native skill |
 
