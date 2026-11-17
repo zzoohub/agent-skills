@@ -38,7 +38,7 @@ Read whenever work starts from a running system: Build Mode on an existing syste
 
 - **Extension**: the recovered as-is becomes `context.md` and `system.md` (header `State: as-is recovered YYYY-MM-DD`) and is then patched like any existing doc.
 - **Re-architecture or migration**: write it once to the as-is doc (default `docs/arch/as-is.md`). `context.md` and `system.md` describe the target; the Transition Plan links the as-is and names the live step. During the transition the drift check compares code with the live step, not with the target. When the decommission step exits, retire the as-is doc and collapse the plan to one line plus its ADR links.
-- **One decision or one AI feature**: carry the recovered slice in the ADR's Context or the feature doc's §1–§2.
+- **One decision or one AI feature**: the ADR's Context states only the recovered facts the decision rests on, and the rest goes back in the report; a feature doc carries its slice in §1–§2.
 - **Review**: return the as-is with the findings; write it only on request.
 
 ## Transition Plan

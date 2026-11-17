@@ -135,7 +135,7 @@ These rules apply from the first decision on.
 | Decision | Record |
 |---|---|
 | A default taken for a stated reason (a modular monolith at class S, the baseline's database) | One row in `system.md` §1 Decisions. No ADR |
-| A one-way door with a live alternative; a departure from the default or the technology baseline; a trade between two drivers | An ADR (`templates/adr.md`), written when decided: what was rejected and the driver it fails, what gets worse and who pays, the guard that confirms it, a revisit trigger |
+| A one-way door with a live alternative; a departure from the default or the technology baseline; a trade between two drivers | An ADR (`templates/adr.md`), written when decided: what was rejected and the driver it fails, what gets worse and who pays, the guard that enforces it, a revisit trigger |
 | A decision waiting on a spike, an unverified vendor fact or the caller's answer | The same ADR with status `Proposed` and what settles it |
 | A two-way door | Nothing beyond the design itself |
 
@@ -190,7 +190,7 @@ Default paths; the caller may redirect the `docs/arch/` root.
 | Standard | up to about six deep concerns | ≈ 1,500 | ≈ 2,500 |
 | Large | more deep concerns than that, class L, several teams, or a regulated or safety-critical domain | ≈ 2,500 | ≈ 4,500 |
 
-Tables count; diagram source does not. An ADR is about 250 words. Over budget, cut in this order: what the requirements or this skill already say, rows that restate a default, reasoning that belongs in an ADR. Never cut a driver, a one-way door, a number or a failure behavior.
+Tables count; diagram source does not. An ADR is 150 to 200 words, 250 at most. Over budget, cut in this order: what the requirements or this skill already say, rows that restate a default, reasoning that belongs in an ADR. Never cut a driver, a one-way door, a number or a failure behavior.
 
 **Defaults and exceptions.** A table lists decisions, not inventory. State the rule once ("every outbound call: deadline from the request budget, one retry in the adapter") and add a row only where this system departs from it, or where the row is itself a product decision (what the user sees when the payment provider is down). The implementer applies the default to everything unlisted. A cell is a phrase; reasoning that needs sentences belongs in an ADR.
 
@@ -208,7 +208,7 @@ Tables count; diagram source does not. An ADR is about 250 words. Over budget, c
 ## Self-Review
 
 - Every driver is one measurable sentence with a coverage row and a guard; every step up in complexity cites a number or a named force.
-- Every one-way door is in the Decisions table; each contested one has an ADR with a confirmation and a revisit trigger; none rests on a low-confidence assumption without a spike.
+- Every one-way door is in the Decisions table; each contested one has an ADR with a guard and a revisit trigger; none rests on a low-confidence assumption without a spike.
 - Every data set has one writer; personal and regulated data have an erasure path that reaches every copy; the only copy of anything has a restore test.
 - Every hard dependency has a deadline, one retry layer and a degraded mode a user would recognize.
 - Every vendor fact a decision rests on carries a source and date, or is an assumption with a spike.

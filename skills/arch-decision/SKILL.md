@@ -1,103 +1,160 @@
 ---
 name: arch-decision
 description: |
-  Record one Architecture Decision Record (ADR) on an existing system and
-  patch the architecture docs only where it makes them stale.
+  Record one architecture decision as a one-screen ADR: the decision, the
+  fact that decided it, what was rejected, its cost and when to reopen it.
+  Also decides an open X-or-Y question on an existing system, reviews or
+  tightens an ADR, and patches the docs it makes stale.
   Use for "record an ADR", "we decided to X", "should we switch from X to
-  Y", "X or Y for this component", "document why we chose X", "review
-  this ADR", or an `ADR owed` from database-design (key strategy,
-  partition key, tenancy-model change).
+  Y", "document why we chose X", "review this ADR", "this ADR is too
+  long", or an `ADR owed` from database-design.
   Do NOT use for: a new system, a multi-decision re-architecture or
-  migration (software-architecture); AI feature design
-  (ai-architecture); table,
-  column, index or schema-migration design (database-design); feature
-  requirements (feature-spec).
+  migration (software-architecture); AI feature design (ai-architecture);
+  table, column, index or schema-migration design (database-design);
+  feature requirements (feature-spec).
 ---
 
 # Arch Decision — One ADR
 
-Done: a newcomer a year on, from the ADR and its links alone, can say what was chosen, where it applies, which driver decided it and how to tell it still holds; today, whoever must decide or act on its risks knows what, by when.
+## Premise
 
-## Inputs & scope
+**An ADR holds what the code cannot say.** The code shows what was built, the tests what is enforced, the plan and the pull request how it got there. Only the ADR says why this and not the alternative, what was given up, and what would change the answer. Its reader arrives cold a year later, a person or an agent about to change or question the thing, and within a minute should know the rule, the reason, and whether the reason still holds.
 
-Docs root (`context.md`, `system.md`, `risks.md`, `adr/`): default `docs/arch/`; caller may redirect.
-- **Code, no `context.md`**: recover only what this decision touches (containers, stores, integrations, their consumers) into its Context (method: `software-architecture/references/evolution.md`, if available); write `context.md` or `system.md` only on request.
-- **Neither**: answer inline in ADR shape, as a file only if a docs root exists or the caller asks.
-- **One log**: `adr/`, else an existing decision log (e.g. `doc/adr/`, `docs/decisions/`), whose location, numbering and format win, plus whichever of Drivers, Door, Confirmation and Revisit when it lacks.
-- **Writes**: only ADRs (step 7) and step 8 edits.
+Five rules:
 
-## Method
+1. **Record the decision, not the work.** Keep what stays true as long as the decision stands. The rollout, the proof, the design detail and the file lists are true for a few weeks: they live where the work lives, and the ADR links to them.
+2. **One screen.** One or two sentences per field, in any language. In English that is 150 to 200 words, 250 at most. The limit binds the record, never the analysis. What does not fit has another home ([What stays out](#what-stays-out)), not a longer ADR.
+3. **The title is the decision.** "Background jobs run on a Postgres table, not SQS", never "Queue selection". The titles of the log, read alone, are the project's rules.
+4. **One reason, one price.** Why is the single fact that separates the winner from the runner-up, with its number. A list of benefits means the reason has not been found, and a decision with no cost was not a decision.
+5. **Supersede, never rewrite.** An accepted decision does not change. A new ADR replaces it, and the old one changes only its status line.
 
-**1. Inspect**: the spec, finding or `ADR owed` line that raised it; ADR titles, reading in full those on its component, its driver or a limit it shares; `context.md` §2 Scale Envelope, §3 Drivers, §5 Constraints, §6 Assumptions; `risks.md` Open Questions; the `system.md` lines, code and config it touches, and their consumers; its evidence, at peak.
+## When an ADR is owed
 
-**2. Classify.**
+Write one when a later reader would otherwise undo the decision by accident or argue it again:
 
-| Situation | Status | Treatment |
+- a one-way door that had a live alternative;
+- a departure from the default, the technology baseline or an accepted ADR;
+- a trade between two drivers;
+- a rule the code cannot show and contributors would otherwise break ("every LLM call goes through `generateText`").
+
+Nothing else gets one: a default taken for its stated reason, a two-way choice inside one module, a choice an accepted ADR already governs (cite it), a plan, a bug fix. Say "no ADR needed" and why in one line, unless the caller insists.
+
+**A door is typed by what undoing touches**, not by its category: one-way when reversal means migrating stored data or formats, changing a contract others bind to (shapes, ids, addresses, defaults, error text), exiting a signed commitment, or spending more than the build did.
+
+**One decision per ADR.** When several arrive together, write the one the others depend on and return the rest as follow-ups. Several coupled one-way decisions, all still open, are a redesign: use the software-architecture capability, if available.
+
+## Route the request
+
+| Situation | Do | Status |
 |---|---|---|
-| **Open**: "should we", "X or Y", a review finding | Proposed | Recommend |
-| **Made**: "we decided" | Accepted | Record it as weighed; never re-litigate; still stress-test it (step 6) |
-| **Gap-fill**: settled in a design doc or code, never recorded | Accepted, per that doc or code | As Made, never duplicating an ADR; unconfirmed rationale is *inferred* |
-| **A Proposed ADR on it exists** | Accepted once decided | Update it in place; a declined recommendation moves to Rejected |
-| **Review** of an ADR | Unchanged | Verdict (Sound, Sound after fixes, Re-decide), then findings with fixes, most severe first, in ~250 words: decision defects (steps 2–6) before record defects (Self-Review); edits on request only (Accepted: step 7) |
+| **Open**: "should we", "X or Y", a review finding | Decide it ([below](#deciding-an-open-question)) and recommend. Write the ADR only if one is owed | `Proposed` until the caller decides |
+| **Made**: "we decided X" | Record it as it was weighed. Never reopen it: a concern that could change it goes to the report as a question | `Accepted` |
+| **Unrecorded**: settled in code or a design doc, never written down | Record what is there. A reason nobody can confirm is marked *inferred*; unknown alternatives are "not recorded" | `Accepted`, with "decided ~{when}" in Context |
+| **A Proposed ADR exists** | Update it in place once decided. A recommendation the caller declined becomes a Rejected line | `Accepted` |
+| **Review or tighten an ADR** | [Review](#review) | unchanged |
 
-Accepted needs a named decider; a caller who delegates the call is one (for a one-way door, only explicitly).
+`Accepted` means the caller says the decision is made, or hands you the call in so many words. Your own recommendation is `Proposed`.
 
-**Door = what undoing it touches**, not its category: one-way if reversal must migrate persisted data or formats, change a contract others bind to (shapes, IDs, addresses, defaults, error text) or other teams' code, un-leak what a shared cache or index exposed, exit a signed commitment, or cost more than building it did (a library whose types leak into the domain). A choice an Accepted policy ADR governs needs no ADR: cite it. A two-way choice earns one only if it moves a driver's measure or a newcomer will ask "why?" within a year (else "no ADR needed", unless the caller insists), and weighs keep-current against one real alternative.
+**Read first** (defaults; caller may redirect): what raised the question (a spec, a finding, an `ADR owed` line); the titles of the existing ADRs, and in full those on the same component or driver; `docs/arch/context.md` §3 Drivers, §5 Constraints and §6 Assumptions, and the `system.md` lines it touches; the code and config on its path. With code and no docs, recover only what this decision touches: the facts the decision rests on go in Context, the rest in the report.
 
-**One decision per ADR**: write the one the others depend on and return the rest as follow-ups; a two-way choice existing only because of another is a clause in its Decision; coupled one-way decisions still open → software-architecture, if available.
+Ask the caller only what reading cannot answer and a one-way door depends on, once, each question with the default you will otherwise assume. A subagent that cannot ask applies the defaults and lists them in its report.
 
-**Ask once**, only what a one-way door needs and reading can't answer: who decides (else Proposed); what forces it now (else assumption-driven); what it binds (else new work only); who operates it (else its `system.md` §2 Key Modules owner).
+## Deciding an open question
 
-**3. Frame** (Made, gap-fill: steps 3–5 record what was weighed; missing evidence, staging or spikes go to the report). Restate the question without its answer: "switch to Y" → "bring {metric} from {now} to {target} within {constraints} by {date}"; a missing capability → "provide {it} for {whom} by {date}", keep-current priced in what it loses. Rank the drivers before naming options: `context.md` §3's order, else the trigger's driver first, as an assumption. Performance, scale or cost reasons need the measured trigger (metric at peak, breached threshold, bill); evolvability or skills reasons, the change record (lead time and defects in recent comparable changes); else an assumption naming the number a time-boxed spike would settle. "We expect growth" earns a Scaling Ladder entry, not an architecture change. Before replacing X, learn why it exists (its ADR, commit or owner); if nobody knows, say so and check before the point of no return. *Break when* the force is external (law, end of support, license, mandate, vendor exit): keep-current is one line naming it and its deadline.
+1. **Ask the question without its answer.** "Switch to Y" becomes "bring {metric} from {now} to {target} by {date}". A performance, scale or cost reason needs the measured trigger; a maintainability reason needs the record of recent comparable changes. Without either it is an assumption: name the measurement that would settle it. Expected growth is not a trigger.
+2. **Keep-current is always an option, and a switch adds fix-in-place**: the cheapest change to what exists that moves the metric. The new option must beat it with migration and coexistence counted. Before replacing something, find out why it exists.
+3. **The reason is the highest-ranked driver the winner meets and the runner-up fails**, ranked as `context.md` §3 ranks them, else with the trigger's driver first. Margin past a target decides nothing. If every option passes, cost and door decide. If none does, stay `Proposed` and name the spike or the relaxed target that would settle it.
+4. **Source the facts.** Price, quota, license and support dates come from a current primary source, with its date. Behavior under this workload comes from a time-boxed spike with a pass or fail number. Anything else is named as an assumption.
+5. **Check the winner against the running system** before recommending it. Compute the worst case, never the average: the peak, the largest tenant or payload, each shared limit's headroom, and any other ADR's Revisit trigger it would cross. List who sees a change on day one: consumers (shape, timing, order, addresses, errors) and commitments (contracts, data-processing terms, residency, allowlists). A requirement it cannot meet goes back to its owner with a concrete replacement, never silently weakened. A finding the winner cannot absorb sends you back to step 3.
+6. **Make a one-way door two-way first.** Decide the reversible step that buys the missing evidence (one tenant, a shadow copy, expand-contract) and put the full commitment's trigger in Revisit when. *Break when* staging costs more than being wrong, or a deadline forces the whole move.
+7. **Reversing an accepted ADR takes evidence**: its Revisit trigger fired, a premise proved false, or a new force appeared. Without one the accepted ADR stands: answer "no ADR needed" and cite it with its trigger. A reversal the caller has already made is still recorded, with "no new evidence since ADR-NNN" in Context.
 
-**4. Options**: the real contenders (usually 2–3) plus keep-current. A switch adds **fix-in-place**, the cheapest change to X that moves the metric, which the new option must beat, migration included. New technology names the gap the running stack can't close; cost counts migration, coexistence and blast radius (components touched), not just run. **Research the documented, spike the workload-specific**: price, license, quotas, support dates and maintenance health from a current primary source, dated in the ADR (none reachable: an assumption naming it); behavior under this workload, from a time-boxed spike with a numeric pass/fail.
+## Writing the ADR
 
-**5. Decide.**
-- **The deciding driver** is the highest-ranked one the winner meets and the runner-up fails; margin past a target decides nothing. All pass → cost and door decide (reversibility is worth what being wrong would cost); a preference neither explains is a missing driver: name it. None meets the top driver → Proposed, naming the spike or relaxed target that would settle it.
-- **One-way: name the point of no return, then make it two-way first**: decide the reversible step that buys the missing evidence (a contract or format: expand-contract; a store or service: one tenant, region or service behind the existing port, or a shadow copy fed by change-data-capture or an outbox, not a dual write, the old path authoritative and reconciled in Confirmation); the full commitment's trigger goes in `Revisit when`. *Break when* staging costs more than being wrong, or a deadline or mandate forces the whole move.
-- **Supersede on evidence**: replacing or narrowing an Accepted ADR needs a fired `Revisit when`, a premise proved false or a new force. Without one, an Open request stays Proposed; a Made one is recorded, noting "no new evidence since ADR-NNN".
-
-**6. Stress-test the winner** against the running system; the ADR's budget limits the record, never this step. Run each probe or say why it does not apply (two-way, in one team's code: often just the first and last).
-- **Worst case, computed**: capacity and availability at the worst realistic input, never the average: what outsiders control (largest tenant, payload, fan-out), the peak (incl. the backlog after an outage), each shared limit's headroom after others' reservations (quota, pool, rate limit); synchronous hops multiply availabilities. Hold its added load against the thresholds other ADRs, the `system.md` §4 Scaling Ladder and `context.md` §6 record: one it crosses is a follow-up ADR, one it nears a Tradeoff line.
-- **Consumers on day one**: what each (teams, partners, clients, jobs) sees change (shape, timing, order, duplicates, addresses, errors), and its gate: shadow or observe-only first, staged cutover with the most sensitive (external, contractual, money) last, a kill switch, advance notice; whoever must agree, a dated Open Question. *Break when* that consumer is why you are changing: it goes first.
-- **Requirement conflicts**: one the winner cannot meet (spec, SLO, contract, ADR) returns to its owner with a concrete replacement and the reason ("exactly once" → "at least once, deduped on event id"), never silently weakened.
-- **Obligations**: a new vendor, processor, region, data flow, outbound address or license may trigger data-processing terms (sub-processor notice), contract notices, residency or compliance duties, and break what third parties pinned (allowlisted IPs or domains, certificates, dedicated infrastructure): gates dated back from the step they block.
-- **Hazards in the code on its path**, changed or not: check-then-act races, events published before commit, calls without deadlines, retries without idempotency, redirects followed into internal addresses or downgrading POST, unbounded inputs, keys or queues, secrets at rest or in logs: a gate if the decision relies on or worsens one, else a risk row.
-
-Findings land once (Decision gate, Tradeoff, Confirmation, `risks.md` row, dated Open Question); any needing a decision also leads the report. Open: one the winner cannot absorb sends you back to step 5. Made, gap-fill: the decision stands, added gates are *(proposed)*, a finding that would change it goes to the decider as a question.
-
-**7. Write** one file, default `docs/arch/adr/ADR-NNN-{slug}.md`: NNN = highest existing + 1, three digits, never restarting at 001; on a collision the later writer renumbers and fixes every reference. An Accepted ADR's decision never changes: its successor changes only its Status (`Superseded by ADR-NNN`, or append `; narrowed by ADR-NNN ({where})`), and a record defect is amended on request, appended in its own field as `(amended YYYY-MM-DD: …)`. A retroactive ADR carries its decision date, else today plus "decided ~{when}" in Context.
+One file per decision, default `docs/arch/adr/ADR-NNN-{slug}.md` (caller may redirect). NNN is the highest existing number plus one, three digits, never restarting at 001. An existing log (`docs/adr/`, `docs/decisions/`, …) keeps its location, numbering, language and headings: map the fields below onto its headings without adding one, a field the log has no heading for becoming a labeled line under the nearest (Why under Decision; Door, Rejected, Tradeoff and Revisit when under Consequences). The five rules still apply. With no docs root and none asked for, answer inline in this shape.
 
 ```markdown
-<!-- ~250 words two-way, ~500 one-way; the budget limits this record, never the analysis (overflow: risks.md and the report). software-architecture's ADR fields: keep each ("none — {why}" if n/a), add none. Link evidence and design, never restate; no pros/cons lists, scores, "industry standard" reasons or method narration. -->
-## ADR-NNN: {the decision, stated as a choice} — YYYY-MM-DD
+# ADR-NNN: {the decision, as a rule or a choice}
 
-- **Status**: Proposed — decider {role}, decide-by {when an option disappears: a renewal, a new format's first write} | Accepted — {decider}, {date} | Superseded by ADR-NNN
-- **Drivers**: {in rank order: driver and constraint ids (D-nn, C-nn; QA-nn in older docs) from context.md §3 / §5; no context doc: the forces, with numbers}
-- **Door**: One-way — {what undoing touches}; no return after {step} | Two-way — {how it is undone}
-- **Context**: {the question without its answer; measured trigger and source, or the assumption (A-nn) and what settles it; the doc or finding it answers; recovered facts tagged observed / inferred; "Supersedes (or narrows) ADR-NNN: {what changed}"}
-- **Decision**: {Chose (Proposed: Recommend) X for {scope}; gates before {step}; rollout {shadow → stages, most sensitive last; kill switch}; existing {…} migrates by {…} or stays until {…}; {old path} removed when {condition}}
-- **Why**: {the deciding driver, with its number (all pass: the cost or door)}
-- **Rejected**: {one line each: the driver it fails or the cost it adds, as its advocate would concede. Open: keep-current, and fix-in-place for a switch; Made, gap-fill: only what was weighed, else "not recorded" plus at most one *inferred*}
-- **Tradeoff**: {what gets worse and who pays, with the worst-case number; the new obligation (who operates, upgrades, is paged; notices owed); how it fails; affected components and consumers; requirements not met, pending their owners}
-- **Confirmation**: {one-way: the outcome (metric, target, by when) plus the system.md §5 guard that fails on a bypass; two-way: the outcome, or "none — {why}"; plus a signal per stress-test risk left open}
-- **Revisit when**: {a variable and threshold observable today or made so by this ADR, or a dated event; a trigger nobody sees never fires}
+- **Status**: Accepted · {the day it was decided, YYYY-MM-DD} · {who decided, or the PR or issue that records it}
+- **Door**: One-way — {what undoing touches} | Two-way — {how it is undone}
+- **Context**: {the problem, and the number or event that forced a decision now}
+- **Decision**: {the rule or choice, its scope and its exceptions; the check that enforces it}
+- **Why**: {the one fact that separates it from the runner-up, with its number}
+- **Rejected**: {each real alternative and why it lost, one line each}
+- **Tradeoff**: {what gets worse, and who pays}
+- **Revisit when**: {a metric and threshold someone can see today, or a dated event}
 ```
 
-**8. Reconcile** (Accepted only), never renumbering, renaming or consolidating sections.
-- `system.md`: patch each line this decision makes false (search for what it replaces) or incomplete (each table or diagram inventorying what it adds), incl. Security and Resilience rows for a new store, vendor or remote dependency, the §5 guard Confirmation names (a swap re-targets the old guards, never drops them) and a §4 Scaling Ladder row it executes or defers; nothing else.
-- `context.md`, only §6: add this ADR to the Dependent ADRs of each A-nn it rests on; a new assumption is a new row.
-- `risks.md`, if present (else the report carries these): close the Open Question it answers, with a link; append the risks it accepts, step 6's included, to the Risk Register, and findings awaiting another's decision to Open Questions (who decides, by when).
+Other statuses: `Proposed · YYYY-MM-DD · settled by {the spike, fact or person}, by {the date an option disappears}` and `Superseded by ADR-NNN`.
+
+A whole ADR, at the size to aim for:
+
+```markdown
+# ADR-012: Background jobs run on a Postgres table, not SQS
+
+- **Status**: Accepted · 2026-03-02 · backend lead (PR #412)
+- **Door**: Two-way — jobs sit behind the `JobQueue` port; leaving means a new adapter and draining the table.
+- **Context**: A crash between committing an order and enqueueing its job loses the job: three incidents last quarter (D-02, no lost work). Peak is 40 jobs/s.
+- **Decision**: All async work in `apps/worker` runs from a `jobs` table in the primary database, claimed with `FOR UPDATE SKIP LOCKED`. A lint rule bans broker SDK imports.
+- **Why**: The enqueue commits with the state change, so D-02 holds without an outbox. Measured capacity is 2,000 jobs/s, 50 times the peak.
+- **Rejected**:
+  - SQS: needs an outbox and a relay to meet D-02, and puts a second system on a one-person on-call.
+  - Redis (BullMQ): needs the same outbox, and a failover can lose acknowledged jobs.
+- **Tradeoff**: Queue writes share the primary's write budget, and a long job holds its transaction open and delays vacuum.
+- **Revisit when**: load stays above 500 jobs/s for a week.
+```
+
+- **Context** cites driver and constraint ids (D-nn, C-nn) where the project has them. A superseding ADR opens it with "Supersedes ADR-NNN:" and what changed since.
+- **Decision** reads "Recommend …" while `Proposed`. A convention may be two or three rule lines. Name the check that fails when the decision is bypassed (a test, a lint rule, an alert) only if it exists or ships with the work, and without its schedule. A one-way door without one is work owed, in the report.
+- **Rejected** is written so that the option's advocate would agree, and lists keep-current when it was a live option. No pros-and-cons lists, scores or "industry standard".
+- **Revisit when** holds only a condition someone can observe. A one-way door always has one; elsewhere, leave the line out instead of inventing a trigger nobody watches.
+- When the reasoning already lives in another doc (an AI feature doc, `database.md`), keep Status, Door, Decision and Revisit when, and link the section for the rest.
+
+### What stays out
+
+| It is… | It lives in |
+|---|---|
+| The rollout: steps, order, PR units, gates, cutover, rollback drill | The plan: an issue, a PR, a plan doc, or `system.md` §4 Transition Plan |
+| The proof: test strategy, coverage, benchmark tables, spike logs | The tests, the spike or the PR. The ADR quotes only the number that decided |
+| The design: paths, names, shapes, code, diagrams | The code and `system.md` |
+| Inventory: files, routes, call sites, exceptions one by one | A search, or the allowlist of the check. The Decision names the kind of exception |
+| Risks, open questions, follow-ups | `risks.md` or the tracker, and the report |
+| History: who argued what, amendments | The PR and version control |
+| Background: what the technology is, generic pros and cons | Nowhere |
+
+Test any line: *will the reader still need it a year after the work has landed?* Content the caller gave you that has no home yet is named in the report with the place it belongs, and an offer to write it there. It never goes into the ADR for safekeeping.
+
+**After acceptance** the decision's text is frozen. To reverse or narrow it, write a new ADR and change only the old one's Status (`Superseded by ADR-NNN`, or append `; narrowed by ADR-NNN ({where})`). A typo, a wrong number or a dead link is fixed in place, since version control keeps the history. Never append amendments.
+
+## Reconcile
+
+Only for `Accepted`. A `Proposed` ADR and a "no ADR needed" answer patch nothing: what they owe (a spike, a measurement) goes in the report. Search the docs for what the decision replaces and patch each line it makes false, nothing more:
+
+- `system.md`: the §1 Decisions row (decision, door, why, revisit trigger, ADR link); the components, stores, contracts and guards that changed; the §4 Transition Plan or Scaling Ladder row it starts or defers.
+- `context.md`, §6 only: add the ADR to the Dependent ADRs of each assumption it rests on. A new assumption is a new row.
+- `risks.md`: close the Open Question it answers, with a link; add the risks it accepts and the spikes it owes.
+- The project conventions file (`AGENTS.md`, `CLAUDE.md`) and docs outside the architecture root are not yours to edit. Give the caller the replacement line in the report: for a rule contributors must follow, one line with the ADR number.
+
+Never renumber or rename a section there: other skills read them by number.
+
+## Review
+
+For "review this ADR": the verdict first (Sound, Sound after fixes, Re-decide), then the findings, most severe first, each with its fix, in about 200 words. Edit only on request.
+
+- **Decision defects**: the question contains its answer; keep-current or fix-in-place was never weighed; Why does not separate the winner from the runner-up; a one-way door rests on an unverified assumption; an accepted ADR is reversed without evidence.
+- **Record defects**: a topic for a title; Why as a list; no Tradeoff; a Revisit trigger nobody can observe; content from [What stays out](#what-stays-out); over budget.
+
+**Tightening** an ADR that grew too long is a record edit, done on request: the decision, its scope and its exceptions keep their meaning. The rest moves to its home first and is dropped only when the caller confirms the work has landed; report what moved where. Where the log freezes accepted text, do not edit it: return the tightened text as a proposal and ask the owner to allow the edit. Never supersede for length alone, since the decision has not changed. If the text holds several decisions, propose the split instead of making it.
 
 ## Report back
 
-At most ~250 words, not the ADR, no step or probe names. **First, what needs the user's decision or action**, most consequential first, each with the number behind it, owner and decide-by: risks, requirement conflicts with the proposed replacement, gates owed (notices, sign-offs, fixes, spikes with pass/fail), a driver the decision fails, a reversal without new evidence and, for a Made decision, findings that would change it, as questions. Then: id, title, status and decider (Proposed: whom to consult); door; files patched; follow-ups; defaults applied; gaps, incl. stale lines you may not edit; what you checked and found clear, in one line; for a new log, a conventions-file pointer.
+About 150 words beside an ADR, not the ADR again. An answer with no ADR behind it ("no ADR needed", or inline) is the whole answer and may run to 300. First what needs the caller's decision or action, most consequential first, each with its number, and a decide-by where an option expires: a recommendation awaiting a decision and what would settle it; a requirement the decision cannot meet, with the proposed replacement; a concern about a decision already made, as a question. Then: the ADR's id, title, status and door; files patched; what was kept out of the ADR and where it went; follow-up decisions; defaults assumed.
 
-## Self-Review
+## Self-check
 
-- Done (top) holds; Status names a decider; Proposed has a decide-by and patched nothing.
-- Drivers ranked; Why names what separates the winner from the runner-up. One-way: each assumption beneath it has a spike or check in the report (Made, gap-fill: recorded, not reopened).
-- **Stress test**: each step 6 probe has findings or a reason it does not apply; capacity and availability claims show worst-case arithmetic; each consumer that sees a change has a gate; each finding sits in one place, decisions owed first in the report.
-- Every field meets its placeholder, above all Rejected, a one-way Door and Confirmation, the old path's end; numbers and vendor facts sourced.
-- No two Accepted ADRs disagree; Accepted made every step 8 edit it owes, nothing more.
-- **Footprint**: ADR within its door's budget (~250 / ~500 words), one line per alternative, design linked not restated, no finding dropped to fit; report ≤ ~250 words; review ≤ ~250.
+- The title states the decision, and the ADR is under 250 words with no field past two sentences (Rejected: one line per option).
+- Nothing from [What stays out](#what-stays-out) is in it.
+- Why names one separating fact with its number, Tradeoff a real loss, and each Rejected line a reason its advocate would accept.
+- The status is honest: `Accepted` has a decider, `Proposed` says what settles it and patched nothing.
+- No accepted ADR had its decision edited, and every doc line an `Accepted` decision made false is patched or reported.
