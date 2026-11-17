@@ -8,7 +8,8 @@ description: |
   this ADR", or an `ADR owed` from database-design (key strategy,
   partition key, tenancy-model change).
   Do NOT use for: a new system, a multi-decision re-architecture or
-  migration, or AI feature design (software-architecture); table,
+  migration (software-architecture); AI feature design
+  (ai-architecture); table,
   column, index or schema-migration design (database-design); feature
   requirements (feature-spec).
 ---
@@ -27,7 +28,7 @@ Docs root (`context.md`, `system.md`, `risks.md`, `adr/`): default `docs/arch/`;
 
 ## Method
 
-**1. Inspect**: the spec, finding or `ADR owed` line that raised it; ADR titles, reading in full those on its component, its driver or a limit it shares; `context.md` §2 Scale Envelope, §3 ASR & Utility Tree, §5 Constraints, §6 Assumptions; `risks.md` Open Questions; the `system.md` lines, code and config it touches, and their consumers; its evidence, at peak.
+**1. Inspect**: the spec, finding or `ADR owed` line that raised it; ADR titles, reading in full those on its component, its driver or a limit it shares; `context.md` §2 Scale Envelope, §3 Drivers, §5 Constraints, §6 Assumptions; `risks.md` Open Questions; the `system.md` lines, code and config it touches, and their consumers; its evidence, at peak.
 
 **2. Classify.**
 
@@ -68,11 +69,11 @@ Findings land once (Decision gate, Tradeoff, Confirmation, `risks.md` row, dated
 **7. Write** one file, default `docs/arch/adr/ADR-NNN-{slug}.md`: NNN = highest existing + 1, three digits, never restarting at 001; on a collision the later writer renumbers and fixes every reference. An Accepted ADR's decision never changes: its successor changes only its Status (`Superseded by ADR-NNN`, or append `; narrowed by ADR-NNN ({where})`), and a record defect is amended on request, appended in its own field as `(amended YYYY-MM-DD: …)`. A retroactive ADR carries its decision date, else today plus "decided ~{when}" in Context.
 
 ```markdown
-<!-- ~250 words two-way, ~500 one-way; the budget limits this record, never the analysis (overflow: risks.md and the report). software-architecture's ADR fields minus Stage (its ADRs keep it): keep each ("none — {why}" if n/a), add none. Link evidence and design, never restate; no pros/cons lists, scores, "industry standard" reasons or method narration. -->
+<!-- ~250 words two-way, ~500 one-way; the budget limits this record, never the analysis (overflow: risks.md and the report). software-architecture's ADR fields: keep each ("none — {why}" if n/a), add none. Link evidence and design, never restate; no pros/cons lists, scores, "industry standard" reasons or method narration. -->
 ## ADR-NNN: {the decision, stated as a choice} — YYYY-MM-DD
 
 - **Status**: Proposed — decider {role}, decide-by {when an option disappears: a renewal, a new format's first write} | Accepted — {decider}, {date} | Superseded by ADR-NNN
-- **Drivers**: {in rank order: QA / C ids from context.md §3 / §5; no context doc: the forces, with numbers}
+- **Drivers**: {in rank order: driver and constraint ids (D-nn, C-nn; QA-nn in older docs) from context.md §3 / §5; no context doc: the forces, with numbers}
 - **Door**: One-way — {what undoing touches}; no return after {step} | Two-way — {how it is undone}
 - **Context**: {the question without its answer; measured trigger and source, or the assumption (A-nn) and what settles it; the doc or finding it answers; recovered facts tagged observed / inferred; "Supersedes (or narrows) ADR-NNN: {what changed}"}
 - **Decision**: {Chose (Proposed: Recommend) X for {scope}; gates before {step}; rollout {shadow → stages, most sensitive last; kill switch}; existing {…} migrates by {…} or stays until {…}; {old path} removed when {condition}}

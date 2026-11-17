@@ -1,98 +1,72 @@
 # Security & Privacy
 
-The method behind design-flow Stage 8 § Security. Read when Security or Privacy & compliance is light or deep. **Light**: a line per slot — threat summary, principals, secrets and keys in `templates/system.md` §5; class, retention and residency in its §3 Data Inventory. **Deep**: the full method below for the flows its trigger names, with drivers, guards and ADRs. Model-mediated flows add `ai/security.md`.
+Read when Security or Privacy & compliance is light or deep. **Light**: one line per slot in `system.md` §5 (threats, principals, secrets) and class, retention and residency in its §3 Data Inventory. **Deep**: the method below for the flows its trigger names. Model-mediated flows add the ai-architecture capability's security rules, if available.
 
-## Threat Modeling
+## Threat pass
 
-**When.** A first pass at Stage 2 over the context diagram's boundary crossings (actors and external systems), so threat drivers reach the ATAM gate. A second pass at Stage 8 (`design-flow.md` § Security) over the container view, the Key Scenarios, operator and support paths, the build and release path (source → build → artifact → registry or store → runtime) and every model-mediated flow. Existing system: run it over the as-is, then over each interim topology a transition step creates — coexistence seams and sync channels are new crossings.
+Run it twice: early, over the context diagram's boundary crossings, so that threats become drivers; and at Stage 4, over the container view, the Key Scenarios, operator and support paths, the build and release path, and every model-mediated flow. On an existing system, also over each interim topology a transition step creates.
 
-**Per flow — a lightweight STRIDE pass** (Shostack: data-flow diagrams with trust boundaries). Ask which of Spoofing / Tampering / Repudiation / Information disclosure / Denial of service / Elevation of privilege applies. Every crossing ends in exactly one of: a control with its guard, a security ASR, or an accepted risk in the Risk Register. Promote material findings to Stage 2 as security ASRs (filter #8; design-flow Stage 8); one promoted after Stage 4 gets its gate row and ADR updates before Stage 9 closes. **Material** = it defeats an H-importance scenario, crosses a tenant boundary, touches money or regulated data, or its harm cannot be undone.
+Per crossing, ask what an attacker gains by spoofing an identity, tampering with data, denying an action, reading what they should not, exhausting a resource or escalating privilege (STRIDE is the prompt list). Where personal data flows, also ask who can be linked or identified, and what the subject was never told. **Every crossing ends in exactly one of**: a control with its guard, a driver, or an accepted risk in the Risk Register. A finding is material when it defeats a driver, crosses a tenant boundary, touches money or regulated data, or cannot be undone.
 
-**Privacy — LINDDUN-lite.** For flows carrying personal data, run the privacy analogue over the same diagram — linking, identifying, non-repudiation, detecting, data disclosure, unawareness, non-compliance — and promote material findings the same way; unawareness and non-compliance findings usually become data duties (below), not controls.
+Exploit attempts now tend to arrive before the patch does: keep exposed surface minimal by default, and make patching an automated rollout, not a project. A guard is the test or monitor that fails when its control is removed: an authorization test per principal type, a cross-tenant denial test, a deprovisioning test, a residency policy check, a fuzzer on a parser.
 
-**Record** each crossing in the threat summary (`templates/system.md` §5). A guard is the test or monitor that fails when its control is removed: authorization tests per principal type, a cross-tenant denial test, a deprovisioning test, an egress or residency policy check, a fuzzer on a parser.
+Three questions generate the rest: what happens when a check fails or times out (**deny**), what is the least each component, credential and principal needs (**least privilege**), and is every access checked at the resource, every time (**complete mediation**)?
 
-## Principals & Access
+## Principals & access
 
-Ask before listing controls: which principals exist, where does each authenticate, how is it provisioned and removed, where is it authorized, and how is privileged access granted and audited? Federation, provisioning and support access are decisions, not defaults. Deep: this table in `templates/system.md` §5.
+Before listing controls: which principals exist, where does each authenticate, how is it provisioned and removed, where is it authorized, and how is privileged access granted and audited? When deep, one row per principal type (end user, tenant admin, operator, workload, device, agent) with those columns.
 
-| Principal | Authentication source | Provisioning & deprovisioning | Authorization model & enforcement point | Credential lifetime & revocation | Privileged/emergency path & audit |
-|---|---|---|---|---|---|
-| one row per type: end user · tenant admin · operator/support · workload · device · agent | own / federated per tenant / workload identity | e.g. directory-driven; removal revokes sessions and grants | e.g. role-based within tenant, at each owning service | e.g. short-lived session, revoked on removal | e.g. just-in-time elevation, audited |
+- **Authorization at the service that owns the resource**, never only at the edge, gateway or UI. Tenant and subject come from the authenticated context, never from a request body or a model-written parameter.
+- **Deprovisioning** revokes sessions, tokens and delegated grants, not only the account.
+- **Credentials** are short-lived, scoped and bound to their holder; each has an owner and a rotation and revocation path exercised before it is needed. Internal services authenticate to each other.
+- **Devices**: an identity per unit, revocation of a stolen unit, and a stated behavior when a credential expires offline, never one that disables a safety function.
+- **Privileged access to customer data** runs through a designed path: just-in-time, time-boxed, approved, audited. Never ad-hoc production queries. Break-glass uses separate credentials and alerts on use.
+- The identity and authorization model is a one-way door.
 
-- **Authentication** sourcing follows `design-flow.md` § Subdomain Classification & Build-vs-Buy; the identity and authorization model is a one-way door (ADR).
-- **Deprovisioning** revokes sessions, tokens and delegated grants, not only the account — directory-driven where tenants bring a directory.
-- **Authorization** is enforced at the service that owns the resource, never only at the edge, gateway or UI; tenant and subject come from the authenticated context, never from a request body or model-written parameters. Choose role-, attribute- or relationship-based by how permissions are shared; tenant isolation → `system-architecture.md` § Multi-Tenancy.
-- **Credentials** are short-lived, scoped and sender-constrained, not shared static secrets; each has an owner and a rotation and revocation path exercised before it is needed. Internal services authenticate to each other — zero trust within the network.
-- **Devices**: per-unit identity at manufacture or enrollment, revocation of a stolen unit, and a stated behavior when a credential expires offline — never one that disables a safety function (design-flow Stage 4 safety rule). **Agents** are principals too (`ai/security.md`).
-- **Privileged and emergency access** to customer data runs through a designed path — just-in-time, time-boxed, approved (with tenant consent where contracts require it), audited — never ad-hoc production queries. Break-glass uses separate credentials, alerts on use and is reviewed afterwards.
+## Secrets & keys
 
-## Secrets & Keys
+- **Secrets** never live in code, images, config repositories, prompts or logs; workloads fetch them at runtime by identity. Rotation overlaps two valid versions.
+- **Keys** you manage: who controls each, its place in the hierarchy, which copies it covers, what rotation and revocation break, and its availability during recovery. Per-tenant or customer-held keys are a one-way door.
+- **Crypto-shredding** erases by deleting a per-tenant or per-subject key, provided no plaintext copy escaped it (caches, search and vector indexes, analytics, exports).
+- **Long-lived confidentiality.** Data that must stay secret for years is exposed to recording now and decryption later: prefer post-quantum key exchange where the platform offers it, and keep algorithms swappable (a versioned envelope, never an algorithm baked into a stored format).
 
-- **Secrets** never live in code, images, config repositories, prompts or logs; workloads fetch them at runtime by identity, scoped per service and environment. Rotation overlaps two valid versions, so it needs no downtime; a leak runbook revokes, rotates and reviews use.
-- **Keys** you manage get, per key: who controls it (provider-managed / customer-managed / customer-held); its place in the hierarchy (root → key-encryption keys → data keys); the copies it covers (replicas, backups, caches, indexes, exports, telemetry); what rotation and revocation break, and for whom; its availability during recovery — keys, identity and secrets are recovery prerequisites, and a restore that cannot decrypt or authenticate is not a restore. Per-tenant or customer-controlled keys are a one-way door (ADR: key ownership & hierarchy).
-- **Crypto-shredding** erases by deleting the key: encrypt per tenant or data subject, and every covered copy — backups and append-only logs included — becomes unreadable, provided no plaintext copy escaped the key (caches, search and vector indexes, analytics, exports).
-- **Encryption** at rest by default; field-level when access must be narrower than the store's.
+## Supply chain
 
-## Supply Chain & Release Integrity
+Build and release are a trust boundary. Pin dependency versions and digests; hold new package versions in quarantine for a few days before they can be installed; enforce vulnerability and license policy in CI; keep a bill of materials per release; sign artifacts at build and verify at deploy, install or boot. Coding agents in the pipeline are principals inside this boundary: sandboxed, least-privileged, with credentials brokered at run time, and with no secrets at all when they read public input. Provenance proves where an artifact was built, not that the build was clean: isolate the release job from caches and triggers that untrusted contributions can reach. Publishing credentials are short-lived and job-scoped, and no build tool that can read them is unpinned. Keep a revocation path: yank a release, rotate signing keys, notify consumers. AI extensions (instruction files, tool servers, plugins) are admitted the same way, under the ai-architecture capability's rules if available.
 
-Build and release are a trust boundary: the threat pass covers them as a flow; `design-flow.md` § Release Model records the rollout.
+## Data duties
 
-- **Dependency admission**: versions and digests pinned in lockfiles; vulnerability and licence policy enforced in CI; few dependencies; a bill of materials per release; no install-time scripts from unreviewed sources.
-- **Provenance and signing**: SLSA-style build provenance; artifacts signed at build and verified at deploy, install or boot; reproducible builds where feasible.
-- **Publishing credentials** are short-lived and job-scoped; scanners and other build tools are pinned and cannot read them — a tool that can read the publish token can publish.
-- **Revocation path**: yank or deprecate a release, rotate signing keys, notify consumers.
-- AI extensions — skills, tool-protocol servers, plugins — follow `ai/security.md`.
+Every personal or regulated row of the Data Inventory meets these.
 
-## Data Duties
+- **Class** (public, internal, personal, sensitive or regulated, secret) decides eligible processors and regions, retention, encryption, and what may enter logs, traces, analytics and model context.
+- **Purpose and minimization**: each personal field has a stated purpose; derived data keeps its source's purpose and deletion.
+- **Erasure reaches every listed copy** within a stated window, by a mechanism per copy: delete in the system of record, tombstone and rebuild derived stores, expire or crypto-shred backups, confirmed deletion from each processor. Append-only stores hold pseudonymous ids or per-subject encrypted payloads so erasure never rewrites them. Guard: seed a subject and prove absence everywhere.
+- **Retention** per class: as short as the purpose allows, as long as obligations require. A retention mandate that conflicts with an erasure right is reconciled in an ADR.
+- **Residency**: bound classes are written only in region, and replicas, backups, processors, telemetry, support access and failover targets inherit the binding. Guard: a policy check that a bound class cannot be written out of region.
+- **Consent**, where processing rests on it, is data with history, checked at use; withdrawal propagates like erasure.
+- **Non-production** gets masked or synthetic data.
 
-The Stage-6 inventory (`design-flow.md` § Data Inventory & Lifecycle) lists each data set's writer, class and copies; every personal or regulated row must meet these duties.
+## Compliance evidence
 
-- **Class** — public / internal / personal / sensitive or sector-regulated / secret (credentials, keys) — decides eligible processors and regions, retention, encryption, and what may enter logs, traces, analytics and model context.
-- **Purpose and minimization** — each personal field has a stated purpose; collect and copy only what it needs; derived data keeps its source's purpose and deletion.
-- **Erasure** reaches every listed copy within a stated window, by a mechanism per copy: delete in the system of record; tombstone and rebuild derived stores and indexes; expire or crypto-shred backups; obtain confirmed deletion from each processor. Append-only stores (event logs, the audit trail) hold pseudonymous ids or per-subject encrypted payloads, so erasure never rewrites them. Guard: an erasure test that seeds a subject and proves absence everywhere — or key deletion.
-- **Export** — access, portability, tenant offboarding — in a defined machine-readable format, scoped to the authenticated requester and audited.
-- **Retention** per class: as short as the purpose allows, as long as obligations require. Reconcile conflicting obligations (a retention mandate vs an erasure right) per class in an ADR (retention & erasure); legal hold suspends deletion for named records only.
-- **Residency** — bound classes are written only to in-region stores; replicas, backups, processors, telemetry, support access and failover targets inherit the binding; each cross-border flow records who, why and its legal basis. Guard: a policy check that a bound class cannot be written out of region.
-- **Consent**, where processing rests on it, is data with history — checked at use; withdrawal propagates like erasure.
-- **Non-production** environments get masked or synthetic data; a production copy anywhere else is an inventory row with production controls.
+Ask which regimes and contracts apply; never infer obligations from geography alone. Unanswered → an assumption plus an Open Question blocking the doors it gates. Verify current obligations at design time and record source and date. Each obligation names its control, enforcement point and evidence source, and the evidence comes from the pipeline and the runtime (policy checks in CI, access reviews generated from the directory, recorded restore and erasure drills), not from assembly before an audit. A control with no evidence source is a risk.
 
-## Compliance Evidence
+## Audit trail
 
-Ask the caller which regimes and contracts apply (SKILL.md Stage 0); never infer obligations from geography alone. Unanswered → an `A-nn` assumption plus an Open Question blocking the one-way doors it gates. Verify current obligations at design time and record source and date in the ADR.
+An append-only record of sensitive operations is its own data set, not a log stream: actor, on-behalf-of subject, action, resource, tenant, outcome, time, with pseudonymous ids. It is written with the change, never through the diagnostic log pipeline, which samples and drops. It is tamper-evident, and the people it audits cannot edit it.
 
-- Each regulatory ASR (filter #7) names its control, enforcement point and evidence source; the evidence source is its standing guard. When deep, record `Requirement → control → enforcement point → evidence → guard` in `templates/system.md` §5.
-- Evidence comes from the pipeline and the runtime, not from assembly before an audit: policy-as-code checks over code and infrastructure in CI, access reviews generated from the directory, recorded restore and erasure drills, change approvals captured by the delivery pipeline. An evidence monitor alerts when evidence stops arriving; a control with no evidence source is a risk, not a control.
+## Untrusted input
 
-## Audit Trail
-
-An append-only audit trail for sensitive operations is its own data set, not a log stream.
-
-- **Content**: actor, on-behalf-of subject, action, resource, tenant, purpose, outcome, time — pseudonymous ids rather than personal data, so erasure never rewrites it. Log reads of sensitive data too when a regime requires access logging.
-- **Write path**: with the change, so no committed effect lacks its record — never through the diagnostic log pipeline (`observability.md`; outbox → `reliability-patterns.md`).
-- **Integrity and access**: tamper-evident (hash-chained or write-once storage); the people it audits cannot edit or delete it; its own retention and access rules; tenant export or streaming where contracts require it.
-
-## Defense in Depth
-
-Never rely on a single control: edge (request-size and rate limits, abuse controls) → transport (current TLS on every hop, no plaintext internal hops) → authentication → authorization at the owning service → data (encryption at rest; field-level for the most sensitive) → audit. Saltzer–Schroeder is the generative lens this layering only echoes: **fail-safe defaults** (deny unless granted; a failed or timed-out check denies), **least privilege** (per component, credential and principal), **complete mediation** (every access checked at the resource, every time; a cached decision expires with its grant).
-
-## Untrusted Input
-
-- **Parsers** of external input — files, archives, images, documents, config, network messages — are attack surface: bound size, depth, decompression ratio and time; never execute code or resolve external references on load (arbitrary-type deserialization, external entities, remote includes); canonicalize paths; isolate risky parsers in a sandboxed process. Guard: fuzzing.
-- **Server-side fetches of caller-supplied URLs** (SSRF): allowlist destinations, block internal and link-local addresses after resolution, re-check every redirect.
-- Upload mechanics: `operational-patterns.md`.
+Parsers of external input (files, archives, images, documents, network messages) are attack surface: bound size, depth, decompression ratio and time; never execute code or resolve external references on load; isolate risky parsers. A server-side fetch of a caller-supplied URL allowlists destinations, blocks internal addresses after resolution and re-checks every redirect.
 
 ## Hand-offs
 
-Per-diff checklist → the `review-checklists` security pass, if available — don't inline it here. Runtime proof of a named risk (cross-tenant access, token replay, SSRF) → the `adversarial-execution` capability, if available. Row-level policies and constraints → a database-design capability, if available.
+Per-diff checks → the `review-checklists` security pass. Runtime proof of a named risk → the `adversarial-execution` capability. Row-level policies → the database-design capability. Each if available.
 
-## Red Flags
+## Red flags
 
-Perspective-level flags with default severities live in `review-lens.md`; these are the method's own:
-
-- A control list with no threat pass, or a boundary crossing that ends in neither a control, an ASR nor an accepted risk.
+- A control list with no threat pass, or a crossing that ends in neither a control, a driver nor an accepted risk.
 - A tenant or user id read from the request body or a model-written parameter.
-- Shared static credentials across services, environments or devices; deprovisioning that leaves sessions or grants alive.
-- Support access to customer data through ad-hoc production queries; break-glass with no alert or audit.
-- Audit records carrying personal data, or an audit trail its subjects can edit.
-- Long-lived publishing tokens in CI, unsigned artifacts, or build tools that can read publishing credentials.
+- Shared static credentials across services or environments; deprovisioning that leaves sessions alive.
+- Support access through ad-hoc production queries; break-glass with no alert.
+- Audit records carrying personal data, or editable by their subjects.
+- Long-lived publishing tokens in CI, or unsigned artifacts.

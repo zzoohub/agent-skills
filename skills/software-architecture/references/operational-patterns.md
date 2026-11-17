@@ -1,6 +1,6 @@
 # Operational Patterns
 
-Dependency decisions become rows of the Resilience table in `system.md` §5 (default `docs/arch/system.md`; caller may redirect); caching decisions go in its §3.
+Mechanics behind `system.md` §5 Resilience and §3 Caching. **For the design**, read § Dependency Protection & Overload, and any other section only when the system has that thing: a queue or schedule (§ Background Jobs), multi-step work with waits (§ Durable Execution), inbound or outbound webhooks, uploads, a cache, a public rate limit. The rest is for the implementer.
 
 ---
 
@@ -11,7 +11,7 @@ Dependency decisions become rows of the Resilience table in `system.md` §5 (def
 - Cursors are opaque to clients.
 - Every sort order offered to clients needs an index on (sort key, tiebreaker); physical design via the database-design capability, if available.
 - An exact total on a large set costs a full count: return "has more" or an estimate unless the product needs the number.
-- Record the default once, with the published-contract policy (design-flow Stage 5 § Published Contracts). Query and wire mechanics belong to the implementation guide, not the design doc.
+- Record the default once, with the published-contract policy (`structure.md` § Contracts). Query and wire mechanics belong to the implementation guide, not the design doc.
 
 ---
 
@@ -28,7 +28,7 @@ Every external call gets a timeout, derived top-down:
 3. If the sequential chain cannot fit, parallelize, cache or move work async. Never derive the outer timeout by summing inner ones, and never compare summed worst-case bounds with a percentile SLO.
 4. Every hop drops work whose caller has already given up (deadline passed).
 
-*Break when* no caller is waiting (offline batch): give the job a total budget instead. Model calls and streams follow the same contract; their timeout classes live in `ai/production.md` § Streaming & generation lifetime.
+*Break when* no caller is waiting (offline batch): give the job a total budget instead. Model calls and streams follow the same contract, with their own timeout classes (the ai-architecture capability, if available).
 
 ### Retries: one layer, on a budget
 
@@ -62,7 +62,7 @@ Protect goodput: under overload, a system that accepts everything completes noth
 - **Admission control**: reject excess work at the edge, early and cheaply — before parsing, identity lookups or queueing. Bound the work any single request can do (page size, fan-out, payload, query cost).
 - **Load shedding**: when saturated, reject the lowest-priority work first (prefetch, batch and retries before interactive first attempts) with a fast 429/503 and `Retry-After`, instead of queueing everything into timeouts. Keep a tested switch that sheds a whole traffic class.
 - **Backpressure**: every queue is bounded and has a maximum age; a full queue pushes back on its producer instead of growing. A queue absorbs bursts, not sustained overload — work older than its useful life is dropped, not served late.
-- **Reconnect contract**: long-lived clients (devices, sockets, mobile apps) reconnect with jittered exponential backoff and honor a server retry hint; the server admits reconnects at a bounded rate and is sized for the whole population returning after an outage or deploy (a Stage 1 load source). Session mechanics → `system-architecture.md`.
+- **Reconnect contract**: long-lived clients (devices, sockets, mobile apps) reconnect with jittered exponential backoff and honor a server retry hint; the server admits reconnects at a bounded rate and is sized for the whole population returning after an outage or deploy (a load source in the envelope). Session mechanics → `structure.md` § Real-time.
 
 *Break when* durable acceptance is the requirement (order intake, telemetry ingest): accept into a durable queue and process later rather than shed. Load-test past saturation with an open-loop generator (fixed arrival rate); closed-loop tests slow down with the system and hide overload.
 
@@ -76,7 +76,7 @@ Protect goodput: under overload, a system that accepts everything completes noth
 
 The loop that keeps a system down after its trigger is gone — retry storms, cold-cache misses, backlog replay, reconnect storms — is the root cause of a metastable failure. Size backends to survive a full cache flush and a backlog drain at peak, keep error paths cheaper than success paths, and weaken the strongest loop (retry budget, shedding, rate-limited cache refill, capped drain rate, jittered reconnects). *Break when* the system runs far below capacity.
 
-**When Availability is deep**, add `Detection` (the signal or SLO alert that notices) and `Blast radius` (which users, tenants or cells) columns, then walk each failure domain — instance, zone, region, provider, control plane, bad deploy or config change. Each needs a recovery path that doesn't depend on the failed component, meets the RPO/RTO set in Stage 6, and has been exercised (fault injection, game day, restore test). Cold-start the whole system on paper: no circular dependencies at startup.
+**When Availability is deep**, add `Detection` (the signal or SLO alert that notices) and `Blast radius` (which users, tenants or cells) columns, then walk each failure domain — instance, zone, region, provider, control plane, bad deploy or config change. Each needs a recovery path that doesn't depend on the failed component, meets the RPO/RTO set for its stores, and has been exercised (fault injection, game day, restore test). Cold-start the whole system on paper: no circular dependencies at startup.
 
 ---
 
@@ -118,7 +118,7 @@ Multi-tenant queues get per-tenant concurrency caps or fair scheduling, so one t
 | State machine in your own store | A few steps with business-visible states (status column + guarded transitions) |
 | Durable execution (workflow engine) | Multi-step with side effects (payment → provision → notify), timers, compensation; long-running with waits (human approval, external callback) |
 
-An engine is new infrastructure someone operates — a Stage 5 technology choice; adopt one when it replaces machinery you would otherwise build and run.
+An engine is new infrastructure someone operates, a technology choice like any other (`SKILL.md` Stage 3); adopt one when it replaces machinery you would otherwise build and run.
 
 **Engine-neutral primitives**: durable step (checkpointed; not re-run once recorded) · durable timer · await external signal — always with a timeout and an on-timeout path · deterministic replay.
 
@@ -129,7 +129,7 @@ An engine is new infrastructure someone operates — a Stage 5 technology choice
 3. **Versioning of in-flight runs is planned before the first deploy**: pin each run to the code version it started on and drain, or branch on a recorded version marker; never reorder or remove steps under live runs.
 4. **Business-visible status still lives in your store**; engine history is not your query model.
 
-Compensation across services follows the saga rules in `system-architecture.md`; agent runs add their own deltas (`ai/agentic.md`).
+Compensation across services follows the saga rules in `structure.md` § Shape; agent runs add their own rules (the ai-architecture capability, if available).
 
 ---
 
@@ -144,7 +144,7 @@ A webhook from an external provider (payments, SaaS platforms) is an at-least-on
 5. **Reconcile DB against provider API on startup / periodically** — deliveries get lost; reconciliation is the backstop, not an optimization.
 6. Confirmations that arrive later (bank transfers, manual approvals): the workflow awaits the signal (Durable Execution), with a timeout.
 
-Sending webhooks is a published contract (Stage 5): sign with a timestamp, deliver at-least-once from an outbox with backoff and a DLQ, carry an event id and a per-object version, and offer replay.
+Sending webhooks is a published contract (`structure.md` § Contracts): sign with a timestamp, deliver at-least-once from an outbox with backoff and a DLQ, carry an event id and a per-object version, and offer replay.
 
 ---
 
@@ -152,11 +152,12 @@ Sending webhooks is a published contract (Stage 5): sign with a timestamp, deliv
 
 **Forcing question: what staleness can this data tolerate, and who notices?** The answer sets the tool: TTL (bounded staleness is acceptable), event-driven invalidation (when seconds matter), or versioned keys (immutable content). **Default**: cache-aside with TTL.
 
+- **Automated clients miss caches.** Crawlers and agents scan instead of revisiting, so they load the origin where people would hit the cache: classify them, limit each class, and size for them.
 - **Survive a full flush at peak**: the backing store is provisioned for it, or warm-up and rate-limited refill are designed. Otherwise the cache is a hidden availability dependency, and capacity sized at the steady-state hit rate is a metastable loop.
-- **Who shares a cache is a confidentiality boundary** (a one-way door — design-flow Stage 9): keys carry tenant and authorization scope, or the cache is partitioned per tenant. *Break when* the data is public and identical for every principal — then sharing is the point.
+- **Who shares a cache is a confidentiality boundary** (a one-way door): keys carry tenant and authorization scope, or the cache is partitioned per tenant. *Break when* the data is public and identical for every principal — then sharing is the point.
 - **Public or shared responses**: HTTP/edge caching is often the cheapest tier; personalized responses never reach a shared tier (private or no-store, and vary on every input that changes the response).
 
-- Model-response and prompt caching follow their own rules in `ai/production.md`.
+- Model-response and prompt caching follow their own rules (the ai-architecture capability, if available).
 
 ### Stampede Prevention
 
@@ -175,7 +176,7 @@ When a popular cache entry expires, many concurrent requests hit the DB simultan
 **Default**: sliding-window counter — good balance of precision and resource usage. Use a token bucket when you want to allow controlled bursts; a fixed window lets up to twice the limit through across a window boundary.
 
 - **Dimensions**: IP (unauthenticated endpoints only — proxies and shared addresses make it both evadable and unfair; aggregate IPv6 by prefix, e.g. /64, not by address) · user or API key · tenant · endpoint. Apply them in layers; the tightest limit wins.
-- **Weight by cost**: expensive endpoints (search, exports, model calls) spend more of the budget per request; limits for model-backed features at every scope live in `ai/production.md`.
+- **Weight by cost**: expensive endpoints (search, exports, model calls) spend more of the budget per request; model-backed features carry limits at every scope (the ai-architecture capability, if available).
 - **Limiter failure**: decide per endpoint what happens when the shared limiter store is down — fail open (availability) or fail closed (abuse- or cost-sensitive paths).
 
 - **Response**: `429 Too Many Requests` with `Retry-After`; expose the remaining quota in the standard rate-limit header fields the API adopts (the implementation guide owns the exact field names).

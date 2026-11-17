@@ -102,7 +102,7 @@ Then read `references/<stack>/guide.md` in full and load example sections by tas
 - `limit` defaults to 20; any larger integer is clamped to 100 (`meta.limit` reports the value used); below 1 or not an integer → 422; the port enforces a hard maximum too. A decodable cursor is only a position — the tenant filter still applies.
 - Offset (`page`, `total`) only for admin views over small data. A list cursor is not a change feed: sync consumers follow commit order (software-architecture `reliability-patterns.md` § 3 Ordering, if available).
 
-## Write path (binding: the arch doc's Write-path Integrity rows win)
+## Write path (binding: the arch doc's Write-path Integrity default and rows win)
 
 Method: software-architecture `reliability-patterns.md` §§ 1–4, if available.
 

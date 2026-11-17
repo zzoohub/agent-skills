@@ -1,37 +1,40 @@
 # Risks & Open Questions
 
-**Context**: See `docs/arch/context.md` (problem, ASRs), `docs/arch/system.md` (architecture) and `docs/arch/adr/` (decisions).
+**Context**: `docs/arch/context.md` (problem, drivers), `docs/arch/system.md` (architecture), `docs/arch/adr/` (decisions).
+
+<!-- Budget, tables included: Small ≈ 300 · Standard ≈ 600 · Large ≈ 1,000 words. -->
 
 ---
 
 # Risk Register
 
-<!-- Seeds mirror the highest-leverage non-AI risks; replace with this system's real ones. ATAM rows marked risk land here. -->
+<!-- Only risks this design carries: Driver Coverage rows marked at risk, plus a pre-mortem (assume failure a year after launch; the likeliest cause per driver). A risk with no watched signal is fiction. Highest first. -->
 
-| Risk | Threatens (QA/C ids) | Impact | Probability | Owner | Signal | Mitigation |
+| Risk (condition → consequence) | Threatens (D / C ids) | Impact | Probability | Owner (role) | Watched signal | Mitigation |
 |---|---|---|---|---|---|---|
-| Security: tenant data leak across a trust boundary | | | | | cross-tenant test failures | STRIDE-surfaced ASR (filter #8) + ≥ 2 enforcement points + cross-tenant tests |
-| Data: replica lag breaks read-your-writes | | | | | replica lag | Read-path choice (Stage 6); leader reads on critical paths |
-| Capacity: load beyond the envelope | | | | | peak vs modeled load | Load test to the driver's measure; admission control, backpressure |
-| Dependency slow or down | | | | | dependency p99, error rate | Deadline, one budgeted retry layer, exercised degradation (Stage 8) |
-| Write hazard: lost update / double-process | | | | | duplicates, version conflicts | Outbox, idempotency keys, optimistic concurrency |
+| e.g. replica lag breaks read-your-writes on checkout | D-03 | H | M | backend | replica lag p99 | leader reads on the critical path |
 
-**Risk themes**: [theme → risks]
+<!-- AI: rows from each feature doc's failure path and envelope. Transition: cutover data loss, features that do not port, knowledge held by few people, old and new drifting apart. -->
 
-<!-- AI: add rows from each feature doc's failure path and envelope, never pre-rated (e.g. provider lock-in → model port + eval-qualified alternate).
-     Transition: seed from references/evolution.md § Transition Plan (cutover data loss, store features that do not port, knowledge held by few people, old and new drifting apart). -->
+---
+
+# Spikes
+
+<!-- What must be proven before the work it unblocks. In the order to run them. -->
+
+| SP-nn | Question | Pass / fail (a number) | Time box | Unblocks (ADR, driver, assumption) |
+|---|---|---|---|---|
 
 ---
 
 # Tech Debt
 
-| Item | When | Priority | Resolution Condition |
+| Item | When taken | Priority | Resolution condition |
 |---|---|---|---|
 
 ---
 
 # Open Questions
 
-| Question | Options | Info needed | Decide-by | Blocking? |
+| Question | Options (default first) | Information needed | Decide-by | Blocking? |
 |---|---|---|---|---|
-| ... | ... | ... | [date or stage] | yes / no |

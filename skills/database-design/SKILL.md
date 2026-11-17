@@ -51,7 +51,7 @@ The schema is the system's longest-lived contract: code rolls back in seconds, a
 
 **Existing system first.** Read the migration tool and its latest migrations, the ORM models, and each touched table's size, write rate (`pg_stat_user_tables` deltas), constraints and consumers; run `scripts/schema_review.sql` when a database is reachable. Its conventions (key type, naming, time types, migration format) beat this skill's defaults: never graft UUID keys onto a BIGINT schema.
 
-**Architecture docs** (default `docs/arch/`, read-only): `context.md` §2 Scale Envelope, §3 ASRs, §4 Domain Model; `system.md` §3 Stores, Data Inventory, Tenancy, Partitioning, §4 Scaling Ladder, §5 SLOs and Write-path Integrity (binding).
+**Architecture docs** (default `docs/arch/`, read-only): `context.md` §2 Scale Envelope, §3 Drivers, §4 Domain Model; `system.md` §3 Stores, Data Inventory, Tenancy, Partitioning, §4 Scaling Ladder, §5 SLOs and Write-path Integrity (binding).
 
 **Ask once, in one batch, only what the docs and code cannot answer**, each as: question *(default; what it gates)*. A subagent that cannot ask applies the defaults and lists them as assumptions.
 - Engine, major version, host *(from the compose image, CI or platform config, else the newest GA major; version-gated syntax, each with its fallback)*
@@ -104,7 +104,7 @@ Write each invariant as "never X" (never two active subscriptions per org, never
 3. **A lock on a guard row** that every writer touches (the parent, the slot), taken in a fixed order. At Repeatable Read a bare lock protects nothing: the guard must be an `UPDATE`.
 4. **SERIALIZABLE**, retrying the whole transaction on 40001 and 40P01.
 
-An invariant left to the application names its owner and the reason. *Break when* a rung's measured cost on a write-hot table is unacceptable; record the step down. Read Committed stays the default (Repeatable Read stops lost updates on one row, not write skew). Map every system.md §5 Write-path Integrity row to a rung, taking its outbox, idempotency and inbox tables from `references/design-patterns.md` §7. Mechanics: `references/acid-transactions.md`.
+An invariant left to the application names its owner and the reason. *Break when* a rung's measured cost on a write-hot table is unacceptable; record the step down. Read Committed stays the default (Repeatable Read stops lost updates on one row, not write skew). Map system.md §5 Write-path Integrity, its default line and every row, to a rung, taking its outbox, idempotency and inbox tables from `references/design-patterns.md` §7. Mechanics: `references/acid-transactions.md`.
 
 ### Stage 3 — Physical design
 
@@ -213,7 +213,7 @@ Route by the first evidence; each reference holds the report format to write fro
 ## Self-Review
 
 Skip items for stages that did not run.
-- Every invariant has a rung or a named owner; every system.md Write-path Integrity row maps to one.
+- Every invariant has a rung or a named owner; the system.md Write-path Integrity default and every row map to one.
 - Every business key declares its uniqueness scope. No float or `money` for money, no default currency or rate, `timestamptz` for instants, ON DELETE on every FK.
 - Index gate: every non-constraint index names the paths and variants it serves, chosen against every variant of its endpoint (a partial index names what it leaves unserved); every hot path has an index; the table's index set was listed with scan counts, redundant prefixes dropped as runbook rows and zero-scan indexes flagged for an owner check; EXPLAIN ran on seeded data when a database was reachable.
 - Tenancy: `tenant_id` in every UNIQUE and FK (`schema_review.sql` §11 empty or explained); RLS forced where on, and on for every table in an API-exposed schema; as the app role with tenant A set, every scoped table returns no rows of tenant B and rejects an insert of B's id.

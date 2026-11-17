@@ -88,7 +88,7 @@ Write one spec per experience from that template (default `docs/ux/screens/{expe
 
 ## AI features
 
-**AI pass.** Read the feature's doc (default `docs/arch/ai-features/{feature}.md`) and present it with `references/ai-feature-ux.md`: AI conventions to §5, the flows autonomy creates (approvals, activity ledger, scope settings) to §4, hosting screens through Stage 4. Its harm rules (§ Frame first) override the doc's routing, as a logged conflict (Always). No doc: design the presentation and list the questions for the software-architecture capability's AI Feature Mode, if available; never invent what the model may do, its limits or the data it sees.
+**AI pass.** Read the feature's doc (default `docs/arch/ai-features/{feature}.md`) and present it with `references/ai-feature-ux.md`: AI conventions to §5, the flows autonomy creates (approvals, activity ledger, scope settings) to §4, hosting screens through Stage 4. Its harm rules (§ Frame first) override the doc's routing, as a logged conflict (Always). No doc: design the presentation and list the questions for the ai-architecture capability, if available; never invent what the model may do, its limits or the data it sees.
 
 ## Review / Diagnose Mode
 

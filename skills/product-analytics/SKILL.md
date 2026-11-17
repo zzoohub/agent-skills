@@ -47,7 +47,7 @@ The methods here are tool-neutral; each tool's guide holds what a number means t
 | Mixpanel taxonomy docs (default `docs/mixpanel/`) or a Mixpanel SDK in the code | Mixpanel | `references/mixpanel/guide.md`; tracking work adds `references/mixpanel/taxonomy.md` |
 | A PostHog SDK in the code | PostHog | `references/posthog/guide.md` |
 
-Both installed: the one holding the events the question needs; say which. Greenfield: the adopted house profile's analytics row (software-architecture's `references/house-stack.md`, if available), else ask; a subagent takes PostHog and lists the question. Another tool: apply these methods in its idiom, stating the mapping. A project's own taxonomy or tracking docs outrank any guide's defaults.
+Both installed: the one holding the events the question needs; say which. Greenfield: ask; a subagent takes PostHog and lists the question. Another tool: apply these methods in its idiom, stating the mapping. A project's own taxonomy or tracking docs outrank any guide's defaults.
 
 ## Then: Name the Request
 

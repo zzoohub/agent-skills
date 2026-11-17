@@ -13,7 +13,7 @@ Claude Code still auto-loads this file as project instructions.)
 
 > The planning skills are the conventional owners of their doc trees: `product-brief` / `prd-craft` /
 > `feature-spec` write `docs/prd/`, `software-architecture` / `arch-decision` (plus `database-design`
-> for its own file) write `docs/arch/`, `ux-design` / `screen-design` write
+> and `ai-architecture` for their own files) write `docs/arch/`, `ux-design` / `screen-design` write
 > `docs/ux/` (all caller-overridable defaults).
 
 ---
@@ -23,9 +23,9 @@ Claude Code still auto-loads this file as project instructions.)
 This repo is **not an application** — it is a **portable skill library + a Claude Code agent layer**.
 There is no product source code here. It ships three things:
 
-- **`skills/`** — **27** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
-  `references/` (deep-dive docs loaded on demand — 23 skills), `templates/`
-  (output scaffolds — `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
+- **`skills/`** — **28** framework-agnostic skills, each `skills/<kebab-name>/SKILL.md` plus optional
+  `references/` (deep-dive docs loaded on demand — 24 skills), `templates/`
+  (output scaffolds — `ai-architecture`, `prd-craft`, `qa`, `software-architecture`, `ux-design`), `scripts/` (helpers —
   `database-design` only; two `.sql` files), `evals/` (`review-checklists` only) and the vendored
   forks' `UPSTREAM.md` records (see below). Not counted: the untracked `skills/synced/` folder, a
   local sync cache that is not part of the library.
@@ -221,7 +221,7 @@ call that agent.
 | Modernize, re-architect or migrate an existing system (as-is recovery, transition plan) | `software-architecture` (Build Mode on an existing system) | skill |
 | Record or review one architecture decision (ADR) on an existing system | `arch-decision` | skill |
 | Design or review a DB schema; tune queries, run lock-safe migrations or upgrade a live Postgres | `database-design` | skill |
-| Design an LLM/AI feature or app | `software-architecture` (AI Feature Mode) | skill |
+| Design or review an AI feature or agent: model choice (decision model, LLM, speech), workflow, graph or agent, RAG, voice, on-device, eval gate, cost | `ai-architecture` | skill |
 | Design app-wide UX/IA, a new multi-screen flow or 3D/XR UX; recover or audit a shipped app's UX | `ux-design` | skill |
 | Design or redesign one screen, with or without a UX doc | `screen-design` | skill |
 | Implement 3D / XR on the web | `web3d` | skill |

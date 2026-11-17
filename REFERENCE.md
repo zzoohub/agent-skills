@@ -41,7 +41,7 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 | Area | Skills |
 |---|---|
 | Plan (product) | product-brief · prd-craft · feature-spec; plan reviews: plan-review (scope mode · execution mode) |
-| Architecture | software-architecture (incl. AI Feature Mode) · arch-decision · database-design |
+| Architecture | software-architecture · ai-architecture (AI features and agents) · arch-decision · database-design |
 | UX | ux-design (incl. 3D/XR UX) · screen-design · cro (when conversion-driven) |
 | Backend build | hexagonal-backend (Axum / FastAPI / Hono / NestJS guide, by stack) · database-design (incl. PostgreSQL operations) · review-checklists (pre-mortem mode while building) |
 | Web build | react-architecture (folder structure, hooks and headless patterns, request functions and query keys, functional style, server entry points) · design-system (incl. component composition and view-transition traps) · i18n · web3d |
@@ -68,14 +68,14 @@ work (the main session or a subagent it spawns) writes it.
 |---|---|---|---|
 | Product brief | `docs/prd/product-brief.md` (+ `product-brief-{slug}.md` sibling directions beside it) | product-brief | prd-craft, feature-spec, plan-review (scope mode), pricing, software-architecture, copywriting, data-analyst |
 | PRD | `docs/prd/prd.md` | prd-craft (incl. Checkpoint results; patched by feature-spec: the feature's line in §5 Scope, Updated) | feature-spec, software-architecture, database-design, ux-design, plan-review (scope mode), pricing, product-brief, data-analyst (§4 metrics, v0.1 decision rule) |
-| Feature spec | `docs/prd/features/{feature}.md` | feature-spec (new product: one spec per feature in the PRD's Now release, written after prd-craft; a Later feature gets its spec when a release pulls it in) | software-architecture (incl. AI Feature Mode), arch-decision, database-design, ux-design, screen-design, web3d, plan-review (scope mode), qa (acceptance criteria as test oracle), implementers |
+| Feature spec | `docs/prd/features/{feature}.md` | feature-spec (new product: one spec per feature in the PRD's Now release, written after prd-craft; a Later feature gets its spec when a release pulls it in) | software-architecture, ai-architecture, arch-decision, database-design, ux-design, screen-design, web3d, plan-review (scope mode), qa (acceptance criteria as test oracle), implementers |
 | Arch context (greenfield sentinel) | `docs/arch/context.md` | software-architecture (arch-decision appends to §6 only: Dependent ADRs, new assumptions) | software-architecture (brownfield detection, together with implementation presence), arch-decision, database-design (§2–§4), ux-design, i18n (reach), plan-review (execution mode), implementers |
 | Architecture | `docs/arch/system.md` | software-architecture (patched by arch-decision, Accepted ADRs only) | implementers (hexagonal-backend), database-design, ux-design, screen-design (backend capabilities), pricing (§4 Cost & Unit Economics), plan-review (execution mode), reviewer |
 | Architecture decisions (ADRs) | `docs/arch/adr/ADR-NNN-{slug}.md` (arch-decision: else an existing log, e.g. `doc/adr/`, keeping its numbering and format) | software-architecture, arch-decision | implementers, ux-design, plan-review (execution mode), reviewer |
 | Risks & open questions | `docs/arch/risks.md` | software-architecture (arch-decision closes answered Open Questions and appends accepted risks) | implementers, plan-review (execution mode), reviewer |
 | Database design | `docs/arch/database.md` | database-design | backend implementers, plan-review (execution mode, when data changes) |
 | Migrations | the project migration tool's directory and format (no tool: `db/migrations/<UTC timestamp>_<verb>_<domain>.sql` + `.down.sql` for reversible steps) | database-design | backend implementers (hexagonal-backend wiring), reviewer, adversary (migration dry-runs) |
-| AI feature design | `docs/arch/ai-features/{feature}.md` | software-architecture (AI Feature Mode) | ux-design, screen-design (AI surface states), pricing (§7 cost per successful task), implementers |
+| AI feature design | `docs/arch/ai-features/{feature}.md` | ai-architecture | ux-design, screen-design (AI surface states), pricing (§7 cost per successful task), implementers |
 | Recovered as-is (re-architecture / system migration; retired when the transition completes) | `docs/arch/as-is.md` | software-architecture (Build Mode on an existing system) | software-architecture (Transition Plan), implementers |
 | App UX | `docs/ux/ux-design.md` | ux-design | screen-design, design-system (accessibility requirements), web3d, web/mobile implementers |
 | Screen specs | `docs/ux/screens/{screen}.md` (3D/XR: `{experience}.md`) | ux-design (initial set: critical-path and costly-to-fail screens + one exemplar per screen class, via screen-design), screen-design | screen-design (redesigns, a pending entry's exemplar), web3d, qa (screen-spec states as test oracle), web/mobile implementers |

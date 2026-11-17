@@ -1,6 +1,6 @@
 # AI Feature UX
 
-How people see, steer, check and recover from an AI feature. Its architecture lives in the feature doc (default `docs/arch/ai-features/{feature}.md`; caller may redirect), written by the software-architecture capability's AI Feature Mode: what the model may do, its limits, its failure handling, its data. This file decides the presentation. A state the doc doesn't define is an open question for its owner, never an invention here; until it is answered, the screens show the safe route (the manual path, a person).
+How people see, steer, check and recover from an AI feature. Its architecture lives in the feature doc (default `docs/arch/ai-features/{feature}.md`; caller may redirect), written by the ai-architecture capability: what the model may do, its limits, its failure handling, its data. This file decides the presentation. A state the doc doesn't define is an open question for its owner, never an invention here; until it is answered, the screens show the safe route (the manual path, a person).
 
 ## Frame first
 

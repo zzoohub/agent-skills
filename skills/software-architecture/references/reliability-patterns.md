@@ -1,8 +1,15 @@
 # Reliability Patterns
 
-Patterns that keep state correct under failure, retry and concurrency.
+How state stays correct under failure, retry and concurrency. Shapes are logical; physical types, indexes and migrations come from the database-design capability, if available.
 
-These are not "advanced" — they are the floor for any system that takes money, sends notifications, or coordinates with external services. Decisions land as one row per command and consumer in the Write-path Integrity table of `system.md` §5 (default `docs/arch/system.md`; caller may redirect), which implementation treats as binding; the Self-Check at the end is the gate. Shapes here are logical — physical types, indexes and migrations come from the database-design capability, if available.
+**For the design**, answer these per command and consumer whose write must not be lost, duplicated or interleaved, and record the answers in `system.md` §5 Write-path Integrity: a default line for ordinary commands, a row for each one with an invariant at stake.
+
+- Where does the transaction begin and end? (§1)
+- Does a state change pair with a publish or an outside call? Then an outbox, and for the outside call an intent record with a lease. (§3, §2)
+- Can the sender retry? Then natural idempotency, a key, or dedup by event id, checked where the effect commits. (§2)
+- Can two writers race? Same row: a version or a conditional update. An invariant across rows: a constraint, a lock on its rows, or serializable isolation. Writers that act while offline: a merge policy. (§4)
+
+Anything answered "later" is a risk in `risks.md`. **The numbered sections below are the mechanics**, for whoever implements those answers.
 
 ---
 
@@ -31,7 +38,7 @@ Commit, then publish: a crash between them leaves committed state that no consum
 
 ### Long-running transactions
 
-Don't: external calls, uploads and human approvals happen *outside* the transaction (above); a long-running workflow is a **saga** (`system-architecture.md`) or **durable execution** (`operational-patterns.md` § Durable Execution).
+Don't: external calls, uploads and human approvals happen *outside* the transaction (above); a long-running workflow is a **saga** (`structure.md` § Shape) or **durable execution** (`operational-patterns.md` § Durable Execution).
 
 ### Read-your-writes inside the same request
 
@@ -281,17 +288,3 @@ These solve different problems and you usually need both:
 | Different clients break an invariant across rows | Constraint / lock on the invariant's rows / serializable + retry |
 
 A payment endpoint typically has both: idempotency key on the request, version on the wallet row.
-
----
-
-## Self-Check
-
-When designing any write path, answer — one row per command and consumer in `system.md` §5 Write-path Integrity:
-
-- [ ] Where does the transaction begin and end? Is it in the application service?
-- [ ] Are there external side effects (broker, HTTP, email)? If yes, is there an outbox — with an alert on the age of its oldest unpublished row? Does an external call inside a retried command have an intent record with a lease and recovery points?
-- [ ] Can the client safely retry? If yes, is there an idempotency key or natural idempotency?
-- [ ] Can two writers race? Same row → version column or conditional atomic update. Invariant spanning rows → named enforcement (constraint / lock on the invariant's rows / serializable + retry). Partitioned writers → a merge policy per aggregate.
-- [ ] On the consumer side: is the handler idempotent by `event.id`, with a DLQ whose depth is alerted?
-
-If any answer is "no" or "we'll handle it later," document it as a known risk in the Risk Register (default `docs/arch/risks.md`; caller may redirect).

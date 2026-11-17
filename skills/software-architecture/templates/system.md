@@ -3,7 +3,9 @@
 **Date**: {date} · **Context**: `docs/arch/context.md`
 **State**: greenfield | as-is recovered YYYY-MM-DD | target (transition: §4)
 
-<!-- Keep every numbered § (other skills read them by number); write `n/a — reason` where one does not apply. Subsections are a menu: write those a non-skipped perspective or one-way door needs and omit the rest, heading included; light perspectives get one line. -->
+<!-- Budget below this header, tables included, diagram source excluded: Small ≈ 900 · Standard ≈ 2,500 · Large ≈ 4,500 words. The budget sizes the record, never the analysis.
+     Binding on implementation. Keep every numbered § (other skills read them by number); write `n/a — reason` where one does not apply. Subsections are a menu: write those where something was decided and omit the rest, heading included.
+     Tables hold decisions, not inventory: state the default once as a rule line, add rows only for departures and product decisions, keep each cell to a phrase. -->
 
 ---
 
@@ -11,22 +13,31 @@
 
 ### System Pattern
 
-**Chosen**: [pattern] — [why, citing QA ids]
+**Chosen**: [shape] — [why, citing driver ids]
 
-**ATAM** ([H,H] drivers):
+### Decisions
 
-| QA id | Decisions / tactics (ADR) | Sensitivity / trade-off point | Evidence | Risk / non-risk |
+Every one-way door, and each default worth knowing; one line each.
+
+| Decision | Door | Why (driver or default) | Revisit when | ADR |
 |---|---|---|---|---|
-| QA-01 | ... (ADR-NNN) | ... | analysis, measurement, spike, precedent (conditions) | non-risk because ...; breaks if ... |
+| e.g. Modular monolith, one PostgreSQL primary | two-way | default at class S | writes > 30% of one primary's measured capacity | — |
+| e.g. Pooled tenancy with row-level policies | one-way | D-05; 2,000 small tenants | a tenant demands a dedicated store by contract | ADR-003 |
+
+### Driver Coverage
+
+| Driver | Decisions | Most sensitive to | Evidence | Holds unless |
+|---|---|---|---|---|
+| D-01 | … | parameter and its setting | analysis shown · measurement · spike SP-nn · precedent with matching conditions | … (or: at risk → `risks.md`) |
 
 ### Service Pattern
 
-**Per context class**: core [style]; supporting and generic [style]; exceptions [context → style].
+**Per context**: core [style]; supporting and generic [style]; exceptions [context → style].
 
 ### AI Platform
-<!-- If AI features exist. -->
+<!-- If AI features exist. Only what features share. -->
 
-**Model access**: [port, gateway?] · **Providers & exit path**: [...] · **AI cost ceiling**: [...] · **Feature docs**: `docs/arch/ai-features/{feature}.md`
+**Model access**: [port, gateway?] · **Providers & exit path**: […] · **AI cost ceiling**: […] · **Feature docs**: `docs/arch/ai-features/{feature}.md` (written) · {feature} (owed)
 
 ---
 
@@ -34,16 +45,17 @@
 
 ### Core Technology
 
-| Concern | Choice | Why | Rejected | Baseline (default / ADR) |
+| Concern | Choice | Why | Rejected (only if contested) | Baseline or ADR |
 |---|---|---|---|---|
 
 ### Container Diagram
+<!-- If more than one deployable or trust zone. -->
 
-<!-- If Full rigor. AI containers: `references/ai/protocol.md` § Build-mode hooks. -->
-
-C4 Level 2 as code: containers, protocols, external integrations, trust boundaries.
+Containers, protocols, external integrations, trust boundaries, as code.
 
 ### Key Modules
+
+<!-- One team: say so here once and leave Owner out of the rows. -->
 
 | Module | Owns | Owner | Hides |
 |---|---|---|---|
@@ -62,27 +74,31 @@ C4 Level 2 as code: containers, protocols, external integrations, trust boundari
 
 ### Stores
 
-| Store | Holds | Why | Consistency (per op) | Replication & read path | RPO/RTO, restore test |
+| Store | Holds | Why | Consistency (per operation) | Replication & read path | RPO / RTO, restore test |
 |---|---|---|---|---|---|
 
 ### Data Inventory
 
-| Data set | Writer (single) | Class | Every copy (incl. backups, logs, caches, indexes, processors, non-prod) | Retention & erasure | Residency | Consumers & read boundary |
-|---|---|---|---|---|---|---|
+<!-- One row per personal or regulated data set, and per set with an unusual duty; one last row for everything else. -->
+
+| Data set | Writer (single) | Class | Every copy (backups, logs, caches, indexes, processors, non-prod) | Retention & erasure | Residency |
+|---|---|---|---|---|---|
 
 ### Tenancy
 <!-- If multi-tenant. -->
 
-**Isolation model per resource** · **enforcement points (≥ 2)** · **tenant lifecycle** · **cross-tenant tests**: [...]
+**Isolation model per resource** · **enforcement points (≥ 2)** · **tenant lifecycle** · **cross-tenant tests**: […]
 
 ### Partitioning
 <!-- If a partition key shapes the architecture. -->
 
-**Key per scaling dimension** · **hot partitions** · **rebalancing**: [...]
+**Key per scaling dimension** · **hot partitions** · **rebalancing**: […]
 
 ### Key Scenarios
 
-**[Scenario]** (QA-..):
+<!-- The main journey, plus any driver that depends on order or timing. One or two. -->
+
+**[Scenario]** (D-..):
 
 | Hop | Sync / async | Latency budget | Idempotency / ordering | On failure |
 |---|---|---|---|---|
@@ -90,7 +106,7 @@ C4 Level 2 as code: containers, protocols, external integrations, trust boundari
 ### Caching
 <!-- If anything is cached. -->
 
-**What · staleness bound · key (incl. tenant) · invalidation · sharing scope**: [...]
+**What · staleness bound · key (incl. tenant) · invalidation · who shares it**: […]
 
 ---
 
@@ -98,30 +114,28 @@ C4 Level 2 as code: containers, protocols, external integrations, trust boundari
 
 ### Deployment & Topology
 
-| Unit | Runs where (region, site, device, client) | Failure domain | Trust zone | Scaling |
+| Unit | Runs where (region, site, device, client) | Failure domain | Trust zone | Scaling (fixed / autoscaled / to zero; cold start) |
 |---|---|---|---|---|
 
-**Partition contracts** (each partition-prone link, per design-flow § Deployment View & Topology): [... — or none]
+**Partition contracts** (each partition-prone link: on disconnect, buffer bound, expiry, dedup key): [… — or none]
 
 ### Release Model
 
-- **Operated**: [rollout, abort condition, rollback or roll-forward, flags, expand-contract, config releases]
+- **Operated**: [rollout unit, abort condition, rollback or roll-forward, flags, expand-contract, config releases]
 - **Shipped / fleet**: [versioning, support and version-skew windows; rings, atomic update with fallback, kill switch]
 - **Pipeline**: [gates, provenance, signing, dependency policy]
-
-### Scaling Model
-
-[scale-to-zero, autoscale or fixed; why; cold start]
 
 ### Scaling Ladder
 <!-- If operated. -->
 
-| Load | First bottleneck | Trigger metric (on a §5 dashboard) | Planned response |
+| Load | First bottleneck | Trigger metric (on a dashboard) | Planned response |
 |---|---|---|---|
-| 10x | ... | ... | ... |
-| 100x | ... | ... | One honest sentence is enough |
+| 10× | … | … | … |
+| 100× | … | … | One honest sentence is enough |
 
 ### Cost & Unit Economics
+
+<!-- Say once whether the amounts are measured, derived from list prices (source, date) or targets. -->
 
 | Item | Baseline | Growth |
 |---|---|---|
@@ -134,68 +148,70 @@ C4 Level 2 as code: containers, protocols, external integrations, trust boundari
 <!-- AI: one roll-up row per feature, its envelope vs the AI cost ceiling. -->
 
 ### Transition Plan
-<!-- If re-architecture, modernization or system migration. -->
+<!-- If re-architecture or system migration. -->
 
 **As-is**: `docs/arch/as-is.md` · **Live step**: [n]
 
-| Step | Components & disposition | Coexistence seam | Data mechanics | Driver levels held | Exit fitness function | Rollback trigger | Dual-run cost |
+| Step | Components & disposition | Coexistence seam | Data mechanics | Driver levels held | Exit check | Rollback trigger | Dual-run cost |
 |---|---|---|---|---|---|---|---|
 
 ---
 
 ## 5. Cross-cutting
 
-### Perspective Coverage
+### Concerns
 
-**Deep**: [perspective (QA ids); …] · **Light**: [perspective; …] · **Skipped**: [perspective (reason); …]
+**Deep**: [concern (driver ids); …] · **Light**: [concern: its one line; …] · **Skipped**: [concern (reason); …]
 
-### Fitness Functions
+### Guards
 
-| Property | QA id | Check | Cadence / where |
+| Property | Driver | Check and threshold | Cadence / where |
 |---|---|---|---|
-| Module boundaries | QA-.. | no access past a module's public interface or into its tables | per commit, CI |
+| Module boundaries | D-.. | no import past a module's public interface, no access to its tables | per commit, CI |
 
-Every [H,·] QA id has a guard here or in the SLO table.
+Every driver has a guard here or in the SLO table.
 
 ### SLOs & Error Budgets
-<!-- If operated. Burn-rate starting parameters: references/observability.md. AI: add the AI SLI set (references/ai/production.md), targets from the feature docs. -->
+<!-- If operated. Only what users feel, tied to a driver. Burn-rate parameters: references/observability.md. AI: add the indicators each AI feature doc names. -->
 
-| SLI | QA id | Target | Budget | Page | Ticket | Owner | Runbook |
-|---|---|---|---|---|---|---|---|
-| `<from ASR>` | QA-.. | `<from ASR>` | `<1 − target>` | `<fast burn>` | `<slow burn>` | ... | ... |
+| SLI | Driver | Target | Page (fast burn) | Ticket (slow burn) | Owner (role) | Runbook |
+|---|---|---|---|---|---|---|
 
 ### Write-path Integrity
-<!-- If a write must not be lost, duplicated or interleaved. Binding on implementation. -->
+<!-- If a write must not be lost, duplicated or interleaved. -->
 
-| Command / consumer | Tx boundary | Outbox? | Idempotency (key / event id) | Concurrency control |
+**Default** (every command not listed): [e.g. one transaction in the use case; client idempotency key; version column on the aggregate root; side effects through the outbox]
+
+| Command / consumer with an invariant at stake | Tx boundary | Outbox? | Idempotency (key / event id) | Concurrency control |
 |---|---|---|---|---|
 
-Rows answered "no" or "later" go to the Risk Register.
+Anything answered "later" goes to the Risk Register.
 
 ### Observability Contract
-<!-- If operated; binding on implementation; checklist: references/observability.md. Software others run: diagnosability instead (same file). -->
+<!-- If operated. Software others run: diagnosability instead (references/observability.md). -->
 
-**Signal per question** · **sampling** · **cardinality budget** · **redaction rule** · **semantic conventions (pinned version)** · **day-1 basics**: [...]
+**Signal per question** · **sampling** · **cardinality budget** · **redaction rule** · **semantic conventions (pinned version)** · **day-1 basics**: […]
 
 ### Security
-<!-- AI: include model-mediated flows. Deep: expand into the tables in references/security-privacy.md. -->
+<!-- Material crossings only: those that defeat a driver, cross a tenant boundary, touch money or regulated data, or cannot be undone. AI: include model-mediated flows. -->
 
-| Boundary / flow | Threat (STRIDE / LINDDUN) | Control | Guard |
+| Boundary / flow | Threat | Control | Guard |
 |---|---|---|---|
 
-**Authn / authz model per principal type**: [source, model, enforcement point]
+**Authn / authz per principal type**: [source, model, enforcement point]
 
 **Secrets & keys**: [owner, rotation, revocation] · **compliance → evidence**: [if deep]
 
 ### Resilience
 
-| Dependency | Deadline | Retry budget (one layer) | Isolation | If slow / down | Exercised |
-|---|---|---|---|---|---|
+**Default** (every dependency not listed): [e.g. deadline from the request budget; one retry on timeout or throttling, in the adapter; concurrency cap per dependency]
+
+| Dependency with a designed degraded mode | Deadline | If slow / down (what the user sees) | Exercised by (drill, cadence) |
+|---|---|---|---|
 
 **Overload policy**: [admission, shedding order, buffer bounds, client retry and reconnect contract]
-<!-- Availability deep: add Detection and Blast radius columns and a DR posture line per tier. -->
 
 ### AI Authority
 <!-- If AI takes actions. Cross-feature items only; per-action rows live in the feature docs. -->
 
-**Agent identities · policy-enforcement points · approval queue · kill switch**: [... → feature doc links]
+**Agent identities · policy-enforcement points · approval queue · kill switch**: [… → feature doc links]

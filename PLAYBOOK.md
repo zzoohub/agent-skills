@@ -24,7 +24,7 @@ prd-craft             → docs/prd/prd.md (the bet: v0.1 and its decision rule; 
 feature-spec          → docs/prd/features/{feature}.md, one per feature in the PRD's Now release
                         (Later features get a spec when a release pulls them in)
 software-architecture → docs/arch/system.md (+ arch-decision ADRs, database-design schema,
-                        its AI Feature Mode for LLM/AI features — docs/arch/ai-features/, as needed)
+                        ai-architecture for AI features — docs/arch/ai-features/, as needed)
 ux-design             → docs/ux/ux-design.md (+ initial screen specs via screen-design: critical-path
                         and costly-to-fail screens plus one exemplar per screen class; the rest pending)
 implement             → main session / general-purpose subagents loading the stack skills
@@ -58,7 +58,7 @@ returns its verdict and findings to the main session.
 ```
 feature-spec
 → as needed: arch-decision (one architectural decision) · software-architecture on the existing
-  system (several, or a re-architecture, modernization or system migration; AI Feature Mode for a
+  system (several, or a re-architecture, modernization or system migration) · ai-architecture (a
   model in the loop) · database-design (new or changed data)
 → ux-design Flow pass (only for a new multi-screen flow) → screen-design, once per screen
 → plan-review, execution mode (when the change trips one of its depth triggers: money, persisted
