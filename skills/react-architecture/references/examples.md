@@ -1,31 +1,40 @@
 # React Architecture Examples
 
-One vertical slice, file by file. Each block's first line is its path, and imports are shown because layering is the point. `product` and `cart` are examples; use your domain's names. Presentational components (`FilterBar`, `ProductGrid`, `ProductsSkeleton`) are left out; `ProductGrid` renders the loading, empty and retryable error states.
+One vertical slice, file by file. Each block's first line is its path, and imports are shown because layering is the point. `product` and `cart` are examples; use your domain's names. Presentational components (`FilterBar`, `ProductGrid`, `ProductsSkeleton`, `HeartButton`) are left out; `ProductGrid` renders the loading, empty and retryable error states. Headless components, compound blocks and HoCs have their own files: `components.md`, `compound.md`, `hocs.md`.
 
 ## Table of Contents
 
 1. [Layout](#layout)
 2. [Entity: types, pure logic, query definitions](#entity-types-pure-logic-query-definitions)
 3. [Screen: headless composition](#screen-headless-composition)
-4. [Feature: a form with a Server Action](#feature-a-form-with-a-server-action)
-5. [Store: state, pure transitions, selectors](#store-state-pure-transitions-selectors)
-6. [Flow hook](#flow-hook)
-7. [Route files per stack](#route-files-per-stack)
+4. [Feature: an action with a headless component](#feature-an-action-with-a-headless-component)
+5. [Feature: a form with a Server Action](#feature-a-form-with-a-server-action)
+6. [Store: state, pure transitions, selectors](#store-state-pure-transitions-selectors)
+7. [Flow hook](#flow-hook)
+8. [Route files per stack](#route-files-per-stack)
 
 ## Layout
 
-Placement follows consumers. `toVisibleCards` and `useCreateProduct` live in the screen because only that screen uses them. `entities/product` exists because a second screen, `product-detail`, reads the same data. `features/send-message` exists because two screens embed that form.
+Placement follows consumers. `toVisibleCards` and `useCreateProduct` live in the screen because only that screen uses them. `entities/product` exists because a second screen, `product-detail`, reads the same data. `features/toggle-favorite` exists because both screens toggle a favorite, and its query stays inside it because nothing else reads the favorite ids. `features/send-message` exists because two screens embed that form.
 
 ```
 src/
 ├── app/products/page.tsx
 ├── screens/products/
 │   ├── ui/ProductsScreen.tsx
+│   ├── ui/ProductCardItem.tsx
 │   ├── model/filters.ts
 │   ├── model/useProductFilters.ts
 │   ├── model/useProductCards.ts
 │   ├── model/toVisibleCards.ts
 │   ├── api/useCreateProduct.ts
+│   └── index.ts
+├── features/toggle-favorite/
+│   ├── ui/FavoriteToggle.tsx
+│   ├── model/favorite.ts
+│   ├── model/useFavorite.ts
+│   ├── api/queries.ts
+│   ├── api/useToggleFavorite.ts
 │   └── index.ts
 ├── features/send-message/
 │   ├── ui/SendMessageForm.tsx
@@ -63,6 +72,8 @@ export const isInCategory = (category: string) => (product: Product) =>
   category === 'all' || product.category === category
 ```
 
+The request function fixes the path and the types and knows nothing else. The options add the key, cancellation (`signal`) and the cache time, so the hook, a loader and a server prefetch share one definition.
+
 ```ts
 // src/entities/product/api/queries.ts
 import { queryOptions } from '@tanstack/react-query'
@@ -73,14 +84,15 @@ import { API_URL } from '@/shared/config/env'
 
 import type { Product, ProductFilters } from '../model/product'
 
-const fetchProducts = getJson<Product[]>(`${API_URL}/api/products`)
+const fetchProducts = getJson<Product[], ProductFilters>(`${API_URL}/api/products`)
 
 export const productKeys = createQueryKeys('products')
 
 export const productListOptions = (filters: ProductFilters) =>
   queryOptions({
     queryKey: productKeys.list(filters),
-    queryFn: () => fetchProducts(filters),
+    queryFn: ({ signal }) => fetchProducts(filters, { signal }),
+    staleTime: 60_000,
   })
 ```
 
@@ -99,27 +111,27 @@ export const useProducts = <T = Product[],>(filters: ProductFilters, select?: (p
   useQuery({ ...productListOptions(filters), select })
 ```
 
-Server-only code goes through `index.server.ts`, so importing the slice from a Client Component can't pull it in.
+Server-only code goes through `index.server.ts`, so importing the slice from a Client Component can't pull it in. It is also the entry point for other server-only files, so it re-exports the pure model they need: `index.ts` can pull in hooks, UI and client SDKs. The backend call is a request function too: a path that carries an id takes the id first, and the caller adds the credential the request function doesn't know.
 
 ```ts
 // src/entities/product/api/product.server.ts
 import 'server-only'
 
-import { rejectIfNotOk } from '@/shared/api/http'
+import { getJson } from '@/shared/api/http'
 
 import type { Product } from '../model/product'
 
-export const findProductById = (id: string): Promise<Product> =>
-  fetch(`${process.env.API_URL}/products/${encodeURIComponent(id)}`, {
-    headers: { authorization: `Bearer ${process.env.API_KEY}` },
-  })
-    .then(rejectIfNotOk)
-    .then((response) => response.json() as Promise<Product>)
+const fetchProduct = (id: string) => getJson<Product>(`${process.env.API_URL}/products/${encodeURIComponent(id)}`)
+
+export const findProductById = (id: string) =>
+  fetchProduct(id)(undefined, { headers: { authorization: `Bearer ${process.env.API_KEY}` } })
 ```
 
 ```ts
 // src/entities/product/index.server.ts
 export { findProductById } from './api/product.server'
+export { isInStock } from './model/product'
+export type { Product } from './model/product'
 ```
 
 ```ts
@@ -252,6 +264,143 @@ export { ProductsScreen } from './ui/ProductsScreen'
 export { ProductsSkeleton } from './ui/ProductsSkeleton'
 ```
 
+## Feature: an action with a headless component
+
+A feature holds one user action end to end: its request functions, its query, its hooks and a headless component. The products screen and `product-detail` both toggle a favorite, and each draws its own heart.
+
+Predicates and transitions are curried, config first. An unloaded list stays unloaded: `setFavorited` returns `undefined` for it, because writing one id there would cache that id as the whole list.
+
+```ts
+// src/features/toggle-favorite/model/favorite.ts
+export const hasFavorited = (productId: string) => (favoriteIds: string[]) => favoriteIds.includes(productId)
+
+export const setFavorited = (productId: string, isFavorited: boolean) => (favoriteIds?: string[]) => {
+  const others = favoriteIds?.filter((id) => id !== productId)
+  return others && (isFavorited ? [...others, productId] : others)
+}
+```
+
+```ts
+// src/features/toggle-favorite/api/queries.ts
+import { queryOptions } from '@tanstack/react-query'
+
+import { createQueryKeys } from '@/shared/api/createQueryKeys'
+import { getJson } from '@/shared/api/http'
+import { API_URL } from '@/shared/config/env'
+
+const fetchFavoriteIds = getJson<string[]>(`${API_URL}/api/favorites`)
+
+export const favoriteKeys = createQueryKeys('favorites')
+
+export const favoriteIdsOptions = () =>
+  queryOptions({
+    queryKey: favoriteKeys.lists(),
+    queryFn: ({ signal }) => fetchFavoriteIds(undefined, { signal }),
+    staleTime: 60_000,
+  })
+```
+
+The mutation hook owns what a result means: here it writes the new state into the cache. The write goes through the options' `queryKey`, which carries the data type, so `setQueryData` checks the transition against it; a bare key from the factory leaves the write unchecked. Invalidation needs no type and uses the factory's prefix keys, as `useCreateProduct` does.
+
+```ts
+// src/features/toggle-favorite/api/useToggleFavorite.ts
+'use client'
+
+import { useMutation, useQueryClient } from '@tanstack/react-query'
+
+import { postJson } from '@/shared/api/http'
+import { API_URL } from '@/shared/config/env'
+
+import { setFavorited } from '../model/favorite'
+import { favoriteIdsOptions } from './queries'
+
+const toggleFavorite = postJson<{ productId: string }, { isFavorited: boolean }>(`${API_URL}/api/favorites/toggle`)
+
+export const useToggleFavorite = (productId: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: () => toggleFavorite({ productId }),
+    onSuccess: ({ isFavorited }) =>
+      queryClient.setQueryData(favoriteIdsOptions().queryKey, setFavorited(productId, isFavorited)),
+  })
+}
+```
+
+The state hook joins the query and the mutation into state and one named action. `select` takes the partial, so a card re-renders only when its own answer changes.
+
+```ts
+// src/features/toggle-favorite/model/useFavorite.ts
+'use client'
+
+import { useQuery } from '@tanstack/react-query'
+
+import { favoriteIdsOptions } from '../api/queries'
+import { useToggleFavorite } from '../api/useToggleFavorite'
+import { hasFavorited } from './favorite'
+
+export const useFavorite = (productId: string) => {
+  const { data: isFavorited = false } = useQuery({ ...favoriteIdsOptions(), select: hasFavorited(productId) })
+  const { mutate, isPending } = useToggleFavorite(productId)
+  return { isFavorited, isPending, toggle: () => mutate() }
+}
+```
+
+The headless component is one expression: it hands the hook's value to a function and draws nothing of its own.
+
+```tsx
+// src/features/toggle-favorite/ui/FavoriteToggle.tsx
+'use client'
+
+import type { ReactNode } from 'react'
+
+import { useFavorite } from '../model/useFavorite'
+
+export type FavoriteState = ReturnType<typeof useFavorite>
+
+export const FavoriteToggle = ({
+  productId,
+  children,
+}: {
+  productId: string
+  children: (favorite: FavoriteState) => ReactNode
+}) => children(useFavorite(productId))
+```
+
+The request functions stay inside the slice; other slices use the hook or the component.
+
+```ts
+// src/features/toggle-favorite/index.ts
+export { useFavorite } from './model/useFavorite'
+export { FavoriteToggle } from './ui/FavoriteToggle'
+export type { FavoriteState } from './ui/FavoriteToggle'
+```
+
+The behavior is the feature's and the markup is the screen's. `ProductGrid` renders one of these per card.
+
+```tsx
+// src/screens/products/ui/ProductCardItem.tsx
+'use client'
+
+import { FavoriteToggle } from '@/features/toggle-favorite'
+
+import type { ProductCard } from '../model/toVisibleCards'
+import { HeartButton } from './HeartButton'
+
+export function ProductCardItem({ card }: { card: ProductCard }) {
+  return (
+    <article>
+      <h3>{card.name}</h3>
+      <p>{card.priceLabel}</p>
+      <FavoriteToggle productId={card.id}>
+        {({ isFavorited, isPending, toggle }) => (
+          <HeartButton isFilled={isFavorited} disabled={isPending} onClick={toggle} />
+        )}
+      </FavoriteToggle>
+    </article>
+  )
+}
+```
+
 ## Feature: a form with a Server Action
 
 A web-only form. The checks run inside the action, in order: who is calling, whether they may send now, whether the input is valid. A failure is a value carrying what the form needs back, because React resets the form when the action resolves. `currentUserId` and `isWithinRateLimit` are the project's own.
@@ -260,12 +409,11 @@ A web-only form. The checks run inside the action, in order: who is calling, whe
 // src/features/send-message/api/message.server.ts
 import 'server-only'
 
-import { rejectIfNotOk } from '@/shared/api/http'
+import { postJson } from '@/shared/api/http'
 
-export const saveMessage = (userId: string, message: { email: string; body: string }) =>
-  fetch(`${process.env.API_URL}/messages`, { method: 'POST', body: JSON.stringify({ userId, ...message }) }).then(
-    rejectIfNotOk,
-  )
+export const saveMessage = postJson<{ userId: string; email: string; body: string }, void>(
+  `${process.env.API_URL}/messages`,
+)
 ```
 
 ```ts
@@ -294,7 +442,7 @@ export const sendMessage = async (_previous: SendMessageResult | null, formData:
   const parsed = messageSchema.safeParse(fields)
   if (!parsed.success) return { error: 'Check your email and message.', fields }
 
-  return saveMessage(userId, parsed.data).then(
+  return saveMessage({ userId, ...parsed.data }).then(
     (): SendMessageResult => ({ ok: true }),
     (): SendMessageResult => ({ error: 'Could not send. Try again.', fields }),
   )
@@ -376,6 +524,20 @@ export { removeFromCart, swapItem, useCartTotal } from './model/useCartStore'
 export type { CartItem } from './model/cart'
 ```
 
+Components read through selector hooks and change state through the bound actions, never `setState`. A selector returns a stored value or a primitive: Zustand re-renders when the result changes by `Object.is`, and a selector that builds an object changes on every call.
+
+```ts
+export const useCartTotal = () => useCartStore(selectTotal) // a primitive
+export const useCartItems = () => useCartStore((state) => state.items) // the stored array itself
+
+// ❌ A new object on every call: Zustand v5 loops until React throws
+export const useCartSummary = () => useCartStore((state) => ({ count: state.items.length, total: selectTotal(state) }))
+
+// ✅ Values that must travel together are compared shallowly (useShallow is in zustand/react/shallow)
+export const useCartSummary = () =>
+  useCartStore(useShallow((state) => ({ count: state.items.length, total: selectTotal(state) })))
+```
+
 ## Flow hook
 
 For real coordination: here the coupon's validity depends on the cart total, so the two concerns can't sit side by side in the screen. A hook that only merged two returns wouldn't earn its file.
@@ -406,7 +568,7 @@ export const useCartFlow = () => {
 
 The route file stays thin everywhere. On TanStack Start and Expo Router, only `filters.ts` and `useProductFilters` change, and the hook keeps the same interface, so the screen stays as written.
 
-**Next.js.** Data loads with the route. The `await` sits in a child under Suspense so the shell renders first, and the options defined for the hook work here unchanged. `error.tsx` beside this file gives the region its error boundary.
+**Next.js.** Data loads with the route. The `await` sits in a child under Suspense so the shell renders first, and the options defined for the hook work here unchanged, `staleTime` included, so the hydrated data isn't fetched again on mount. `error.tsx` beside this file gives the region its error boundary.
 
 ```tsx
 // src/app/products/page.tsx

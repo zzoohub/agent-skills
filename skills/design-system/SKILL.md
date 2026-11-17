@@ -84,7 +84,7 @@ Compute ratios with a WCAG 2 script, never by eye. Exempt: decorative fills, dis
 
 **Buy behavior, build the look.** Dialog, menu, listbox, select, combobox, tabs, toggle group, tooltip, popover, toast and date picker come from the repo's headless library (none yet: `references/components.md` picks one). A styled kit in the repo (MUI, Mantine, Chakra, Ant) is the component layer: tokens enter through its theme API, never a second styling layer.
 
-**Feature components** with several call sites and state sources (a composer, an editor) follow `references/composition/guide.md`; primitives do not. **Provider ≠ Frame:** one provider per state source injects `{ state, actions, meta }`; the frame only lays out, so siblings need no `useEffect` sync or refs.
+**Feature components** with several call sites and state sources (a composer, an editor) follow `references/composition/guide.md`; primitives do not. **Provider ≠ Frame:** one provider per state source injects `{ state, actions, meta }`; the frame only lays out, so siblings need no `useEffect` sync or refs. A block that shares behavior while each screen draws its own markup (headless parts with render props, contexts split by change rate) follows react-architecture, if available.
 
 ## Accessibility Floor
 

@@ -14,6 +14,8 @@ Copy into the project only what its code uses; these are not a package. Paths ar
 
 Only what the language doesn't have. Add a step overload if a real pipeline needs one.
 
+`compose` infers right to left, so a generic function passed to it (an HoC, an unannotated lambda) gets `unknown`. `pipe` starts from a value and infers forward, which is why an HoC stack is `pipe(Screen, inner, outer)`. Use `compose` for non-generic functions built before their data, such as state transitions.
+
 ```ts
 // src/shared/lib/fp.ts
 export function pipe<A>(a: A): A
@@ -54,9 +56,38 @@ export const createQueryKeys = <const D extends string>(domain: D) => {
 }
 ```
 
+A domain that needs a key the factory doesn't have extends it in one place, under `all()`, so `all()` still covers every query:
+
+```ts
+const keys = createQueryKeys('products')
+
+export const productKeys = { ...keys, summary: () => [...keys.all(), 'summary'] as const }
+```
+
 ## http
 
-The path is fixed first; the call comes later. An empty 201 or 204 is a success, so the body is read as text first. Encode path segments that come from a route or a user. A query that also runs on the server (a prefetch, a loader) needs an absolute URL, so paths start from `API_URL`; use your stack's public prefix (`NEXT_PUBLIC_`, `VITE_`, `EXPO_PUBLIC_`).
+The transport. The path is fixed first and the call comes later, so a request function is one partial; a path that carries an id takes the id first:
+
+```ts
+const fetchProducts = getJson<Product[], ProductFilters>(`${API_URL}/api/products`)
+const fetchProduct = (id: string) => getJson<Product>(`${API_URL}/api/products/${encodeURIComponent(id)}`)
+const createProduct = postJson<{ name: string }, Product>(`${API_URL}/api/products`)
+const deleteProduct = (id: string) => deleteJson<void, void>(`${API_URL}/api/products/${encodeURIComponent(id)}`)
+
+fetchProducts(filters, { signal })
+fetchProduct(id)(undefined, { signal })
+createProduct({ name })
+deleteProduct(id)()
+```
+
+What it does, so that no call site checks `res.ok` or calls `res.json()`:
+
+- `!ok` rejects with an `ApiError` carrying `status` and the failure body (parsed JSON, or the text), built by a factory and told apart by `isApiError`. A 2xx body that isn't JSON rejects the same way instead of leaking a `JSON.parse` error: a proxy's HTML page, or a static host answering a wrong path with `index.html`.
+- An empty 201 or 204 is a success and resolves to `undefined`. A connection failure rejects as `fetch` threw it.
+- A body goes out as JSON with `Content-Type: application/json`; an `undefined` body sends the method alone.
+- A GET takes `init` after its params, so a query passes its `signal` and a superseded request is cancelled. Body methods take the body alone, so `mutationFn: createProduct` is safe as is: the mutation's second argument has nowhere to land.
+
+Encode path segments that come from a route or a user. A params type is a `type` alias: an `interface` has no implicit index signature and fails the `Record<string, string>` constraint. A query that also runs on the server (a prefetch, a loader) needs an absolute URL, so paths start from `API_URL`; use your stack's public prefix (`NEXT_PUBLIC_`, `VITE_`, `EXPO_PUBLIC_`).
 
 ```ts
 // src/shared/config/env.ts
@@ -65,23 +96,68 @@ export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? ''
 
 ```ts
 // src/shared/api/http.ts
-export const rejectIfNotOk = (response: Response) => {
-  if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  return response
+export type ApiError = Error & { name: 'ApiError'; status: number; body: unknown }
+
+const createApiError = (status: number, body: unknown): ApiError =>
+  Object.assign(new Error(`HTTP ${status}`), { name: 'ApiError' as const, status, body })
+
+export const isApiError = (error: unknown): error is ApiError =>
+  error instanceof Error && error.name === 'ApiError'
+
+type Parsed = { ok: true; value: unknown } | { ok: false }
+
+const parseJson = (text: string): Parsed => {
+  try {
+    return { ok: true, value: JSON.parse(text) }
+  } catch {
+    return { ok: false }
+  }
 }
 
-const readJson = <T,>(response: Response) =>
-  response.text().then((text) => (text ? JSON.parse(text) : undefined) as T)
+const rejectIfNotOk = async (response: Response) => {
+  if (response.ok) return response
+  const text = await response.text()
+  const parsed = parseJson(text)
+  throw createApiError(response.status, parsed.ok ? parsed.value : text || undefined)
+}
 
-export const getJson = <T,>(path: string) => (params: Record<string, string>): Promise<T> =>
-  fetch(`${path}?${new URLSearchParams(params)}`)
-    .then(rejectIfNotOk)
-    .then((response) => readJson<T>(response))
+const readJson = async <T,>(response: Response): Promise<T> => {
+  const text = await response.text()
+  if (!text) return undefined as T
+  const parsed = parseJson(text)
+  if (!parsed.ok) throw createApiError(response.status, text)
+  return parsed.value as T
+}
 
-export const postJson = <I, O>(path: string) => (body: I): Promise<O> =>
-  fetch(path, { method: 'POST', body: JSON.stringify(body) })
-    .then(rejectIfNotOk)
-    .then((response) => readJson<O>(response))
+const withParams = (path: string, params?: Record<string, string>) => {
+  const query = new URLSearchParams(params).toString()
+  return query ? `${path}?${query}` : path
+}
+
+export const getJson =
+  <T, P extends Record<string, string> = Record<string, string>>(path: string) =>
+  (params?: P, init?: RequestInit): Promise<T> =>
+    fetch(withParams(path, params), init)
+      .then(rejectIfNotOk)
+      .then((response) => readJson<T>(response))
+
+const sendJson =
+  (method: 'POST' | 'PUT' | 'PATCH' | 'DELETE') =>
+  <I, O>(path: string) =>
+  (body: I): Promise<O> =>
+    fetch(
+      path,
+      body === undefined
+        ? { method }
+        : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+    )
+      .then(rejectIfNotOk)
+      .then((response) => readJson<O>(response))
+
+export const postJson = sendJson('POST')
+export const putJson = sendJson('PUT')
+export const patchJson = sendJson('PATCH')
+export const deleteJson = sendJson('DELETE')
 ```
 
 ## useUrlState (Next.js)

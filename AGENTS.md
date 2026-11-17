@@ -226,8 +226,8 @@ call that agent.
 | Design or redesign one screen, with or without a UX doc | `screen-design` | skill |
 | Implement 3D / XR on the web | `web3d` | skill |
 | Build/modify backend: APIs, domain logic, DB queries, workers (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge) + `database-design` (incl. PostgreSQL operations) | skill |
-| Set up or restructure a React client: folder structure, FSD, where code goes, hooks, query keys, functional style | `react-architecture` | skill |
-| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-architecture` (structure, server entry points), `design-system` (incl. component composition and view transitions), `i18n` | skill |
+| Set up or restructure a React client: folder structure, FSD, where code goes, hooks, headless patterns (render props, compound blocks, HoCs), request functions and query keys, functional style | `react-architecture` | skill |
+| Build/modify web frontend: pages, components, state, styling (`apps/web`) | `react-architecture` (structure, headless patterns, server entry points), `design-system` (incl. component composition and view transitions), `i18n` | skill |
 | Design tokens, theming or dark mode, a visual refresh ("looks dated"), component APIs; set up or audit a design system | `design-system` | skill |
 | Build/modify a mobile app: Expo / React Native screens (`apps/mobile`) | Expo's official `expo` plugin skills (enable per mobile project) + `react-architecture`, `design-system`, `i18n` | platform skill + skill |
 | Add a language, fix a locale bug (plurals, RTL, time zones), audit i18n | `i18n` | skill |
