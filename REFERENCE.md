@@ -42,7 +42,7 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 |---|---|
 | Plan (product) | product-brief · prd-craft · feature-spec; plan reviews: plan-review (scope mode · execution mode) |
 | Architecture | software-architecture · ai-architecture (AI features and agents) · arch-decision · database-design |
-| UX | ux-design (incl. 3D/XR UX) · screen-design · cro (when conversion-driven) |
+| UX | ux-design (value and journey, IA, flows, AI chat and agent UX, 3D/XR UX) · screen-design (incl. AI surfaces) · cro (when conversion-driven) |
 | Backend build | hexagonal-backend (Axum / FastAPI / Hono / NestJS guide, by stack) · database-design (incl. PostgreSQL operations) · review-checklists (pre-mortem mode while building) |
 | Web build | react-architecture (folder structure, hooks and headless patterns, request functions and query keys, functional style, server entry points) · design-system (tokens, themes, `shared/ui` component APIs, motion incl. view-transition traps) · i18n · web3d |
 | Mobile build | react-architecture · Expo's `expo` plugin (external) · design-system · i18n |
@@ -77,7 +77,7 @@ work (the main session or a subagent it spawns) writes it.
 | Migrations | the project migration tool's directory and format (no tool: `db/migrations/<UTC timestamp>_<verb>_<domain>.sql` + `.down.sql` for reversible steps) | database-design | backend implementers (hexagonal-backend wiring), reviewer, adversary (migration dry-runs) |
 | AI feature design | `docs/arch/ai-features/{feature}.md` | ai-architecture | database-design (the stores it needs: index, session log, memory, usage), ux-design, screen-design (AI surface states), pricing (§7 cost per successful task), implementers |
 | Recovered as-is (re-architecture / system migration; retired when the transition completes) | `docs/arch/as-is.md` | software-architecture (Build Mode on an existing system) | software-architecture (Transition Plan), implementers |
-| App UX | `docs/ux/ux-design.md` | ux-design | screen-design, design-system (accessibility requirements), web3d, web/mobile implementers |
+| App UX | `docs/ux/ux-design.md` | ux-design | screen-design, design-system (accessibility requirements), web3d, data-analyst (§1 journey events and top-task success criteria), web/mobile implementers |
 | Screen specs | `docs/ux/screens/{screen}.md` (3D/XR: `{experience}.md`) | ux-design (initial set: critical-path and costly-to-fail screens + one exemplar per screen class, via screen-design), screen-design | screen-design (redesigns, a pending entry's exemplar), web3d, qa (screen-spec states as test oracle), web/mobile implementers |
 | Project checklist (optional) | `checklist.md` (repo root or `docs/`) | *(project-defined)* | reviewer |
 | QA reports + regression baseline | `.qa/reports/<YYYYMMDD-HHMM>/` per run (`report.md`, `screenshots/`, `baseline.json`) + `.qa/reports/baseline.json` (promoted) | qa skill (callers with file-write; verifier returns findings inline instead) | qa (regression mode) |
@@ -92,7 +92,7 @@ work (the main session or a subagent it spawns) writes it.
 | Content strategy | `biz/marketing/content/strategy.md` | main session | — |
 | Content (social/email/blog/changelog) | `biz/marketing/content/{social,email,blog,changelog}/` (blog: `{slug}.md`, `briefs/{slug}.md`) | copywriting (social, email, changelog), search-visibility (blog) | — |
 | SEO/AEO/GEO audits, plans + AI visibility | `biz/marketing/seo/` (living: `seo-strategy.md`, `keyword-map.md`, `ai-visibility-log.md`, `change-plan-{topic}.md`; dated: `audit-YYYY-MM-DD-{topic}.md`, `ai-visibility-YYYY-MM-DD.md`) | search-visibility | competitor-pages (`keyword-map.md`) |
-| Tracking plan + Aha moment | `biz/analytics/tracking-plan.md` (Mixpanel: an index of metrics, events and funnels; event and property definitions live in the taxonomy doc set) | data-analyst (product-analytics) | cro, growth-loops, copywriting (email goal event), marketing and growth work |
+| Tracking plan + Aha moment | `biz/analytics/tracking-plan.md` (Mixpanel: an index of metrics, events and funnels; event and property definitions live in the taxonomy doc set) | data-analyst (product-analytics) | ux-design (the activation event), cro, growth-loops, copywriting (email goal event), marketing and growth work |
 | Mixpanel taxonomy doc set | `docs/mixpanel/` (`mixpanel-taxonomy.md`, `mixpanel-property-dictionary.md`, `events/<area>.md`) | the PR that changes tracking (data-analyst proposes sections in product-analytics' Mixpanel taxonomy format; creates the set when none exists) | data-analyst, product-analytics (Mixpanel guide) |
 | Funnels + retention | `biz/analytics/funnels.md` | data-analyst (product-analytics) | ux-design, cro, growth-loops, churn-prevention, pricing, copywriting (persuasion psychology) |
 | Dashboards | `biz/analytics/dashboards.md` | data-analyst (product-analytics) | — |
@@ -137,7 +137,9 @@ Be honest about what this library does **not** do yet, so you don't assume an ow
   decision log) have **no agent or skill**. Handle these outside the system. Unit economics is
   split, not unowned: `pricing` owns price, margin floor and cost per account; `product-analytics`
   owns LTV, CAC and payback; `software-architecture` owns cost per unit (`system.md` §4).
-  Point-of-use marketing law has one dated home per topic: subscriptions and auto-renewal →
+  Point-of-use marketing law has one dated home per topic: accessibility law, manipulative-design
+  rules and what users must be told about AI, as they shape an interface → `ux-design`
+  `references/landscape.md`; subscriptions and auto-renewal →
   `churn-prevention` `references/compliance.md` (re-check after the BGH hearing of 2026-11-05 and
   once the UK DMCC subscription rules are published); endorsements, reviews and reference prices →
   `copywriting` persuasion psychology; comparative claims → `competitor-pages`

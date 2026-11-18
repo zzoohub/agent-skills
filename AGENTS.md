@@ -223,8 +223,8 @@ call that agent.
 | Record or review one architecture decision (ADR) on an existing system | `arch-decision` | skill |
 | Design or review a DB schema, the tables behind an AI feature (embeddings, chat, memory, runs) or the roles that bound apps, readers and agents; tune queries, run lock-safe migrations or upgrade a live Postgres | `database-design` | skill |
 | Design or review an AI feature or agent: model choice (decision model, LLM, speech), workflow, graph or agent, RAG, voice, on-device, eval gate, cost | `ai-architecture` | skill |
-| Design app-wide UX/IA, a new multi-screen flow or 3D/XR UX; recover or audit a shipped app's UX | `ux-design` | skill |
-| Design or redesign one screen, with or without a UX doc | `screen-design` | skill |
+| Design app-wide UX from the product's core value: the user journey, who does each step (person, code or AI), IA, a new multi-screen flow, AI chat or agent UX, 3D/XR UX; recover or audit a shipped app's UX | `ux-design` | skill |
+| Design or redesign one screen or one AI surface (chat panel, agent run view, generated block), with or without a UX doc | `screen-design` | skill |
 | Implement 3D / XR on the web | `web3d` | skill |
 | Build/modify backend: APIs, domain logic, DB queries, queue / webhook / cron handlers, workers, a tool surface for agents (`apps/api`, `apps/worker`, `db/`) | `hexagonal-backend` (stack guide picked from build files — Axum, Hono, FastAPI or NestJS; greenfield default Axum for container services, Hono for Workers/edge; wires the roles and RLS that `database-design` specifies) + `database-design` (incl. PostgreSQL operations) | skill |
 | Set up or restructure a React client: folder structure, FSD, where code goes, hooks, headless patterns (render props, compound blocks, HoCs), request functions and query keys, functional style | `react-architecture` | skill |

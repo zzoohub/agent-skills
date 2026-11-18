@@ -27,6 +27,7 @@ List the domain states once, while mapping flows; each screen specs the ones its
 - **Limits:** a plan or quota reached: what still works and how to lift it.
 - **Background jobs:** running, failed, finished while the user was away.
 - **Conflict:** edited elsewhere: show both versions; reload or merge.
+- **A model in the loop:** generating, stopped, cut off, refused, unsure, limit reached, waiting for approval, each taken from the feature's failure path (`ai-feature-ux.md` § Failure path → states).
 
 ## Containers
 
@@ -60,7 +61,7 @@ One channel per kind of news, app-wide:
 - **Item state** (saved, failed, syncing): in place, on the item.
 - **System state** (offline, degraded, plan limit, maintenance): a banner that stays until the state changes.
 - **Minor success:** a toast or snackbar, one at a time. A toast with an action (Undo) stays until dismissed or follows the OS accessibility timeout, and its action also exists somewhere durable.
-- **Notifications** (background completion, hand-offs, mentions): only to people who must act or would be hurt to miss it; the rest goes to an activity feed or a digest. Urgency picks the channel (badge, in-app, email, push); each names the actor and the object and opens it in the state it describes. One a flow depends on is designed as a step of that flow (`design-process.md` § Mapping a flow).
+- **Notifications** (background completion, hand-offs, mentions): only to people who must act or would be hurt to miss it; the rest goes to an activity feed or a digest. Urgency picks the channel (badge, in-app, email, push); each names the actor and the object and opens it in the state it describes. One a flow depends on is designed as a step of that flow (`journey.md` § Messages outside the app).
 - **Errors never dismiss themselves.**
 
 ## Response time

@@ -60,7 +60,8 @@ feature-spec
 → as needed: arch-decision (one architectural decision) · software-architecture on the existing
   system (several, or a re-architecture, modernization or system migration) · ai-architecture (a
   model in the loop) · database-design (new or changed data)
-→ ux-design Flow pass (only for a new multi-screen flow) → screen-design, once per screen
+→ ux-design Flow pass (only for a new multi-screen flow, or a model taking over a step: its work
+  split and app-wide AI conventions) → screen-design, once per screen
 → plan-review, execution mode (when the change trips one of its depth triggers: money, persisted
   data, permissions, personal data, a public contract, a new external dependency such as an LLM)
 → implement (main session / general-purpose subagents + stack skills)

@@ -4,7 +4,7 @@ The floors and platform defaults that UX specs are judged against. This file is 
 
 ## Conformance target
 
-Design to WCAG 2.2 AA unless the PRD or the architecture (default `docs/arch/context.md` §5 C-03) requires more. The legal floor depends on jurisdiction and sector and changes over time, so confirm it at ship time (EU: the European Accessibility Act through EN 301 549, and the Web Accessibility Directive for the public sector; US: the ADA and Section 508).
+Design to WCAG 2.2 AA unless the PRD or the architecture (default `docs/arch/context.md` §5 C-03) requires more. The legal floor depends on jurisdiction and sector and changes over time, so confirm it at ship time (EU: the European Accessibility Act through EN 301 549, and the Web Accessibility Directive for the public sector; US: the ADA and Section 508; the status of each on a given date: `landscape.md` § Accessibility).
 
 ## Floors
 

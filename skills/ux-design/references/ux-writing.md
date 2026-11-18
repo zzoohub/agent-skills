@@ -33,16 +33,25 @@ Only where the destructive ladder (`interaction-patterns.md` § Destructive acti
 
 ## Permission requests
 
-- State the benefit in the user's terms; when to ask: `design-process.md` § Mapping a flow.
+- State the benefit in the user's terms; when to ask: `journey.md` § Mapping a flow.
 - Prefer context alone. Only when more detail is essential, show a custom screen before an Apple system alert: one button, titled like "Continue" or "Next", that opens the alert, and no other action (no close or cancel) unless a legal consent requires one (Apple HIG, Privacy; checked 2026-10).
 - Design the denied state: what still works, and a route to Settings the next time the feature is needed.
 
 ## Messages
 
-Email, push and SMS that a flow sends: the subject or first line names who, what and the action needed ("Sam asked you to review the Q3 plan by Thursday"), so the message works unopened, with no private detail where a lock screen shows it; one link, to that object; a recognizable sender. Channel constraints: `design-process.md` § Mapping a flow.
+Email, push and SMS that a flow sends: the subject or first line names who, what and the action needed ("Sam asked you to review the Q3 plan by Thursday"), so the message works unopened, with no private detail where a lock screen shows it; one link, to that object; a recognizable sender. Channel constraints: `journey.md` § Messages outside the app.
+
+## Words about AI
+
+- Name the action, not the technology: "Summarize", "Draft a reply". A sparkle is never the only label, and nothing is "magic".
+- The disclosure is a plain sentence at first contact ("You're chatting with an automated assistant. Ask for a person at any time.") and a visible word beside generated content ("Drafted by AI").
+- The assistant's fixed phrases (greeting, refusal, hand-over, limit reached) are written out as copy. They claim no feelings, apologize once at most and say what the person can do next.
+- An abstention says what is missing and the next step. A refusal says that it won't, never that something broke.
+- Uncertainty is first person and specific ("I'm not sure this is the current policy: it is dated March"), never a blanket disclaimer under every answer.
+- An approval names the act and its object on the button: "Send to 41 clients" / "Don't send".
 
 ## Status and progress
 
-- Progress names the work and the quantity: "Importing 240 contacts…", not "Processing…".
+- Progress names the work and the quantity: "Importing 240 contacts…", "Reading 14 invoices…", not "Processing…" or "Thinking…".
 - A failure partway says what completed and how to finish: "180 of 240 imported. Retry the other 60."
 - Show a queue position or a time estimate only when it is real.

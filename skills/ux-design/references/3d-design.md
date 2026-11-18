@@ -91,7 +91,7 @@ Test on the weakest target phone, on the real page, with people new to 3D viewer
 
 ## Diagnose
 
-Severity follows the review scale in SKILL.md.
+Severity follows the scale in `review.md`.
 
 | Symptom | Likely cause → check | Default |
 |---|---|---|

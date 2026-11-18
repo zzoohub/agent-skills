@@ -123,7 +123,7 @@ The 7 base states (`interaction-patterns.md`) plus these, each with a designed r
 
 ## Diagnose
 
-Severity follows the review scale in SKILL.md.
+Severity follows the scale in `review.md`.
 
 | Symptom | Check first | Default |
 |---|---|---|
