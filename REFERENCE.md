@@ -44,7 +44,7 @@ general-purpose subagent it spawns) loads the skills for the area directly.
 | Architecture | software-architecture · ai-architecture (AI features and agents) · arch-decision · database-design |
 | UX | ux-design (value and journey, IA, flows, AI chat and agent UX, 3D/XR UX) · screen-design (incl. AI surfaces) · cro (when conversion-driven) |
 | Backend build | hexagonal-backend (Axum / FastAPI / Hono / NestJS guide, by stack) · database-design (incl. PostgreSQL operations) · review-checklists (pre-mortem mode while building) |
-| Web build | react-architecture (folder structure, hooks and headless patterns, request functions and query keys, functional style, server entry points) · design-system (tokens, themes, `shared/ui` component APIs, motion incl. view-transition traps) · i18n · web3d |
+| Web build | react-architecture (folder structure, hooks and headless patterns, request functions and query keys, functional style, server entry points) · design-system (tokens, themes, `shared/ui` component APIs, motion incl. view-transition traps) · i18n · web3d (real-time 3D, in-canvas animation and XR against a frame budget) |
 | Mobile build | react-architecture · Expo's `expo` plugin (external) · design-system · i18n |
 | Marketing | copywriting (incl. persuasion psychology) · competitor-pages · pricing · ad-creative; content: copywriting (social, email, launch-day copy, changelog) · search-visibility |
 | Growth | cro · growth-loops · churn-prevention · pricing · copywriting (incl. persuasion psychology) |
